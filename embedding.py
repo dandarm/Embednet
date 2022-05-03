@@ -4,7 +4,7 @@ from numpy import dot
 from numpy.linalg import norm
 
 class Embedding():
-    def __init__(self, embeddings_array, embedding_labels, pER):
+    def __init__(self, embeddings_array, embedding_labels, pER, test_loss_list=None):
         self.embeddings_array = embeddings_array
         self.coppie = None
         self.embedding_labels = embedding_labels
@@ -14,6 +14,9 @@ class Embedding():
         
         self.intra_dists = None
         self.inter_dists = None
+        #self.interP1 = None
+        #self.interP2 = None
+        self.test_loss_list = test_loss_list
         
     def cosdist(self, a,b):
         return dot(a, b)/(norm(a)*norm(b))
@@ -37,3 +40,6 @@ class Embedding():
             
         self.intra_dists = [d[0] for d in self.distances if d[1] == (0,0) or d[1] == (1,1)]
         self.inter_dists = [d[0] for d in self.distances if d[1] == (1,0) or d[1] == (0,1)]
+        
+        #self.interP1 = [d[0] for d in self.distances if d[1] == (1,0)]
+        #self.interP2 = [d[0] for d in self.distances if d[1] == (0,1)]

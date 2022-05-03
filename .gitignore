@@ -162,6 +162,10 @@ cython_debug/
 
 # la cartella dei run di training
 runs/
+runs_before_020522/
 
 # file compressi di numpy che si generano eseguendo codice
 *.npz
+
+# immagini salvate dopo il training
+*.png

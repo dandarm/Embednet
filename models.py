@@ -17,7 +17,7 @@ class GCN(torch.nn.Module):
         
         self.conv1 = GCNConv(self.node_features, self.hidden_channels)
         self.conv2 = GCNConv(self.hidden_channels, self.hidden_channels)
-        self.conv3 = GCNConv(self.hidden_channels, self.hidden_channels)
+        self.conv3 = GCNConv(self.hidden_channels, self.hidden_channels) # cambiare quì la dimensione dell'ultimo layer in funzione di un parametro
         self.lin = Linear(self.hidden_channels, self.num_classes)
         
     def embeddings(self, x, edge_index, batch):
