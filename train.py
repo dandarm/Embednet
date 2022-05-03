@@ -17,20 +17,24 @@ from tqdm import tqdm
    
 class Trainer():
     
-    def __init__(self, model, learning_rate, epochs, batch_size, layers, neurons, device=None):
+    def __init__(self, model, learning_rate, epochs, batch_size, layers, neurons, last_layer_neurons, device=None):
         self.lr = learning_rate
         self.model = model
         self.epochs = epochs
         self.batch_size = batch_size
         self.layers= layers
         self.neurons = neurons
+        self.last_layer_neurons = last_layer_neurons
         
         if device:
             self.device = device
         else:
             self.device = torch.device('cuda')
     
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr )
+        #self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr )
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
+        decayRate = 0.96
+        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
         self.criterion = torch.nn.CrossEntropyLoss()
         self.dataset = None
 
@@ -43,6 +47,7 @@ class Trainer():
             loss.backward()  # Derive gradients.
             self.optimizer.step()  # Update parameters based on gradients.
             self.optimizer.zero_grad()  # Clear gradients.
+            self.scheduler.step()
         return loss.item()
 
     def test(self, epoch):
@@ -70,7 +75,7 @@ class Trainer():
 
     def launch_training(self):
         nowstr = datetime.datetime.now().strftime("%d%b_%H-%M-%S")
-        expstr = f"lr-{self.lr}_epochs{self.epochs}_bs{self.batch_size}_layers{self.layers}_neurons{self.neurons}"
+        expstr = f"lr-{self.lr}_epochs{self.epochs}_bs{self.batch_size}_layers{self.layers}_neurons{self.neurons}_lln{self.last_layer_neurons}"
         LOG_DIR = f"runs/{expstr}/{nowstr}"
         print(LOG_DIR)
         writer = SummaryWriter(LOG_DIR)

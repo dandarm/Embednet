@@ -1,0 +1,13 @@
+graph_dataset:
+    ERmodel: True
+    p1ER: 0.3
+    p2ER: 0.08
+    Num_nodes: 100
+    
+memcached:
+    host: 10.0.0.99
+workers:
+  - host: 10.0.0.101
+    port: 2301
+  - host: 10.0.0.102
+    port: 2302

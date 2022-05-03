@@ -7,18 +7,19 @@ import torch.nn.functional as F
 
 
 class GCN(torch.nn.Module):
-    def __init__(self, hidden_channels, node_features = 1, num_classes = 2):
+    def __init__(self, hidden_channels, node_features = 1, num_classes = 2, num_neurons_last_layer=64):
         super(GCN, self).__init__()
         #torch.manual_seed(12345)
         
         self.hidden_channels = hidden_channels
         self.node_features = node_features
         self.num_classes = num_classes
+        self.num_neurons_last_layer = num_neurons_last_layer
         
         self.conv1 = GCNConv(self.node_features, self.hidden_channels)
         self.conv2 = GCNConv(self.hidden_channels, self.hidden_channels)
-        self.conv3 = GCNConv(self.hidden_channels, self.hidden_channels) # cambiare quì la dimensione dell'ultimo layer in funzione di un parametro
-        self.lin = Linear(self.hidden_channels, self.num_classes)
+        self.conv3 = GCNConv(self.hidden_channels, self.num_neurons_last_layer)
+        self.lin = Linear(self.num_neurons_last_layer, self.num_classes)
         
     def embeddings(self, x, edge_index, batch):
         # 1. Obtain node embeddings 
@@ -44,8 +45,8 @@ class GCN(torch.nn.Module):
     
     
 class GCNEmbed(GCN):
-    def __init__(self, model, hidden_channels=64, node_features = 1, num_classes = 2):
-        super().__init__(hidden_channels, node_features, num_classes)  # devo ricopiare i parametri?
+    def __init__(self, model, hidden_channels=64, node_features = 1, num_classes = 2, num_neurons_last_layer=64):
+        super().__init__(hidden_channels, node_features, num_classes, num_neurons_last_layer)
         
         self.conv1 = model._modules['conv1']
         self.conv2 = model._modules['conv2']

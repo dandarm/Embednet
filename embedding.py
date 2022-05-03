@@ -9,11 +9,13 @@ class Embedding():
         self.coppie = None
         self.embedding_labels = embedding_labels
         self.coppie_labels = None
+        self.cos_distances = []
         self.distances = []
         self.probabilities_ER = pER
         
-        self.intra_dists = None
-        self.inter_dists = None
+        self.cos_intra_dists = None
+        self.cos_inter_dists = None
+        self.distance_of_means = None
         #self.interP1 = None
         #self.interP2 = None
         self.test_loss_list = test_loss_list
@@ -32,14 +34,22 @@ class Embedding():
     def calc_distances(self):
         i = 0
         for a,b in self.coppie:
-            dist = self.cosdist(a,b) 
+            cos_dist = self.cosdist(a,b) 
+            dist = np.linalg.norm(a-b)
             label_a = self.coppie_labels[i][0]
             label_b = self.coppie_labels[i][1]
+            self.cos_distances.append((cos_dist,(label_a, label_b)))
             self.distances.append((dist,(label_a, label_b)))
             i += 1
             
+        self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1] == (0,0) or d[1] == (1,1)]
+        self.cos_inter_dists = [d[0] for d in self.cos_distances if d[1] == (1,0) or d[1] == (0,1)]
+        
         self.intra_dists = [d[0] for d in self.distances if d[1] == (0,0) or d[1] == (1,1)]
         self.inter_dists = [d[0] for d in self.distances if d[1] == (1,0) or d[1] == (0,1)]
         
-        #self.interP1 = [d[0] for d in self.distances if d[1] == (1,0)]
-        #self.interP2 = [d[0] for d in self.distances if d[1] == (0,1)]
+        # calculate average of each euclidean distribution
+        mean_intra = np.mean(self.intra_dists)
+        mean_inter = np.mean(self.inter_dists)
+        self.distance_of_means = mean_inter - mean_intra
+        
