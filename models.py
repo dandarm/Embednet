@@ -57,3 +57,13 @@ class GCNEmbed(GCN):
         x = self.embeddings(x, edge_index, batch)
         
         return x
+    
+"""  
+class GCN1n(GCN):
+    def __init__(self, model, hidden_channels=64, node_features = 1, num_classes = 2):
+        super().__init__(hidden_channels, node_features, num_classes, num_neurons_last_layer=1)
+        
+        self.conv1 = model._modules['conv1']
+        self.conv2 = model._modules['conv2']
+        self.conv3 = model._modules['conv3']
+"""

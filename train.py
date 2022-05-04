@@ -17,7 +17,7 @@ from tqdm import tqdm
    
 class Trainer():
     
-    def __init__(self, model, learning_rate, epochs, batch_size, layers, neurons, last_layer_neurons, device=None):
+    def __init__(self, model, learning_rate, epochs, batch_size, layers, neurons, last_layer_neurons, criterion, device=None):
         self.lr = learning_rate
         self.model = model
         self.epochs = epochs
@@ -31,11 +31,11 @@ class Trainer():
         else:
             self.device = torch.device('cuda')
     
-        #self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr )
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
+        #self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr , )
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=1e-5, amsgrad=False)
         decayRate = 0.96
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
-        self.criterion = torch.nn.CrossEntropyLoss()
+        #self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
+        self.criterion = criterion  #torch.nn.CrossEntropyLoss()
         self.dataset = None
 
     def train(self, epoch):
@@ -47,7 +47,7 @@ class Trainer():
             loss.backward()  # Derive gradients.
             self.optimizer.step()  # Update parameters based on gradients.
             self.optimizer.zero_grad()  # Clear gradients.
-            self.scheduler.step()
+            #self.scheduler.step()
         return loss.item()
 
     def test(self, epoch):
@@ -81,7 +81,7 @@ class Trainer():
         writer = SummaryWriter(LOG_DIR)
 
         #best_loss = 0 # for early stopping
-        early_stopping = EarlyStopping(patience=1500, delta = 0.01, initial_delta = 0.2)
+        early_stopping = EarlyStopping(patience=200, delta = 0.02, initial_delta = 0.2)
         
         train_loss_list = []
         test_loss_list = []

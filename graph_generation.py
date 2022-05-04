@@ -4,9 +4,11 @@ import numpy as np
 
 
 def create_ER(Num_nodes, p, N_graphs):
-    N = 300 # Graph nodes number
-    p_er = 0.02   # Probability for edge creation
-    Num_grafi_per_tipo = 100 # ogni tot abbiamo un tipo di grafi originato da una diversa distribuzione
+    """
+    Num_nodes:  Graph nodes number
+    p:  Probability for edge creation
+    N_graphs: ogni tot abbiamo un tipo di grafi originato da una diversa distribuzione
+    """
 
     grafi = []
     for i in range(N_graphs):

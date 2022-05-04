@@ -3,11 +3,14 @@ graph_dataset:
     p1ER: 0.3
     p2ER: 0.08
     Num_nodes: 100
+    Num_grafi_per_tipo: 100
     
-memcached:
-    host: 10.0.0.99
-workers:
-  - host: 10.0.0.101
-    port: 2301
-  - host: 10.0.0.102
-    port: 2302
+training:
+    learning_rate: 0.01
+    epochs: 1500
+    batch_size: 150
+    
+model:
+    layers: 3
+    num_neurons: 64
+    num_last_neurons: 1
