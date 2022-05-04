@@ -14,36 +14,56 @@ from pytorchtools import EarlyStopping
 
 from tqdm import tqdm
 
+from models import GCN1n
+
    
 class Trainer():
     
-    def __init__(self, model, learning_rate, epochs, batch_size, layers, neurons, last_layer_neurons, criterion, device=None):
-        self.lr = learning_rate
+    def __init__(self, model, config): #learning_rate, epochs, batch_size, layers, neurons, last_layer_neurons, criterion, device=None):
         self.model = model
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.layers= layers
-        self.neurons = neurons
-        self.last_layer_neurons = last_layer_neurons
+        self.config = config
+
+        self.lr = config['training']['learning_rate']
+        self.epochs = config['training']['epochs']
+        self.batch_size = config['training']['batch_size']
         
-        if device:
-            self.device = device
-        else:
+        self.layers= config['model']['layers']
+        self.neurons = config['model']['num_neurons']
+        self.last_layer_neurons = config['model']['num_last_neurons']
+        
+        if config['device'] == 'gpu':
             self.device = torch.device('cuda')
+        else:
+            self.device = "cpu"
     
         #self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr , )
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=1e-5, amsgrad=False)
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
         decayRate = 0.96
         #self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
-        self.criterion = criterion  #torch.nn.CrossEntropyLoss()
+        
+        criterion = config['training']['criterion']
+        if criterion == 'MSELoss':
+            self.criterion = torch.nn.MSELoss()
+        elif criterion == 'CrossEntropy':
+            self.criterion = torch.nn.CrossEntropyLoss()
+            
         self.dataset = None
 
+    def correct_shape(self, y):
+        if isinstance(self.model, GCN1n):
+            target = y.unsqueeze(1).float()
+        else:
+            target = y
+        return target
+        
     def train(self, epoch):
         self.model.train()
 
         for data in self.dataset.train_loader:  # Iterate in batches over the training dataset.            
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.  
-            loss = self.criterion(out, data.y)  # Compute the loss.
+            target = self.correct_shape(data.y)
+            #print(target)
+            loss = self.criterion(out, target)  # Compute the loss.
             loss.backward()  # Derive gradients.
             self.optimizer.step()  # Update parameters based on gradients.
             self.optimizer.zero_grad()  # Clear gradients.
@@ -54,7 +74,8 @@ class Trainer():
         self.model.eval()
         for data in self.dataset.test_loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
-            loss = self.criterion(out, data.y)  # Compute the loss.
+            target = self.correct_shape(data.y)
+            loss = self.criterion(out, target)  # Compute the loss.
         return loss.item()
 
     def accuracy(self, loader):
@@ -62,9 +83,10 @@ class Trainer():
 
         correct = 0
         for data in loader:  # Iterate in batches over the training/test dataset.
-            out = self.model(data.x, data.edge_index, data.batch)  
+            out = self.model(data.x, data.edge_index, data.batch) 
+            target = self.correct_shape(data.y)
             pred = out.argmax(dim=1)  # Use the class with highest probability.
-            correct += int((pred == data.y).sum())  # Check against ground-truth labels.
+            correct += int((pred == target).sum())  # Check against ground-truth labels.
         return correct / len(loader.dataset)  # Derive ratio of correct predictions.
     
     
@@ -139,7 +161,8 @@ class Dataset():
 
         pyg_graph = from_networkx(g)
         type_graph = self.labels[i]
-        pyg_graph.y = torch.tensor([type_graph],dtype = torch.long)
+        # print(f'type_graph {type_graph}')
+        pyg_graph.y = torch.tensor([type_graph],dtype = torch.float)
         
         return pyg_graph
         

@@ -58,12 +58,28 @@ class GCNEmbed(GCN):
         
         return x
     
-"""  
+
 class GCN1n(GCN):
-    def __init__(self, model, hidden_channels=64, node_features = 1, num_classes = 2):
-        super().__init__(hidden_channels, node_features, num_classes, num_neurons_last_layer=1)
+    def __init__(self, hidden_channels, node_features = 1, num_classes = 2):
+        super(GCN, self).__init__()
         
-        self.conv1 = model._modules['conv1']
-        self.conv2 = model._modules['conv2']
-        self.conv3 = model._modules['conv3']
-"""
+        self.hidden_channels = hidden_channels
+        self.node_features = node_features
+        self.num_classes = num_classes
+        self.num_neurons_last_layer = 1
+        
+        self.conv1 = GCNConv(self.node_features, self.hidden_channels)
+        self.conv2 = GCNConv(self.hidden_channels, self.hidden_channels)
+        self.conv3 = GCNConv(self.hidden_channels, self.num_neurons_last_layer)
+        
+    def forward(self, x, edge_index, batch):
+        # 1. Obtain node embeddings 
+        x = self.conv1(x, edge_index)
+        x = x.relu()
+        x = self.conv2(x, edge_index)
+        x = x.relu()
+        x = self.conv3(x, edge_index)
+
+        # 2. Readout layer
+        x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]
+        return x

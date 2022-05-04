@@ -43,11 +43,13 @@ class Embedding():
             self.distances.append((dist,(label_a, label_b)))
             i += 1
             
-        self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1] == (0,0) or d[1] == (1,1)]
-        self.cos_inter_dists = [d[0] for d in self.cos_distances if d[1] == (1,0) or d[1] == (0,1)]
+        label_1 = self.probabilities_ER[0]
+        label_2 = self.probabilities_ER[1]
+        self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
+        self.cos_inter_dists = [d[0] for d in self.cos_distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
         
-        self.intra_dists = [d[0] for d in self.distances if d[1] == (0,0) or d[1] == (1,1)]
-        self.inter_dists = [d[0] for d in self.distances if d[1] == (1,0) or d[1] == (0,1)]
+        self.intra_dists = [d[0] for d in self.distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
+        self.inter_dists = [d[0] for d in self.distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
         
         # calculate average of each euclidean distribution
         mean_intra = np.mean(self.intra_dists)

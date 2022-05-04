@@ -6,11 +6,15 @@ graph_dataset:
     Num_grafi_per_tipo: 100
     
 training:
-    learning_rate: 0.01
+    learning_rate: 0.005
     epochs: 1500
     batch_size: 150
+    percentage_train: 0.7
+    criterion: 'MSELoss'  # 'CrossEntropy'
     
 model:
     layers: 3
     num_neurons: 64
     num_last_neurons: 1
+    
+device: 'gpu'
