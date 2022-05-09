@@ -33,26 +33,32 @@ class Embedding():
         self.coppie_labels = [(self.embedding_labels[c[0]], self.embedding_labels[c[1]]) for c in coppie_numeric]
 
     def calc_distances(self):
-        i = 0
-        for a,b in self.coppie:
-            cos_dist = self.cosdist(a,b) 
-            dist = np.linalg.norm(a-b)
-            label_a = self.coppie_labels[i][0]
-            label_b = self.coppie_labels[i][1]
-            self.cos_distances.append((cos_dist,(label_a, label_b)))
-            self.distances.append((dist,(label_a, label_b)))
-            i += 1
+        if len(self.probabilities_ER) == 2:
+            self.calc_coppie()
+            i = 0
+            for a,b in self.coppie:
+                cos_dist = self.cosdist(a,b) 
+                dist = np.linalg.norm(a-b)
+                label_a = self.coppie_labels[i][0]
+                label_b = self.coppie_labels[i][1]
+                self.cos_distances.append((cos_dist,(label_a, label_b)))
+                self.distances.append((dist,(label_a, label_b)))
+                i += 1
+
+
+            label_1 = self.probabilities_ER[0]
+            label_2 = self.probabilities_ER[1]
+            self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
+            self.cos_inter_dists = [d[0] for d in self.cos_distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
+
+            self.intra_dists = [d[0] for d in self.distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
+            self.inter_dists = [d[0] for d in self.distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
+
+            # calculate average of each euclidean distribution
+            mean_intra = np.mean(self.intra_dists)
+            mean_inter = np.mean(self.inter_dists)
+            self.distance_of_means = mean_inter - mean_intra
             
-        label_1 = self.probabilities_ER[0]
-        label_2 = self.probabilities_ER[1]
-        self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
-        self.cos_inter_dists = [d[0] for d in self.cos_distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
-        
-        self.intra_dists = [d[0] for d in self.distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
-        self.inter_dists = [d[0] for d in self.distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
-        
-        # calculate average of each euclidean distribution
-        mean_intra = np.mean(self.intra_dists)
-        mean_inter = np.mean(self.inter_dists)
-        self.distance_of_means = mean_inter - mean_intra
+        else:
+            print("Non serve calcolare le distanze nel caso di embedding scalare")
         
