@@ -14,7 +14,6 @@ from pytorchtools import EarlyStopping
 
 from tqdm import tqdm
 
-from models import GCN1n
 
    
 class Trainer():
@@ -27,9 +26,9 @@ class Trainer():
         self.epochs = config['training']['epochs']
         self.batch_size = config['training']['batch_size']
         
-        self.layers= config['model']['layers']
-        self.neurons = config['model']['num_neurons']
-        self.last_layer_neurons = config['model']['num_last_neurons']
+        self.layers = len(config['model']['neurons_per_layer'])
+        self.neurons = config['model']['neurons_per_layer']
+        self.last_layer_neurons = config['model']['neurons_per_layer'][-1]
         
         if config['device'] == 'gpu':
             self.device = torch.device('cuda')
@@ -52,7 +51,8 @@ class Trainer():
         self.dataset = None
 
     def correct_shape(self, y):
-        if isinstance(self.model, GCN1n):
+        #if isinstance(self.model, GCN1n):
+        if self.last_layer_neurons == 1:
             target = y.unsqueeze(1).float()
         else:
             target = y
@@ -154,6 +154,7 @@ class Dataset():
         self.train_loader = None
         self.test_loader = None
         self.config = config
+        self.last_neurons = config['model']['neurons_per_layer'][-1]
         
     def convert_G(self, g_i):
         g, i = g_i
@@ -165,7 +166,7 @@ class Dataset():
         pyg_graph = from_networkx(g)
         type_graph = self.labels[i]
         # print(f'type_graph {type_graph}')
-        if self.config['model']['num_last_neurons'] == 1:
+        if self.last_neurons == 1:
             tipo = torch.float
         else:
             tipo = torch.long

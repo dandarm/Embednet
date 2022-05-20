@@ -45,7 +45,7 @@ def dataset_nclass_ER(config):
     
     dataset_grafi_nx = []
     dataset_labels = []
-    if config['model']['num_last_neurons'] > 1:
+    if config['model']['neurons_per_layer'][-1] > 1:
         scalar_embedding = False
     else:
         scalar_embedding = True

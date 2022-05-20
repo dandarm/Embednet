@@ -7,7 +7,7 @@ import time
 from tqdm import tqdm
 
 from graph_generation import create_ER, dataset_nclass_ER
-from models import GCN, GCNEmbed, GCN1n
+from models import GCN, GCNEmbed
 from train import Trainer
 from embedding import Embedding
 from experiments import experiment_embedding
@@ -26,15 +26,19 @@ def studio_embedding():
     embeddings = experiment_embedding(config, dataset_grafi_nx, dataset_labels, list_p)
 
     #if len(config['graph_dataset']['list_p']) == 2:
-    if config['model']['num_last_neurons'] == 1:
+    if config['model']['neurons_per_layer'][-1] == 1:
         #plt.hist(embeddings.embeddings_array, bins=80);
         plt.figure(figsize=(18, 6))  # , dpi=60)
         for p in list_p:
             mask_int = np.argwhere(embeddings.embedding_labels == p).flatten()
             emb = embeddings.embeddings_array[mask_int].flatten()
+
+            h, e = np.histogram(emb, bins=50, density=True)
+            x = np.linspace(e.min(), e.max())
+            plt.bar(e[:-1], h, width=np.diff(e), ec='k', align='edge', label='histogram')
+
             kde = stats.gaussian_kde(emb)
-            n, b, _ = plt.hist(emb, bins=50)
-            plt.plot(b, kde(b))
+            plt.plot(x, kde.pdf(x), lw=5, label='KDE')
 
         plt.xlabel('p', fontsize=18)
         plt.xticks(fontsize=18)

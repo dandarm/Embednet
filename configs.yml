@@ -2,7 +2,7 @@ graph_dataset:
     ERmodel: True
     list_p: [0.05, 0.2, 0.3] #, 0.4, 0.5, 0.6]
     Num_nodes: 100
-    Num_grafi_per_tipo: 200
+    Num_grafi_per_tipo: 500
     
 training:
     learning_rate: 0.005
@@ -12,8 +12,9 @@ training:
     criterion:  'MSELoss'  # 'CrossEntropy' #
     
 model:
-    layers: 3
-    num_neurons: 64
-    num_last_neurons: 1  # se > 1 scegliere CrossEntropy come criterion
+    neurons_per_layer: [1, 64, 64, 30, 1]  # il primo elemento deve essere uguale alla dimensione delle feature del nodo
+    #layers: 3
+    #num_neurons: 64
+    #num_last_neurons: 1  # se > 1 scegliere CrossEntropy come criterion
     
 device: 'gpu'

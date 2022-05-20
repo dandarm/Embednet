@@ -36,7 +36,7 @@ class Embedding():
         self.coppie_labels = [(self.embedding_labels[c[0]], self.embedding_labels[c[1]]) for c in coppie_numeric]
 
     def calc_distances(self):
-        if self.config['model']['num_last_neurons'] > 1:
+        if self.config['model']['neurons_per_layer'][-1] > 1:
             self.calc_coppie()
             i = 0
             for a,b in self.coppie:
