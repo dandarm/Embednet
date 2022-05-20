@@ -4,7 +4,7 @@ from numpy import dot
 from numpy.linalg import norm
 
 class Embedding():
-    def __init__(self, embeddings_array, embedding_labels, pER, test_loss_list=None, configs=None):
+    def __init__(self, embeddings_array, embedding_labels, pER, test_loss_list=None, config=None):
         self.embeddings_array = embeddings_array
         self.coppie = None
         self.embedding_labels = embedding_labels
@@ -14,12 +14,14 @@ class Embedding():
         self.probabilities_ER = pER
         
         self.cos_intra_dists = None
-        self.cos_inter_dists = None
+        self.cos_inter_dists = []
+        self.intra_dists = None
+        self.inter_dists = []
         self.distance_of_means = None
         #self.interP1 = None
         #self.interP2 = None
         self.test_loss_list = test_loss_list
-        self.configs = configs
+        self.config = config
         
     def cosdist(self, a,b):
         return dot(a, b)/(norm(a)*norm(b))
@@ -29,11 +31,12 @@ class Embedding():
         coppie_numeric = list(itertools.combinations(range(NN), 2))
         assert len(coppie_numeric) == (NN * (NN-1))/2
         #print(f"{len(coppie_numeric)} possibili coppie")
-        self.coppie = np.array([self.embeddings_array[c,:] for c in coppie_numeric])
+        #self.coppie = np.array([self.embeddings_array[c,:] for c in coppie_numeric])
+        self.coppie = self.embeddings_array[coppie_numeric] # è equivalente alla riga precedente: numpy integer mask, prende la shape della mask
         self.coppie_labels = [(self.embedding_labels[c[0]], self.embedding_labels[c[1]]) for c in coppie_numeric]
 
     def calc_distances(self):
-        if len(self.probabilities_ER) == 2:
+        if self.config['model']['num_last_neurons'] > 1:
             self.calc_coppie()
             i = 0
             for a,b in self.coppie:
@@ -46,13 +49,19 @@ class Embedding():
                 i += 1
 
 
-            label_1 = self.probabilities_ER[0]
-            label_2 = self.probabilities_ER[1]
-            self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
-            self.cos_inter_dists = [d[0] for d in self.cos_distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
+            #self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
+            self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1][0] == d[1][1]]
+            #self.cos_inter_dists = [d[0] for d in self.cos_distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
+            #guarda tutti i possibili accoppiamenti
+            NN = len(set(self.embedding_labels))
+            possibili_coppie_labels = set(list(itertools.combinations(range(NN), 2)))
 
-            self.intra_dists = [d[0] for d in self.distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
-            self.inter_dists = [d[0] for d in self.distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
+            for label_1, label_2 in possibili_coppie_labels:
+                self.cos_inter_dists.append( [d[0] for d in self.cos_distances if d[1] == (label_2, label_1) or d[1] == (label_1, label_2)] )
+
+            self.intra_dists = [d[0] for d in self.distances if d[1][0] == d[1][1]]
+            for label_1, label_2 in possibili_coppie_labels:
+                self.inter_dists.append( [d[0] for d in self.distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)] )
 
             # calculate average of each euclidean distribution
             mean_intra = np.mean(self.intra_dists)

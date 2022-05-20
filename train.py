@@ -46,6 +46,8 @@ class Trainer():
             self.criterion = torch.nn.MSELoss()
         elif criterion == 'CrossEntropy':
             self.criterion = torch.nn.CrossEntropyLoss()
+
+        print(self.criterion)
             
         self.dataset = None
 
@@ -91,7 +93,7 @@ class Trainer():
     
     
     def load_dataset(self, dataset_list, labels, percentage_train):
-        self.dataset = Dataset(dataset_list, labels, percentage_train, self.batch_size, self.device)
+        self.dataset = Dataset(dataset_list, labels, percentage_train, self.batch_size, self.device, self.config)
         self.dataset.prepare()
 
 
@@ -139,7 +141,7 @@ class Trainer():
     
 class Dataset():
     
-    def __init__(self, dataset_list, labels, percentage_train, batch_size, device):
+    def __init__(self, dataset_list, labels, percentage_train, batch_size, device, config):
         self.dataset = dataset_list # rename in dataset_list
         self.dataset_pyg = None
         self.labels = labels
@@ -151,6 +153,7 @@ class Dataset():
         self.device = device
         self.train_loader = None
         self.test_loader = None
+        self.config = config
         
     def convert_G(self, g_i):
         g, i = g_i
@@ -162,7 +165,11 @@ class Dataset():
         pyg_graph = from_networkx(g)
         type_graph = self.labels[i]
         # print(f'type_graph {type_graph}')
-        pyg_graph.y = torch.tensor([type_graph],dtype = torch.float)
+        if self.config['model']['num_last_neurons'] == 1:
+            tipo = torch.float
+        else:
+            tipo = torch.long
+        pyg_graph.y = torch.tensor([type_graph], dtype=tipo)
         
         return pyg_graph
         

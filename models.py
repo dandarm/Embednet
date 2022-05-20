@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 
 class GCN(torch.nn.Module):
-    def __init__(self, hidden_channels, node_features = 1, num_classes = 2, num_neurons_last_layer=64):
+    def __init__(self, hidden_channels, node_features=1, num_classes=2, num_neurons_last_layer=64):
         super(GCN, self).__init__()
         #torch.manual_seed(12345)
         
@@ -60,17 +60,15 @@ class GCNEmbed(GCN):
     
 
 class GCN1n(GCN):
-    def __init__(self, hidden_channels, node_features = 1, num_classes = 2):
+    def __init__(self, hidden_channels, node_features=1):
         super(GCN, self).__init__()
         
         self.hidden_channels = hidden_channels
         self.node_features = node_features
-        self.num_classes = num_classes
-        self.num_neurons_last_layer = 1
         
         self.conv1 = GCNConv(self.node_features, self.hidden_channels)
         self.conv2 = GCNConv(self.hidden_channels, self.hidden_channels)
-        self.conv3 = GCNConv(self.hidden_channels, self.num_neurons_last_layer)
+        self.conv3 = GCNConv(self.hidden_channels, 1)
         
     def forward(self, x, edge_index, batch):
         # 1. Obtain node embeddings 

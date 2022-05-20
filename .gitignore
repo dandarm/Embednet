@@ -164,6 +164,9 @@ cython_debug/
 runs/
 runs_before_020522/
 
+#la cartella di pycharm
+.idea/
+
 # file compressi di numpy che si generano eseguendo codice
 *.npz
 

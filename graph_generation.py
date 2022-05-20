@@ -22,21 +22,21 @@ def create_ER(Num_nodes, p, N_graphs):
         
     return grafi
 
-def dataset_2class_ER(config):
-    N = config['graph_dataset']['Num_nodes']
-    p1 = config['graph_dataset']['p1ER']
-    p2 = config['graph_dataset']['p2ER']
-    Num_grafi_per_tipo = config['graph_dataset']['Num_grafi_per_tipo']
-
-    grafi_0 = create_ER(N, p1, Num_grafi_per_tipo)
-    grafi_1 = create_ER(N, p2, Num_grafi_per_tipo)
-    dataset_grafi_nx = grafi_0 + grafi_1
-    #dataset_labels = np.array([0]*len(grafi_0) + [1]*len(grafi_1))
-    
-    # nel caso dim_embedding = 1: le labels corrispondono proprio al valore della probabilità
-    dataset_labels = np.array([p1]*len(grafi_0) + [p2]*len(grafi_1))
-    
-    return dataset_grafi_nx, dataset_labels, p1, p2
+# def dataset_2class_ER(config):
+#     N = config['graph_dataset']['Num_nodes']
+#     p1 = config['graph_dataset']['p1ER']
+#     p2 = config['graph_dataset']['p2ER']
+#     Num_grafi_per_tipo = config['graph_dataset']['Num_grafi_per_tipo']
+#
+#     grafi_0 = create_ER(N, p1, Num_grafi_per_tipo)
+#     grafi_1 = create_ER(N, p2, Num_grafi_per_tipo)
+#     dataset_grafi_nx = grafi_0 + grafi_1
+#     #dataset_labels = np.array([0]*len(grafi_0) + [1]*len(grafi_1))
+#
+#     # nel caso dim_embedding = 1: le labels corrispondono proprio al valore della probabilità
+#     dataset_labels = np.array([p1]*len(grafi_0) + [p2]*len(grafi_1))
+#
+#     return dataset_grafi_nx, dataset_labels, p1, p2
 
 def dataset_nclass_ER(config):
     N = config['graph_dataset']['Num_nodes']
@@ -45,9 +45,17 @@ def dataset_nclass_ER(config):
     
     dataset_grafi_nx = []
     dataset_labels = []
-    for p in list_p:
+    if config['model']['num_last_neurons'] > 1:
+        scalar_embedding = False
+    else:
+        scalar_embedding = True
+
+    for i, p in enumerate(list_p):
         grafi_p = create_ER(N, p, Num_grafi_per_tipo)
         dataset_grafi_nx = dataset_grafi_nx + grafi_p
-        dataset_labels = dataset_labels + [p]*len(grafi_p)
+        if not scalar_embedding: # se l'embedding ha una sola dimensione la label deve essere uguale alla probabilità
+            dataset_labels = dataset_labels + [i] * len(grafi_p)
+        else:
+            dataset_labels = dataset_labels + [p] * len(grafi_p)
         
     return dataset_grafi_nx, np.array(dataset_labels), list_p

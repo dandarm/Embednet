@@ -1,21 +1,19 @@
 graph_dataset:
     ERmodel: True
-    p1ER: 0.3
-    p2ER: 0.08
-    list_p: [0.05, 0.2, 0.3, 0.4, 0.5, 0.6]
+    list_p: [0.05, 0.2, 0.3] #, 0.4, 0.5, 0.6]
     Num_nodes: 100
-    Num_grafi_per_tipo: 100
+    Num_grafi_per_tipo: 200
     
 training:
     learning_rate: 0.005
-    epochs: 1500
+    epochs: 500
     batch_size: 150
     percentage_train: 0.7
-    criterion: 'MSELoss'  # 'CrossEntropy'
+    criterion:  'MSELoss'  # 'CrossEntropy' #
     
 model:
     layers: 3
     num_neurons: 64
-    num_last_neurons: 1
+    num_last_neurons: 1  # se > 1 scegliere CrossEntropy come criterion
     
 device: 'gpu'
