@@ -33,7 +33,7 @@ def studio_embedding():
             mask_int = np.argwhere(embeddings.embedding_labels == p).flatten()
             emb = embeddings.embeddings_array[mask_int].flatten()
 
-            h, e = np.histogram(emb, bins=50, density=True)
+            h, e = np.histogram(emb, bins=30, density=True)
             x = np.linspace(e.min(), e.max())
             plt.bar(e[:-1], h, width=np.diff(e), ec='k', align='edge', label='histogram')
 
