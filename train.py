@@ -126,7 +126,8 @@ class Trainer():
             test_loss_list.append(test_loss)
             #train_acc_list.append(train_acc)
             #test_acc_list.append(test_acc)
-            print(f'Epoch: {epoch}\tTest loss: {test_loss}')
+            if epoch%5==0:
+                print(f'Epoch: {epoch}\tTest loss: {test_loss}')
             
             #if test_loss > best_loss:  # check for early stopping
             #    best_loss = test_loss

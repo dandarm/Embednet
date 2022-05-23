@@ -1,5 +1,5 @@
 import torch
-from torch.nn import Linear
+from torch.nn import Linear, BatchNorm1d, LeakyReLU
 from torch_geometric.nn import GCNConv, GAE, VGAE
 from torch_geometric.nn import global_mean_pool
 import torch.nn.functional as F
@@ -17,20 +17,26 @@ class GCN(torch.nn.Module):
         self.num_classes = num_classes
 
         self.convs = torch.nn.ModuleList()
+        self.batchnorms  = torch.nn.ModuleList()
         for i in range(len(neurons_per_layer)-1):
             self.convs.append( GCNConv(neurons_per_layer[i], neurons_per_layer[i+1]) )
-            #self.conv2 = GCNConv(self.hidden_channels, self.hidden_channels)
-            #self.conv3 = GCNConv(self.hidden_channels, self.num_neurons_last_layer)
+            self.batchnorms.append(BatchNorm1d(neurons_per_layer[i+1]))
             i += 1
+        
+        self.leaky = LeakyReLU(0.03)
+        
         if self.num_neurons_last_layer > 1:
             self.lin = Linear(self.num_neurons_last_layer, self.num_classes)
         else:
             self.lin = None
         
     def embeddings(self, x, edge_index, batch):
-        for layer in self.convs:
+
+        for i, layer in enumerate(self.convs):
             x = layer(x, edge_index)
-            x = x.relu()
+            x = self.batchnorms[i](x)
+            #x = x.relu()
+            x = self.leaky(x)
 
         # Readout layer
         x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]
