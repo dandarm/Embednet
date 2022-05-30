@@ -7,7 +7,7 @@ import time
 from tqdm import tqdm
 
 from graph_generation import create_ER, dataset_nclass_ER
-from models import GCN, GCNEmbed
+from models import GCN, GCNEmbed, GAEGCNEncoder
 from train import Trainer
 from embedding import Embedding
 from experiments import experiment_embedding
@@ -49,5 +49,20 @@ def studio_embedding():
 
     plt.show()
 
+def autoencoder_embedding():
+    variational = False
+    config = yaml.safe_load(open("configs.yml"))
+    dataset_grafi_nx, dataset_labels, list_p = dataset_nclass_ER(config)
+
+    model = GAEGCNEncoder(neurons_per_layer=[1, 64, 64, 1])
+    model.to(device)
+    print(model)
+
+    trainer = Trainer(model, config)
+    print("Loading Dataset...")
+    trainer.load_dataset(dataset_grafi_nx, dataset_labels, percentage_train=config['training']['percentage_train'])
+    train_loss_list, test_loss_list = trainer.launch_training()
+
 if __name__ == "__main__":
-    studio_embedding()
+    #studio_embedding()
+    autoencoder_embedding()

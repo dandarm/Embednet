@@ -9,6 +9,7 @@ import torch
 from torch_geometric.loader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.utils.convert import from_networkx
+import torch_geometric.transforms as T
 
 from pytorchtools import EarlyStopping
 
@@ -58,34 +59,48 @@ class Trainer():
             target = y
         return target
         
-    def train(self, epoch):
+    def train(self):
         self.model.train()
+        running_loss = 0
 
-        for data in self.dataset.train_loader:  # Iterate in batches over the training dataset.            
-            out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.  
+        for data in self.dataset.train_loader:  # Iterate in batches over the training dataset.
+            out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
             target = self.correct_shape(data.y)
-            #print(target)
             loss = self.criterion(out, target)  # Compute the loss.
             loss.backward()  # Derive gradients.
             self.optimizer.step()  # Update parameters based on gradients.
             self.optimizer.zero_grad()  # Clear gradients.
             #self.scheduler.step()
-        return loss.item()
+            running_loss += loss.item()
+                
+        return running_loss / self.dataset.train_len
 
-    def test(self, epoch):
+    def test(self, loader):
         self.model.eval()
-        for data in self.dataset.test_loader:  # Iterate in batches over the training dataset.
+        running_loss = 0
+
+        for data in loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
             target = self.correct_shape(data.y)
             loss = self.criterion(out, target)  # Compute the loss.
-        return loss.item()
+            running_loss += loss.item()
+
+        return running_loss / self.dataset.test_len
+
+    def take_embedding(self, loader):
+        self.model.eval()
+        embeddings_sarray = []
+        for data in loader:  # Iterate in batches over the training dataset.
+            out = self.model(data.x, data.edge_index, data.batch)
+            embeddings_sarray.extend(out)
+        return embeddings_sarray
 
     def accuracy(self, loader):
         self.model.eval()
 
         correct = 0
         for data in loader:  # Iterate in batches over the training/test dataset.
-            out = self.model(data.x, data.edge_index, data.batch) 
+            out = self.model(data.x, data.edge_index, data.batch)
             target = self.correct_shape(data.y)
             pred = out.argmax(dim=1)  # Use the class with highest probability.
             correct += int((pred == target).sum())  # Check against ground-truth labels.
@@ -99,27 +114,30 @@ class Trainer():
 
     def launch_training(self):
         nowstr = datetime.datetime.now().strftime("%d%b_%H-%M-%S")
-        expstr = f"lr-{self.lr}_epochs{self.epochs}_bs{self.batch_size}_layers{self.layers}_neurons{self.neurons}_lln{self.last_layer_neurons}"
+        print(type(self.neurons))
+        expstr = f"lr-{self.lr}_epochs{self.epochs}_bs{self.batch_size}_neurons{self.neurons}"
         LOG_DIR = f"runs/{expstr}/{nowstr}"
         print(LOG_DIR)
         writer = SummaryWriter(LOG_DIR)
 
         #best_loss = 0 # for early stopping
-        early_stopping = EarlyStopping(patience=200, delta = 0.02, initial_delta = 0.2)
+        #early_stopping = EarlyStopping(patience=200, delta=0.02, initial_delta=0.2)
+        # il seguente serve da quando è stata introdotta la batchnorm
+        early_stopping = EarlyStopping(patience=540, delta=0.01, initial_delta=0.04)
         
         train_loss_list = []
         test_loss_list = []
         train_acc_list = []
         test_acc_list = []
         for epoch in range(1, self.epochs):
-            train_loss = self.train(epoch)
-            test_loss = self.test(epoch)
-            train_acc = self.accuracy(self.dataset.train_loader)
-            test_acc = self.accuracy(self.dataset.test_loader)
-            #writer.add_scalar("Loss/train", loss, epoch)
+            train_loss = self.train()
+            test_loss = self.test(self.dataset.test_loader)
+            #train_acc = self.accuracy(self.dataset.train_loader)
+            #test_acc = self.accuracy(self.dataset.test_loader)
+            writer.add_scalar("Train Loss", train_loss, epoch)
             #writer.add_scalar("Train accuracy", train_acc, epoch)
             writer.add_scalar("Test Loss", test_loss, epoch)
-            #writer.add_scalars(f'Loss', {'Train': train_loss, 'Test': test_loss}, epoch)            
+            #writer.add_scalars(f'Loss', {'Train': train_loss, 'Test': test_loss}, epoch)
             #writer.add_scalars(f'Accuracy', {'Train': train_acc, 'Test': test_acc}, epoch)
             #print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')
             train_loss_list.append(train_loss)
@@ -150,13 +168,17 @@ class Dataset():
         self.len_data = len(self.dataset)
         self.tt_split = int(self.len_data*percentage_train)
         self.train_dataset = None
+        self.train_len = None
         self.test_dataset = None
+        self.test_len = None
         self.bs = batch_size
         self.device = device
         self.train_loader = None
         self.test_loader = None
         self.config = config
         self.last_neurons = config['model']['neurons_per_layer'][-1]
+        self.transform4ae = T.RandomLinkSplit(num_val=0.0, num_test=0.0, is_undirected=True,
+                      split_labels=True, add_negative_train_samples=False)
         
     def convert_G(self, g_i):
         g, i = g_i
@@ -174,6 +196,11 @@ class Dataset():
             tipo = torch.long
         pyg_graph.y = torch.tensor([type_graph], dtype=tipo)
         
+        return pyg_graph
+
+    def convert_G_autoencoder(self, g_i):
+        pyg_graph = self.convert_G(g_i)
+        pyg_graph, _, _ = self.transform4ae(pyg_graph)
         return pyg_graph
         
     def nx2pyg(self, graph_list_nx):
@@ -193,10 +220,13 @@ class Dataset():
 
         """
         i = 0
-        for g in tqdm(graph_list_nx, total = len(graph_list_nx)):
-            pyg_graph = self.convert_G((g,i))
+        for g in tqdm(graph_list_nx, total=len(graph_list_nx)):
+            if not self.config['graph_dataset']['autoencoder']:
+                pyg_graph = self.convert_G((g, i))
+            else:
+                pyg_graph = self.convert_G_autoencoder((g, i))
             dataset_pyg.append(pyg_graph)            
-            i+=1
+            i += 1
         
         """
         from joblib import Parallel, delayed
@@ -226,6 +256,8 @@ class Dataset():
         
         self.train_dataset = self.dataset_pyg[:self.tt_split]
         self.test_dataset = self.dataset_pyg[self.tt_split:]
+        self.train_len = len(self.train_dataset)
+        self.test_len = len(self.test_dataset)
         
         self.train_loader = DataLoader(self.train_dataset, batch_size=self.bs, shuffle=True)
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.bs, shuffle=False)
