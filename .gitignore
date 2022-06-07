@@ -167,6 +167,9 @@ runs_before_020522/
 #la cartella di pycharm
 .idea/
 
+#la cartella data generato per Planetoid
+data/
+
 # file compressi di numpy che si generano eseguendo codice
 *.npz
 

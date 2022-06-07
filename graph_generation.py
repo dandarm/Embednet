@@ -57,5 +57,6 @@ def dataset_nclass_ER(config):
             dataset_labels = dataset_labels + [i] * len(grafi_p)
         else:
             dataset_labels = dataset_labels + [p] * len(grafi_p)
+    print(f'Labels values: {set(dataset_labels)}')
         
     return dataset_grafi_nx, np.array(dataset_labels), list_p

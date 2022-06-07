@@ -8,6 +8,7 @@ import torch
 from torch_geometric.loader import DataLoader
 import torch_geometric.transforms as T
 
+
 def experiment_embedding(config, dataset_grafi_nx, dataset_labels, list_p):
     num_last_neurons = config['model']['neurons_per_layer'][-1]
     if config['device'] == 'gpu':
@@ -15,9 +16,6 @@ def experiment_embedding(config, dataset_grafi_nx, dataset_labels, list_p):
     else:
         device = "cpu"
 
-    #if num_last_neurons == 1:
-    #    return experiment_embedding_1D_ER(config, dataset_grafi_nx, dataset_labels, list_p)
-    #else:
     model = GCN(neurons_per_layer=config['model']['neurons_per_layer'],
                 num_classes=len(config['graph_dataset']['list_p']))
     model.to(device)
@@ -32,7 +30,7 @@ def experiment_embedding(config, dataset_grafi_nx, dataset_labels, list_p):
     # embed_model = GCNEmbed(model, config['model']['neurons_per_layer'])
     # embed_model = embed_model.to(device)
     whole_data = trainer.dataset.dataset_pyg
-    all_data_loader = DataLoader(whole_data, batch_size=trainer.dataset.bs, shuffle=False)
+    all_data_loader = DataLoader(whole_data, batch_size=trainer.dataset.bs, shuffle=False) #batch_size=trainer.dataset.len_data
     embeddings_array = trainer.take_embedding(all_data_loader)
     embeddings_array = np.array([emb.cpu().detach().numpy() for emb in embeddings_array])
     #embeddings_array = model(batch.x, batch.edge_index, batch.batch).cpu().detach().numpy()
@@ -41,6 +39,7 @@ def experiment_embedding(config, dataset_grafi_nx, dataset_labels, list_p):
 
     return embeddings, trainer
 
+
 def autoencoder_embedding(config, dataset_grafi_nx, dataset_labels, list_p):
     num_last_neurons = config['model']['neurons_per_layer'][-1]
     if config['device'] == 'gpu':
@@ -48,12 +47,10 @@ def autoencoder_embedding(config, dataset_grafi_nx, dataset_labels, list_p):
     else:
         device = "cpu"
 
-    model = GAEGCNEncoder(neurons_per_layer=config['model']['neurons_per_layer'])
+    model = GAEGCNEncoder(neurons_per_layer=config['model']['neurons_per_layer'], put_batchnorm=config['model']['put_batchnorm'])
     model.to(device)
     print(model)
 
-    my_transform = T.RandomLinkSplit(num_val=0.0, num_test=0.0, is_undirected=True,
-                                     split_labels=True, add_negative_train_samples=False)
     #variational = False
     trainer = Trainer_Autoencoder(model, config)
     print("Loading Dataset...")
@@ -66,19 +63,6 @@ def autoencoder_embedding(config, dataset_grafi_nx, dataset_labels, list_p):
     embeddings_array = np.array([emb.cpu().detach().numpy() for emb in embeddings_array])
     # embeddings_array = model(batch.x, batch.edge_index, batch.batch).cpu().detach().numpy()
     embeddings = Embedding(embeddings_array, trainer.dataset.labels, list_p, test_loss_list, config)
-    embeddings.calc_distances()
+    #embeddings.calc_distances()
 
     return embeddings, trainer
-
-# def experiment_embedding_1D_ER(config, dataset_grafi_nx, dataset_labels, list_p):
-#     #config = yaml.safe_load(open("configs.yml"))
-#     if config['device'] == 'gpu':
-#         device = torch.device('cuda')
-#     else:
-#         device = "cpu"
-#
-#     model = GCN1n(hidden_channels=config['model']['neurons_per_layer']) #, num_neurons_last_layer=config['model']['num_last_neurons'])
-#     model.to(device)
-#     print(model)
-#
-#     return train_and_take_embedding(config, dataset_grafi_nx, dataset_labels, device, list_p, model)
