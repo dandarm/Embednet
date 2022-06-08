@@ -2,7 +2,7 @@ import random
 import datetime
 import os
 from time import time
-
+from tqdm import tqdm
 from multiprocessing import Pool
 
 import torch
@@ -12,8 +12,9 @@ from torch_geometric.utils.convert import from_networkx
 import torch_geometric.transforms as T
 
 from pytorchtools import EarlyStopping
+from metrics import ExplainedVarianceMetric
 
-from tqdm import tqdm
+
 
 
 class Trainer():
@@ -51,6 +52,7 @@ class Trainer():
         print(self.criterion)
 
         self.dataset = None
+        self.myExplained_variance = ExplainedVarianceMetric()
 
     def set_model(self, new_model):
         self.model = new_model
@@ -87,6 +89,7 @@ class Trainer():
             target = self.correct_shape(data.y)
             loss = self.criterion(out, target)  # Compute the loss.
             running_loss += loss.item()
+            expvar = self.myExplained_variance(out, target)
         return running_loss / self.dataset.test_len
 
     def take_embedding(self, loader):
@@ -132,6 +135,7 @@ class Trainer():
         for epoch in range(1, self.epochs):
             train_loss = self.train()
             test_loss = self.test(self.dataset.test_loader)
+            expvar = self.myExplained_variance.compute()
             #train_acc = self.accuracy(self.dataset.train_loader)
             #test_acc = self.accuracy(self.dataset.test_loader)
             writer.add_scalar("Train Loss", train_loss, epoch)
@@ -146,6 +150,7 @@ class Trainer():
             # test_acc_list.append(test_acc)
             if epoch % 5 == 0:
                 print(f'Epoch: {epoch}\tTest loss: {test_loss}')
+                print(f"Explained Variance on all data: {expvar}")
 
             # if test_loss > best_loss:  # check for early stopping
             #    best_loss = test_loss
@@ -155,6 +160,7 @@ class Trainer():
                 break
 
         writer.flush()
+        self.myExplained_variance.reset()
         return train_loss_list, test_loss_list  # , train_acc_list, test_acc_list
 
 
