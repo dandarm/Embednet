@@ -12,12 +12,12 @@ class ExplainedVarianceMetric(Metric):
     def update(self, preds: torch.Tensor, target: torch.Tensor):
         #preds, target = self._input_format(preds, target)
         #assert preds.shape == target.shape
-        print(type(preds), preds.shape)
+        #print(type(preds), preds.shape)
         #self.correct += torch.sum(preds == target)
         self.total += target.numel()
         obj = PCA(preds)
         var_exp, _, _ = obj.get_ex_var()
-        print(f'var_exp: {var_exp}')
+        #print(f'var_exp: {var_exp}')
         self.ExpVar += var_exp[0]
 
     def compute(self):

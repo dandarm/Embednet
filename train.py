@@ -111,7 +111,7 @@ class Trainer():
             correct += int((pred == target).sum())  # Check against ground-truth labels.
         return correct / len(loader.dataset)  # Derive ratio of correct predictions.
 
-    def load_dataset(self, dataset_list, labels, percentage_train):
+    def load_dataset(self, dataset_list, labels, percentage_train=0.7):
         self.dataset = Dataset(dataset_list, labels, percentage_train, self.batch_size, self.device, self.config)
         self.dataset.prepare()
 
@@ -132,7 +132,8 @@ class Trainer():
         test_loss_list = []
         train_acc_list = []
         test_acc_list = []
-        for epoch in range(1, self.epochs):
+        print(f"Run training for {self.epochs} epochs")
+        for epoch in range(self.epochs):
             train_loss = self.train()
             test_loss = self.test(self.dataset.test_loader)
             expvar = self.myExplained_variance.compute()
@@ -149,8 +150,7 @@ class Trainer():
             # train_acc_list.append(train_acc)
             # test_acc_list.append(test_acc)
             if epoch % 5 == 0:
-                print(f'Epoch: {epoch}\tTest loss: {test_loss}')
-                print(f"Explained Variance on all data: {expvar}")
+                print(f'Epoch: {epoch}\tTest loss: {test_loss} \t Explained Variance: {expvar}')
 
             # if test_loss > best_loss:  # check for early stopping
             #    best_loss = test_loss
@@ -265,6 +265,8 @@ class Dataset():
         random.shuffle(x)
         indices, self.dataset_pyg = zip(*x)
         self.labels = self.labels[list(indices)]
+        # cambio l'ordine anche al dataset di grafi nx (non uso la numpy mask)
+        self.dataset = [self.dataset[i] for i in list(indices)]
 
         self.train_dataset = self.dataset_pyg[:self.tt_split]
         self.test_dataset = self.dataset_pyg[self.tt_split:]

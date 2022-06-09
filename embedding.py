@@ -2,10 +2,12 @@ import itertools
 import numpy as np
 from numpy import dot
 from numpy.linalg import norm
+import networkx as nx
 
 class Embedding():
-    def __init__(self, embeddings_array, embedding_labels, pER, test_loss_list=None, config=None):
+    def __init__(self, embeddings_array, dataset_nx, embedding_labels, pER, test_loss_list=None, config=None):
         self.embeddings_array = embeddings_array
+        self.dataset_nx = dataset_nx
         self.coppie = None
         self.embedding_labels = embedding_labels
         self.coppie_labels = None
@@ -70,4 +72,17 @@ class Embedding():
             
         else:
             print("Non serve calcolare le distanze nel caso di embedding scalare")
-        
+
+
+    def calc_correlation(self):
+        num_nodes = self.config['graph_dataset']['Num_nodes']
+        actual_p = np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() / (num_nodes - 1) for t in self.dataset_nx])
+        correlazioni = []
+        for p in self.probabilities_ER:
+            mask_int = np.argwhere(self.embedding_labels == p).flatten()
+            #plt.scatter(self.embeddings_array[mask_int].flatten(),actual_p[mask_int])
+            # correlazione tra target e prediction
+            correlaz = np.corrcoef(self.embeddings_array[mask_int].flatten(), actual_p[mask_int])[0, 1]
+            correlazioni.append(correlaz)
+
+        return correlazioni,
