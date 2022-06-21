@@ -5,7 +5,7 @@ from numpy.linalg import norm
 import networkx as nx
 
 class Embedding():
-    def __init__(self, embeddings_array, dataset_nx, embedding_labels, pER, test_loss_list=None, config=None):
+    def __init__(self, embeddings_array, dataset_nx, embedding_labels, pER, test_loss_list=None, config=None, continous_p=False):
         self.embeddings_array = embeddings_array
         self.dataset_nx = dataset_nx
         self.coppie = None
@@ -24,6 +24,7 @@ class Embedding():
         #self.interP2 = None
         self.test_loss_list = test_loss_list
         self.config = config
+        self.continous_p = continous_p
         
     def cosdist(self, a,b):
         return dot(a, b)/(norm(a)*norm(b))
@@ -59,7 +60,9 @@ class Embedding():
             possibili_coppie_labels = set(list(itertools.combinations(range(NN), 2)))
 
             for label_1, label_2 in possibili_coppie_labels:
-                self.cos_inter_dists.append( [d[0] for d in self.cos_distances if d[1] == (label_2, label_1) or d[1] == (label_1, label_2)] )
+                r = [d[0] for d in self.cos_distances if d[1] == (label_2, label_1) or d[1] == (label_1, label_2)]
+                #print(r)
+                self.cos_inter_dists.append(r)
 
             self.intra_dists = [d[0] for d in self.distances if d[1][0] == d[1][1]]
             for label_1, label_2 in possibili_coppie_labels:
@@ -73,16 +76,32 @@ class Embedding():
         else:
             print("Non serve calcolare le distanze nel caso di embedding scalare")
 
+    def intorno(p_teorica, p_attuali, soglia):
+        mask = []
+        for p in p_attuali:
+            if p > p_teorica - soglia and p < p_teorica + soglia:
+                mask.append(True)
+            else:
+                mask.append(False)
+        return mask
 
     def calc_correlation(self):
+        # solo nel caso ddella regressione, no classificazione
         num_nodes = self.config['graph_dataset']['Num_nodes']
-        actual_p = np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() / (num_nodes - 1) for t in self.dataset_nx])
-        correlazioni = []
-        for p in self.probabilities_ER:
-            mask_int = np.argwhere(self.embedding_labels == p).flatten()
-            #plt.scatter(self.embeddings_array[mask_int].flatten(),actual_p[mask_int])
-            # correlazione tra target e prediction
-            correlaz = np.corrcoef(self.embeddings_array[mask_int].flatten(), actual_p[mask_int])[0, 1]
-            correlazioni.append(correlaz)
+        if self.continous_p:
+            correlazioni = np.corrcoef(self.embeddings_array.flatten(), self.embedding_labels)[0,1]
 
-        return correlazioni,
+        else:
+            actual_p = np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() / (num_nodes - 1) for t in self.dataset_nx])
+            correlazioni = []
+            for p in self.probabilities_ER:
+                mask_int = np.argwhere(self.embedding_labels == p).flatten()
+                #plt.scatter(self.embeddings_array[mask_int].flatten(),actual_p[mask_int])
+                # correlazione tra target e prediction
+                correlaz = np.corrcoef(self.embeddings_array[mask_int].flatten(), actual_p[mask_int])[0, 1]
+                correlazioni.append(correlaz)
+
+        error = np.sqrt(np.sum(
+            (self.embeddings_array.flatten() - self.embedding_labels) ** 2)) / len(self.embeddings_array)
+
+        return correlazioni, error

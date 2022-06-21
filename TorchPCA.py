@@ -17,9 +17,11 @@ class PCA():
     #@staticmethod
     def Center(self):
         #Convert to torch Tensor and keep the number of rows and columns
-        #t = torch.from_numpy(self.Data)
-        # Data è già un pytorch Tensor
-        t = self.Data
+        if type(self.Data) == np.ndarray:
+            t = torch.from_numpy(self.Data)
+        else:
+            # Data è già un pytorch Tensor
+            t = self.Data
         no_rows, no_columns = t.size()
         row_means = torch.mean(t, 1)
         #Expand the matrix in order to have the same shape as X and substract, to center

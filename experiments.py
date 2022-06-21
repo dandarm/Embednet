@@ -9,15 +9,17 @@ from torch_geometric.loader import DataLoader
 import torch_geometric.transforms as T
 
 
-def experiment_embedding(config, dataset_grafi_nx, dataset_labels, list_p):
-    num_last_neurons = config['model']['neurons_per_layer'][-1]
+def experiment_embedding(config, dataset_grafi_nx, dataset_labels, list_p, cont_p):
+    layer = config['model']['neurons_per_layer']
+    num_last_neurons = layer[-1]
     if config['device'] == 'gpu':
         device = torch.device('cuda')
     else:
         device = "cpu"
 
     model = GCN(neurons_per_layer=config['model']['neurons_per_layer'],
-                num_classes=len(config['graph_dataset']['list_p']))
+                num_classes=len(config['graph_dataset']['list_p']),
+                put_batchnorm=config['model']['put_batchnorm'])
     model.to(device)
     print(model)
 
@@ -34,7 +36,7 @@ def experiment_embedding(config, dataset_grafi_nx, dataset_labels, list_p):
     embeddings_array = trainer.take_embedding(all_data_loader)
     embeddings_array = np.array([emb.cpu().detach().numpy() for emb in embeddings_array])
     #embeddings_array = model(batch.x, batch.edge_index, batch.batch).cpu().detach().numpy()
-    embeddings = Embedding(embeddings_array, trainer.dataset.dataset, trainer.dataset.labels, list_p, test_loss_list, config)
+    embeddings = Embedding(embeddings_array, trainer.dataset.dataset, trainer.dataset.labels, list_p, test_loss_list, config, cont_p)
     embeddings.calc_distances()
 
     return embeddings, trainer, test_loss_list

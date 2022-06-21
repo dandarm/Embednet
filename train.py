@@ -5,14 +5,19 @@ from time import time
 from tqdm import tqdm
 from multiprocessing import Pool
 
+import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter as WriterX
 from torch_geometric.utils.convert import from_networkx
 import torch_geometric.transforms as T
+import tensorflow as tf
 
 from pytorchtools import EarlyStopping
 from metrics import ExplainedVarianceMetric
+from TorchPCA import PCA
+from utils import add_histogram
 
 
 
@@ -52,7 +57,7 @@ class Trainer():
         print(self.criterion)
 
         self.dataset = None
-        self.myExplained_variance = ExplainedVarianceMetric()
+        self.myExplained_variance = ExplainedVarianceMetric(dimension=self.last_layer_neurons)
 
     def set_model(self, new_model):
         self.model = new_model
@@ -83,20 +88,31 @@ class Trainer():
     def test(self, loader):
         self.model.eval()
         running_loss = 0
+        embeddings_array = []
 
         for data in loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
             target = self.correct_shape(data.y)
             loss = self.criterion(out, target)  # Compute the loss.
             running_loss += loss.item()
-            expvar = self.myExplained_variance(out, target)
-        return running_loss / self.dataset.test_len
+            emb = self.model(data.x, data.edge_index, data.batch, embedding=True)
+            embeddings_array.extend(emb.cpu().detach().numpy())
+            #print(f"out and target shape")
+            #print(emb.shape, target.shape)
+
+        #calcola la PCA
+        embeddings_array = np.array(embeddings_array)
+        obj = PCA(embeddings_array)
+        var_exp, _, _ = obj.get_ex_var()
+        #var_exp = torch.as_tensor(np.array(var_exp))
+        #var_exp = self.myExplained_variance(emb, target)  # sul singolo batch
+        return running_loss / self.dataset.test_len, var_exp, embeddings_array
 
     def take_embedding(self, loader):
         self.model.eval()
         embeddings_array = []
         for data in loader:  # Iterate in batches over the training dataset.
-            out = self.model(data.x, data.edge_index, data.batch)
+            out = self.model(data.x, data.edge_index, data.batch, embedding=True)
             embeddings_array.extend(out)
         return embeddings_array
 
@@ -119,47 +135,57 @@ class Trainer():
         nowstr = datetime.datetime.now().strftime("%d%b_%H-%M-%S")
         neurons_str = str(self.neurons).replace(', ', '-').strip('[').strip(']')
         expstr = f"lr-{self.lr}_epochs{self.epochs}_bs{self.batch_size}_neurons-{neurons_str}"
-        LOG_DIR = f"runs/{expstr}/{nowstr}"
+        LOG_DIR = f"runs/{expstr}_{nowstr}"
         print(LOG_DIR)
         writer = SummaryWriter(LOG_DIR)
+
+        log_dir_variance = f"runs/ExpVar_{nowstr}"
+        #writer_variance = SummaryWriter(log_dir_variance)
+        # summary_variance = tf.summary.create_file_writer(log_dir_variance)
 
         # best_loss = 0 # for early stopping
         # early_stopping = EarlyStopping(patience=200, delta=0.02, initial_delta=0.2)
         # il seguente serve da quando è stata introdotta la batchnorm
-        early_stopping = EarlyStopping(patience=540, delta=0.01, initial_delta=0.04)
+        # early_stopping = EarlyStopping(patience=540, delta=0.01, initial_delta=0.04)
+        # con task di regression
+        early_stopping = EarlyStopping(patience=100, delta=0.00000, initial_delta=0.00004, minvalue=0.00002)
 
         train_loss_list = []
         test_loss_list = []
-        train_acc_list = []
-        test_acc_list = []
         print(f"Run training for {self.epochs} epochs")
-        for epoch in range(self.epochs):
-            train_loss = self.train()
-            test_loss = self.test(self.dataset.test_loader)
-            expvar = self.myExplained_variance.compute()
-            #train_acc = self.accuracy(self.dataset.train_loader)
-            #test_acc = self.accuracy(self.dataset.test_loader)
-            writer.add_scalar("Train Loss", train_loss, epoch)
-            # writer.add_scalar("Train accuracy", train_acc, epoch)
-            writer.add_scalar("Test Loss", test_loss, epoch)
-            # writer.add_scalars(f'Loss', {'Train': train_loss, 'Test': test_loss}, epoch)
-            # writer.add_scalars(f'Accuracy', {'Train': train_acc, 'Test': test_acc}, epoch)
-            # print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')
-            train_loss_list.append(train_loss)
-            test_loss_list.append(test_loss)
-            # train_acc_list.append(train_acc)
-            # test_acc_list.append(test_acc)
-            if epoch % 5 == 0:
-                print(f'Epoch: {epoch}\tTest loss: {test_loss} \t Explained Variance: {expvar}')
+        with tf.compat.v1.Graph().as_default():
+            summary_writer = tf.compat.v1.summary.FileWriter(log_dir_variance)
+            for epoch in range(self.epochs):
+                train_loss = self.train()
+                test_loss, var_exp, embeddings_array = self.test(self.dataset.test_loader)
+                #expvar = self.myExplained_variance.compute()
+                # add explained variance to tensorboard
+                add_histogram(summary_writer, "Explained variance", var_exp, step=epoch)
 
-            # if test_loss > best_loss:  # check for early stopping
-            #    best_loss = test_loss
-            early_stopping(test_loss)
-            if early_stopping.early_stop:
-                print("Early stopping!!!")
-                break
+                writer.add_scalar("Train Loss", train_loss, epoch)
+                # writer.add_scalar("Train accuracy", train_acc, epoch)
+                writer.add_scalar("Test Loss", test_loss, epoch)
+                # writer.add_scalars(f'Loss', {'Train': train_loss, 'Test': test_loss}, epoch)
+                # writer.add_scalars(f'Accuracy', {'Train': train_acc, 'Test': test_acc}, epoch)
+                # print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')
+                train_loss_list.append(train_loss)
+                test_loss_list.append(test_loss)
+                # train_acc_list.append(train_acc)
+                # test_acc_list.append(test_acc)
+                if epoch % 100 == 0:
+                    print(f'Epoch: {epoch}\tTest loss: {test_loss}')  # \t Explained Variance: {var_exp}')
+                    #print(f'Embeddings: {embeddings_array}')
+                    #print('\n')
+
+                # if test_loss > best_loss:  # check for early stopping
+                #    best_loss = test_loss
+                early_stopping(test_loss)
+                if early_stopping.early_stop:
+                    print("Early stopping!!!")
+                    break
 
         writer.flush()
+        #writer_variance.flush()
         self.myExplained_variance.reset()
         return train_loss_list, test_loss_list  # , train_acc_list, test_acc_list
 

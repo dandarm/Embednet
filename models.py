@@ -22,11 +22,12 @@ class GCN(torch.nn.Module):
         self.convs = torch.nn.ModuleList()
         self.pools = torch.nn.ModuleList()
         if self.put_batchnorm:
+            print('Batch Normalization included')
             self.batchnorms = torch.nn.ModuleList()
 
         for i in range(len(neurons_per_layer) - 1):
             self.convs.append(GCNConv(neurons_per_layer[i], neurons_per_layer[i + 1]))
-            self.pools.append( TopKPooling(neurons_per_layer[i+1], ratio=0.8) )
+            #self.pools.append( TopKPooling(neurons_per_layer[i+1], ratio=0.8) )
             if self.put_batchnorm:
                 self.batchnorms.append(BatchNorm1d(neurons_per_layer[i + 1]))
             i += 1

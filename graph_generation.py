@@ -11,19 +11,19 @@ def create_ER(Num_nodes, p, N_graphs):
     N_graphs: ogni tot abbiamo un tipo di grafi originato da una diversa distribuzione
     """
     grafi = []
-    probs = []
+    actual_probs = []
     for i in range(N_graphs):
         gr = nx.erdos_renyi_graph(Num_nodes, p)  # seed = 1
         #grafi.append(nx.to_numpy_matrix(gr))
         grafi.append(gr)
         actual_p = nx.to_numpy_matrix(gr).sum(axis=1).mean() / (Num_nodes - 1)
-        probs.append(actual_p)
+        actual_probs.append(actual_p)
         
     print("Mean connectivity for each node:", end=' ')    
     print(round(np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() for t in grafi]).mean(), 3), end= ' ')
     print(f'p={p}')
         
-    return grafi, probs
+    return grafi, actual_probs
 
 # def dataset_2class_ER(config):
 #     N = config['graph_dataset']['Num_nodes']
@@ -53,7 +53,7 @@ def dataset_nclass_ER(config):
     else:
         scalar_embedding = True
 
-    if not scalar_embedding:  # se l'embedding ha più di una sola dimensione la label è un intero o one-hot
+    if not scalar_embedding:  # se l'embedding ha più di una sola dimensione la label è un intero o one-hot TODO: add one-hot
         for i, p in enumerate(list_p):
             grafi_p, _ = create_ER(N, p, Num_grafi_per_tipo)
             dataset_grafi_nx = dataset_grafi_nx + grafi_p
@@ -63,10 +63,28 @@ def dataset_nclass_ER(config):
     else:  # swe l'embedding è scalare devo calcolare la probabilità attuale del grafo,
            # non quella che ho impostato alla generazione
         for i, p in enumerate(list_p):
-            grafi_p, probs = create_ER(N, p, Num_grafi_per_tipo)
+            grafi_p, actual_probs = create_ER(N, p, Num_grafi_per_tipo)
             dataset_grafi_nx = dataset_grafi_nx + grafi_p
-            for p in probs:
+            for p in actual_probs:
                 dataset_labels = dataset_labels + [p]
         #print(f'Labels values: {set(dataset_labels)}')
         
     return dataset_grafi_nx, np.array(dataset_labels), list_p
+
+def dataset_regression_ER(config):
+    Num_nodes = config['graph_dataset']['Num_nodes']
+    range_p = config['graph_dataset']['range_p']
+    Num_grafi_tot = config['graph_dataset']['Num_grafi_totali']
+
+    dataset_grafi_nx = []
+    dataset_labels = []
+    assert config['model']['neurons_per_layer'][-1] == 1
+    scalar_embedding = True
+    probs = np.random.uniform(low=range_p[0], high=range_p[1], size=Num_grafi_tot)
+    for p in probs:
+        gr = nx.erdos_renyi_graph(Num_nodes, p)
+        dataset_grafi_nx.append(gr)
+        actual_p = nx.to_numpy_matrix(gr).sum(axis=1).mean() / (Num_nodes - 1)
+        dataset_labels.append(actual_p)
+
+    return dataset_grafi_nx, np.array(dataset_labels)
