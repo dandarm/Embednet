@@ -47,24 +47,28 @@ class Embedding():
                 dist = np.linalg.norm(a-b)
                 label_a = self.coppie_labels[i][0]
                 label_b = self.coppie_labels[i][1]
-                self.cos_distances.append((cos_dist,(label_a, label_b)))
-                self.distances.append((dist,(label_a, label_b)))
+                self.cos_distances.append((cos_dist, (label_a, label_b)))
+                self.distances.append((dist, (label_a, label_b)))
                 i += 1
 
-
             #self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
-            self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1][0] == d[1][1]]
+            self.cos_intra_dists = [d[0] for d in self.cos_distances if (d[1][0] == d[1][1]).all()]
             #self.cos_inter_dists = [d[0] for d in self.cos_distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
             #guarda tutti i possibili accoppiamenti
-            NN = len(set(self.embedding_labels))
-            possibili_coppie_labels = set(list(itertools.combinations(range(NN), 2)))
+            NN = len(set(tuple(e) for e in self.embedding_labels))
+            #possibili_coppie_labels = set(list(itertools.combinations(range(NN), 2)))
+            n_classi = len(self.config['graph_dataset']['list_p'])
+            onehot_matrix = np.eye(n_classi)  ##   NN == n_classi?!
+            possibili_coppie_labels = list(itertools.combinations(np.eye(4), 2))
 
             for label_1, label_2 in possibili_coppie_labels:
+                #print(label_1, label_2)
+                #print(self.cos_distances[0][1])
                 r = [d[0] for d in self.cos_distances if d[1] == (label_2, label_1) or d[1] == (label_1, label_2)]
                 #print(r)
                 self.cos_inter_dists.append(r)
 
-            self.intra_dists = [d[0] for d in self.distances if d[1][0] == d[1][1]]
+            self.intra_dists = [d[0] for d in self.distances if (d[1][0] == d[1][1]).all()]
             for label_1, label_2 in possibili_coppie_labels:
                 self.inter_dists.append( [d[0] for d in self.distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)] )
 

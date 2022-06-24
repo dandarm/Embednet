@@ -8,16 +8,20 @@ from torch_geometric.datasets import Planetoid
 
 
 class GCN(torch.nn.Module):
-    def __init__(self, neurons_per_layer, node_features=1, num_classes=2, autoencoder=False, put_batchnorm=False):
+    #def __init__(self, neurons_per_layer, node_features=1, num_classes=2, autoencoder=False, put_batchnorm=False, mode='classification'):
+    def __init__(self, config_class):
         super(GCN, self).__init__()
         # torch.manual_seed(12345)
+        self.config_class = config_class
+        self.conf = self.config_class.conf
 
-        self.neurons_per_layer = neurons_per_layer
-        self.num_neurons_last_layer = neurons_per_layer[-1]
-        self.node_features = node_features
-        self.num_classes = num_classes
-        self.autoencoder = autoencoder
-        self.put_batchnorm = put_batchnorm
+        self.neurons_per_layer = self.conf['model']['neurons_per_layer']
+        self.last_layer_neurons = self.neurons_per_layer[-1]
+        self.node_features_dim = self.conf['model']['node_features_dim']
+        self.num_classes = self.config_class.num_classes_ER()
+        self.autoencoder = self.conf['model']['autoencoder']
+        self.put_batchnorm = self.conf['model']['put_batchnorm']
+        self.last_layer_dense = self.conf['model']['last_layer_dense']
 
         self.convs = torch.nn.ModuleList()
         self.pools = torch.nn.ModuleList()
@@ -25,19 +29,20 @@ class GCN(torch.nn.Module):
             print('Batch Normalization included')
             self.batchnorms = torch.nn.ModuleList()
 
-        for i in range(len(neurons_per_layer) - 1):
-            self.convs.append(GCNConv(neurons_per_layer[i], neurons_per_layer[i + 1]))
+        if self.last_layer_dense:
+            rangeconv_layers = range(len(self.neurons_per_layer) - 2)
+            self.lin = Linear(self.neurons_per_layer[-2], self.last_layer_neurons)  # num_classes corrisponde a last_layer_neurons
+        else:
+            rangeconv_layers = range(len(self.neurons_per_layer) - 1)
+            self.lin = None
+        for i in rangeconv_layers:
+            self.convs.append(GCNConv(self.neurons_per_layer[i], self.neurons_per_layer[i + 1]))
             #self.pools.append( TopKPooling(neurons_per_layer[i+1], ratio=0.8) )
             if self.put_batchnorm:
-                self.batchnorms.append(BatchNorm1d(neurons_per_layer[i + 1]))
+                self.batchnorms.append(BatchNorm1d(self.neurons_per_layer[i + 1]))
             i += 1
 
         self.leaky = LeakyReLU(0.03)
-
-        if self.num_neurons_last_layer > 1 and not self.autoencoder:
-            self.lin = Linear(self.num_neurons_last_layer, self.num_classes)
-        else:
-            self.lin = None
 
     def embeddings(self, x, edge_index, batch=None):
 
@@ -62,7 +67,7 @@ class GCN(torch.nn.Module):
     def forward(self, x, edge_index, batch=None, embedding=False):
         x = self.embeddings(x, edge_index, batch)
 
-        if self.num_neurons_last_layer > 1 and not self.autoencoder and not embedding:
+        if not self.autoencoder and not embedding and self.last_layer_dense:
             # 3. Apply a final classifier
             x = F.dropout(x, p=0.5, training=self.training)
             x = self.lin(x)
@@ -71,19 +76,19 @@ class GCN(torch.nn.Module):
         return x
 
 
-class GCNEmbed(GCN):
-    def __init__(self, model, neurons_per_layer):
-        super().__init__(neurons_per_layer)
-        self.num_neurons_last_layer = neurons_per_layer[-1]
-
-        self.convs = model._modules['convs']
-        # self.conv2 = model._modules['conv2']
-        # self.conv3 = model._modules['conv3']
-
-    def forward(self, x, edge_index, batch):
-        x = self.embeddings(x, edge_index, batch)
-
-        return x
+# class GCNEmbed(GCN):
+#     def __init__(self, model, neurons_per_layer):
+#         super().__init__(neurons_per_layer)
+#         self.num_neurons_last_layer = neurons_per_layer[-1]
+#
+#         self.convs = model._modules['convs']
+#         # self.conv2 = model._modules['conv2']
+#         # self.conv3 = model._modules['conv3']
+#
+#     def forward(self, x, edge_index, batch):
+#         x = self.embeddings(x, edge_index, batch)
+#
+#         return x
 
 
 # for autoencoder

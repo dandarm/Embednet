@@ -4,6 +4,7 @@ import os
 from time import time
 from tqdm import tqdm
 from multiprocessing import Pool
+from config_valid import Config
 
 import numpy as np
 import torch
@@ -24,20 +25,19 @@ from utils import add_histogram
 
 class Trainer():
 
-    def __init__(self, model,
-                 config):  # learning_rate, epochs, batch_size, layers, neurons, last_layer_neurons, criterion, device=None):
+    def __init__(self, model, config_class):
         self.model = model
-        self.config = config
+        self.config_class = config_class
+        self.conf = self.config_class.conf
 
-        self.lr = config['training']['learning_rate']
-        self.epochs = config['training']['epochs']
-        self.batch_size = config['training']['batch_size']
+        self.lr = self.conf['training']['learning_rate']
+        self.epochs = self.conf['training']['epochs']
+        self.batch_size = self.conf['training']['batch_size']
 
-        self.layers = len(config['model']['neurons_per_layer'])
-        self.neurons = config['model']['neurons_per_layer']
-        self.last_layer_neurons = config['model']['neurons_per_layer'][-1]
+        self.last_layer_neurons = self.config_class.get_mode()['last_neuron']
+        self.mode = self.conf['training']['mode']    # 'classification'  or 'regression'  or 'unsupervised'
 
-        if config['device'] == 'gpu':
+        if self.conf['device'] == 'gpu':
             self.device = torch.device('cuda')
         else:
             self.device = "cpu"
@@ -48,22 +48,20 @@ class Trainer():
         decayRate = 0.96
         # self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
 
-        criterion = config['training']['criterion']
-        if criterion == 'MSELoss':
-            self.criterion = torch.nn.MSELoss()
-        elif criterion == 'CrossEntropy':
-            self.criterion = torch.nn.CrossEntropyLoss()
-
+        self.criterion = self.config_class.get_mode()['criterion']
+        # if criterion == 'MSELoss':
+        #     self.criterion = torch.nn.MSELoss()
+        # elif criterion == 'CrossEntropy':
+        #     self.criterion = torch.nn.CrossEntropyLoss()
         print(self.criterion)
 
         self.dataset = None
-        self.myExplained_variance = ExplainedVarianceMetric(dimension=self.last_layer_neurons)
+        #self.myExplained_variance = ExplainedVarianceMetric(dimension=self.last_layer_neurons)
 
     def set_model(self, new_model):
         self.model = new_model
 
     def correct_shape(self, y):
-        # if isinstance(self.model, GCN1n):
         if self.last_layer_neurons == 1:
             target = y.unsqueeze(1).float()
         else:
@@ -77,6 +75,9 @@ class Trainer():
         for data in self.dataset.train_loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
             target = self.correct_shape(data.y)
+            #target = data.y.unsqueeze(1).float()  # TODO: modificato
+            #print(f'target corrected {target}')
+            #print(f'out: {out}')
             loss = self.criterion(out, target)  # Compute the loss.
             loss.backward()  # Derive gradients.
             self.optimizer.step()  # Update parameters based on gradients.
@@ -93,6 +94,9 @@ class Trainer():
         for data in loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
             target = self.correct_shape(data.y)
+            #target = data.y.unsqueeze(1).float()  # TODO: modificato
+            #print(f'target corrected {target}')
+            #print(f'out: {out}')
             loss = self.criterion(out, target)  # Compute the loss.
             running_loss += loss.item()
             emb = self.model(data.x, data.edge_index, data.batch, embedding=True)
@@ -128,12 +132,12 @@ class Trainer():
         return correct / len(loader.dataset)  # Derive ratio of correct predictions.
 
     def load_dataset(self, dataset_list, labels, percentage_train=0.7):
-        self.dataset = Dataset(dataset_list, labels, percentage_train, self.batch_size, self.device, self.config)
+        self.dataset = Dataset(dataset_list, labels, percentage_train, self.batch_size, self.device, self.conf)
         self.dataset.prepare()
 
     def launch_training(self):
         nowstr = datetime.datetime.now().strftime("%d%b_%H-%M-%S")
-        neurons_str = str(self.neurons).replace(', ', '-').strip('[').strip(']')
+        neurons_str = self.config_class.layer_neuron_string()
         expstr = f"lr-{self.lr}_epochs{self.epochs}_bs{self.batch_size}_neurons-{neurons_str}"
         LOG_DIR = f"runs/{expstr}_{nowstr}"
         print(LOG_DIR)
@@ -155,6 +159,9 @@ class Trainer():
         print(f"Run training for {self.epochs} epochs")
         with tf.compat.v1.Graph().as_default():
             summary_writer = tf.compat.v1.summary.FileWriter(log_dir_variance)
+            test_loss, var_exp, embeddings_array = self.test(self.dataset.test_loader)
+            print(f'Before training Test loss: {test_loss}')
+
             for epoch in range(self.epochs):
                 train_loss = self.train()
                 test_loss, var_exp, embeddings_array = self.test(self.dataset.test_loader)
@@ -186,7 +193,7 @@ class Trainer():
 
         writer.flush()
         #writer_variance.flush()
-        self.myExplained_variance.reset()
+        #self.myExplained_variance.reset()
         return train_loss_list, test_loss_list  # , train_acc_list, test_acc_list
 
 
@@ -220,12 +227,16 @@ class Dataset():
 
         pyg_graph = from_networkx(g)
         type_graph = self.labels[i]
-        # print(f'type_graph {type_graph}')
-        if self.last_neurons == 1:
+        #if len(type_graph) == 1:
+        #    type_graph = [type_graph]
+        #print(f'type_graph {type_graph}')
+        if self.last_neurons == 1:  # TODO: cambiare anche qui
             tipo = torch.float
         else:
             tipo = torch.long
+        tipo = torch.float
         pyg_graph.y = torch.tensor([type_graph], dtype=tipo)
+        #print(pyg_graph.y)
 
         return pyg_graph
 
@@ -299,6 +310,9 @@ class Dataset():
         self.train_len = len(self.train_dataset)
         self.test_len = len(self.test_dataset)
 
+        print(self.train_dataset[0].y, self.train_len)
+        print(self.test_dataset[0].y, self.test_len)
+
         self.train_loader = DataLoader(self.train_dataset, batch_size=self.bs, shuffle=True)
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.bs, shuffle=False)
 
@@ -310,3 +324,5 @@ class Dataset():
             print(data)
             print()
         """
+
+

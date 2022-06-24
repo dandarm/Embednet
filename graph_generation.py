@@ -1,6 +1,6 @@
 import networkx as nx
 import numpy as np
-
+from config_valid import Config, Labels
 
 
 
@@ -20,7 +20,7 @@ def create_ER(Num_nodes, p, N_graphs):
         actual_probs.append(actual_p)
         
     print("Mean connectivity for each node:", end=' ')    
-    print(round(np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() for t in grafi]).mean(), 3), end= ' ')
+    print(round(np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() for t in grafi]).mean(), 3), end=' ')
     print(f'p={p}')
         
     return grafi, actual_probs
@@ -41,45 +41,54 @@ def create_ER(Num_nodes, p, N_graphs):
 #
 #     return dataset_grafi_nx, dataset_labels, p1, p2
 
-def dataset_nclass_ER(config):
-    N = config['graph_dataset']['Num_nodes']
-    list_p = config['graph_dataset']['list_p']
-    Num_grafi_per_tipo = config['graph_dataset']['Num_grafi_per_tipo']
+def dataset_nclass_ER(config_class):
+    conf = config_class.conf
+    N = conf['graph_dataset']['Num_nodes']
+    list_p = conf['graph_dataset']['list_p']
+    Num_grafi_per_tipo = conf['graph_dataset']['Num_grafi_per_tipo']
     
     dataset_grafi_nx = []
     dataset_labels = []
-    if config['model']['neurons_per_layer'][-1] > 1:
-        scalar_embedding = False
-    else:
-        scalar_embedding = True
+    label_kind = config_class.get_mode()['labels']
+    #
+    # if conf['model']['neurons_per_layer'][-1] > 1:
+    #     scalar_embedding = False
+    # else:
+    #     scalar_embedding = True
 
-    if not scalar_embedding:  # se l'embedding ha più di una sola dimensione la label è un intero o one-hot TODO: add one-hot
+    if label_kind == Labels.onehot:
+        n_classi = len(list_p)
+        onehot_matrix = np.eye(n_classi)
+        for i, p in enumerate(list_p):
+            grafi_p, _ = create_ER(N, p, Num_grafi_per_tipo)
+            dataset_grafi_nx = dataset_grafi_nx + grafi_p
+            dataset_labels = dataset_labels + [onehot_matrix[i]] * len(grafi_p)
+            #print(dataset_labels)
+
+    elif label_kind == Labels.zero_one:
+        # ho quindi solo due classi
         for i, p in enumerate(list_p):
             grafi_p, _ = create_ER(N, p, Num_grafi_per_tipo)
             dataset_grafi_nx = dataset_grafi_nx + grafi_p
             dataset_labels = dataset_labels + [i] * len(grafi_p)
-        print(f'Labels values: {set(dataset_labels)}')
 
-    else:  # swe l'embedding è scalare devo calcolare la probabilità attuale del grafo,
-           # non quella che ho impostato alla generazione
+    elif label_kind == Labels.prob:
         for i, p in enumerate(list_p):
             grafi_p, actual_probs = create_ER(N, p, Num_grafi_per_tipo)
             dataset_grafi_nx = dataset_grafi_nx + grafi_p
-            for p in actual_probs:
-                dataset_labels = dataset_labels + [p]
-        #print(f'Labels values: {set(dataset_labels)}')
+            dataset_labels.extend(actual_probs)
         
     return dataset_grafi_nx, np.array(dataset_labels), list_p
 
-def dataset_regression_ER(config):
-    Num_nodes = config['graph_dataset']['Num_nodes']
-    range_p = config['graph_dataset']['range_p']
-    Num_grafi_tot = config['graph_dataset']['Num_grafi_totali']
+def dataset_regression_ER(config_class):
+    conf = config_class.conf
+    Num_nodes = conf['graph_dataset']['Num_nodes']
+    range_p = conf['graph_dataset']['range_p']
+    Num_grafi_tot = conf['graph_dataset']['Num_grafi_totali']
 
     dataset_grafi_nx = []
     dataset_labels = []
-    assert config['model']['neurons_per_layer'][-1] == 1
-    scalar_embedding = True
+    assert conf['model']['neurons_per_layer'][-1] == 1
     probs = np.random.uniform(low=range_p[0], high=range_p[1], size=Num_grafi_tot)
     for p in probs:
         gr = nx.erdos_renyi_graph(Num_nodes, p)

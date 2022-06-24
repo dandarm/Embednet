@@ -163,6 +163,7 @@ cython_debug/
 # la cartella dei run di training
 runs/
 runs_before_020522/
+runs_before15-6-22/
 
 #la cartella di pycharm
 .idea/
@@ -170,9 +171,20 @@ runs_before_020522/
 #la cartella data generato per Planetoid
 data/
 
+# cartella di output vari e grafici
+output/
+
 # file compressi di numpy che si generano eseguendo codice
 *.npz
 
 # immagini salvate dopo il training
 *.png
 *.jpg
+
+# file csv dei run e json dei config
+*.json
+*.pickle
+*.csv
+
+*_old.ipynb
+*.soft
