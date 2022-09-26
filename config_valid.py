@@ -22,8 +22,13 @@ class Config():
             self.conf = None
         if config_file:
             self.config_file = config_file
-        else:
+            self.load_conf()
+        elif not config_file and not data_dict:
             self.config_file = basic_config_file_path
+            self.load_conf()
+
+        self.valid_conf()
+        self.modo = self.get_mode()
 
         #self.reload_conf()
 
@@ -63,6 +68,21 @@ class Config():
         if modo['labels'] == Labels.zero_one:
             assert n_class == 2, 'Num classi in list_p non consistente con training mode'
 
+        # verifico che in graph_dataset ci sia un solo True
+        bool_arr = [self.conf['graph_dataset']['ERmodel'],
+                    self.conf['graph_dataset']['regular'],
+                    self.conf['graph_dataset']['confmodel']]
+        assert self.only1(bool_arr), "Errore nel config file: scegliere un solo tipo di grafi"
+
+    def only1(self, bool_array):
+        # check if bool_array contains one and only one True
+        true_found = False
+        for v in bool_array:
+            if v and not true_found:
+                true_found = True
+            elif v and true_found:
+                return False  # "Too Many Trues"
+        return true_found
 
     def layer_neuron_string(self):
         neurons = self.conf['model']['neurons_per_layer']

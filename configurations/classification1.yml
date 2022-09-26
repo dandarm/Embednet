@@ -3,27 +3,27 @@ graph_dataset:
     list_p: [0.05, 0.3] #, 0.3, 0.4, 0.5, 0.6]
     range_p: [0.05, 0.6]
     Num_nodes: 300
-    Num_grafi_per_tipo: 30
-    Num_grafi_totali: 800
+    Num_grafi_per_tipo: 300
+    Num_grafi_totali: 1000
     continuous_p: False
     #
-    regular: True
+    regular: False
     list_degree: [10, 20, 30]
     
 training:
     #mode1 = 'classification', CrossEntropyLoss, '1-hot', 'n_class'
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
-    mode: 'mode3'
+    mode: 'mode1'
     learning_rate: 0.01
-    epochs: 20
+    epochs: 2500
     batch_size: 150
     percentage_train: 0.7
     earlystop_patience: 10000
     
 model:
     last_layer_dense: True
-    neurons_per_layer: [1, 8, 1, 1]  # il primo elemento deve essere uguale alla dimensione delle feature del nodo
+    neurons_per_layer: [1, 8, 2]  # il primo elemento deve essere uguale alla dimensione delle feature del nodo
     autoencoder: False
     put_batchnorm: False
     node_features_dim: 1

@@ -14,18 +14,20 @@ from tensorboardX import SummaryWriter as WriterX
 from torch_geometric.utils.convert import from_networkx
 import torch_geometric.transforms as T
 import tensorflow as tf
+from torchmetrics import Accuracy
 
 from pytorchtools import EarlyStopping
 from metrics import ExplainedVarianceMetric
 from TorchPCA import PCA
-from utils import add_histogram
 
+from utils_tf import add_histogram
+from config_valid import TrainingMode
 
 
 
 class Trainer():
 
-    def __init__(self, model, config_class):
+    def __init__(self, model, config_class, verbose=False):
         self.model = model
         self.config_class = config_class
         self.conf = self.config_class.conf
@@ -53,17 +55,34 @@ class Trainer():
         #     self.criterion = torch.nn.MSELoss()
         # elif criterion == 'CrossEntropy':
         #     self.criterion = torch.nn.CrossEntropyLoss()
-        print(self.criterion)
+        if verbose:
+            print(self.criterion)
 
         self.dataset = None
         #self.myExplained_variance = ExplainedVarianceMetric(dimension=self.last_layer_neurons)
 
-    def set_model(self, new_model):
+    def reinit_conf(self, config_class):
+        self.config_class = config_class
+        self.conf = self.config_class.conf
+
+        self.lr = self.conf['training']['learning_rate']
+        self.epochs = self.conf['training']['epochs']
+        self.batch_size = self.conf['training']['batch_size']
+
+        self.last_layer_neurons = self.config_class.get_mode()['last_neuron']
+        self.mode = self.conf['training']['mode']  # 'classification'  or 'regression'  or 'unsupervised'
+
+        if self.conf['device'] == 'gpu':
+            self.device = torch.device('cuda')
+        else:
+            self.device = "cpu"
+
+    def reinit_model(self, new_model):
         self.model = new_model
 
     def correct_shape(self, y):
         if self.last_layer_neurons == 1:
-            target = y.unsqueeze(1).float()
+            target = y.unsqueeze(1)#.float()
         else:
             target = y
         return target
@@ -74,6 +93,7 @@ class Trainer():
 
         for data in self.dataset.train_loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
+            target = data.y
             target = self.correct_shape(data.y)
             #target = data.y.unsqueeze(1).float()  # TODO: modificato
             #print(f'target corrected {target}')
@@ -93,13 +113,14 @@ class Trainer():
 
         for data in loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
+            target = data.y
             target = self.correct_shape(data.y)
             #target = data.y.unsqueeze(1).float()  # TODO: modificato
             #print(f'target corrected {target}')
             #print(f'out: {out}')
             loss = self.criterion(out, target)  # Compute the loss.
             running_loss += loss.item()
-            emb = self.model(data.x, data.edge_index, data.batch, embedding=True)
+            emb = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
             embeddings_array.extend(emb.cpu().detach().numpy())
             #print(f"out and target shape")
             #print(emb.shape, target.shape)
@@ -112,35 +133,66 @@ class Trainer():
         #var_exp = self.myExplained_variance(emb, target)  # sul singolo batch
         return running_loss / self.dataset.test_len, var_exp, embeddings_array
 
-    def take_embedding(self, loader):
+    def take_embedding(self, loader, type_embedding='graph'):
         self.model.eval()
-        embeddings_array = []
-        for data in loader:  # Iterate in batches over the training dataset.
-            out = self.model(data.x, data.edge_index, data.batch, embedding=True)
-            embeddings_array.extend(out)
-        return embeddings_array
+        graph_embeddings_array = []
+        node_embeddings_array = []
+        for data in loader:
+            if type_embedding == 'graph':
+                out = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
+                graph_embeddings_array.extend(out)
+            elif type_embedding == 'node':
+                out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
+                node_embeddings_array.extend(out)
+            elif type_embedding == 'both':
+                node_out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
+                node_embeddings_array.extend(node_out)
+                graph_out = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
+                graph_embeddings_array.extend(graph_out)
+
+        return graph_embeddings_array, node_embeddings_array
+
 
     def accuracy(self, loader):
         self.model.eval()
-
+        accuracy_class = Accuracy()
         correct = 0
         for data in loader:  # Iterate in batches over the training/test dataset.
             out = self.model(data.x, data.edge_index, data.batch)
-            target = self.correct_shape(data.y)
+            target = data.y
+            #target = self.correct_shape(data.y)
             pred = out.argmax(dim=1)  # Use the class with highest probability.
-            correct += int((pred == target).sum())  # Check against ground-truth labels.
+            label = target.argmax(dim=1)
+            #print(out)
+            #print(pred)
+            #print(target)
+            out2 = out.to(torch.device('cuda'))
+            target2 = target.to(torch.device('cuda'), dtype=torch.int16)
+            #print(self.model.device())
+            #print(target.to(self.device, dtype=torch.int16).get_device())
+
+            #correct += accuracy_class(out2.cpu(), target2.cpu())
+            #correct += int((out == target).sum())  # Check against ground-truth labels.
+            correct += int((pred == label).sum())
         return correct / len(loader.dataset)  # Derive ratio of correct predictions.
 
-    def load_dataset(self, dataset_list, labels, percentage_train=0.7):
-        self.dataset = Dataset(dataset_list, labels, percentage_train, self.batch_size, self.device, self.conf)
+    def load_dataset(self, dataset, percentage_train=0.7):  # dataset è di classe GeneralDataset
+        self.dataset = Dataset.from_super_instance(percentage_train, self.batch_size, self.device, self.conf, dataset)
         self.dataset.prepare()
 
-    def launch_training(self):
+    def launch_training(self, verbose=False):
+        test_loss, var_exp, embeddings_array = self.test(self.dataset.test_loader)
+        print(f'Before training Test loss: {test_loss}')
+
+        if self.epochs == 0:
+            return None, None
+
         nowstr = datetime.datetime.now().strftime("%d%b_%H-%M-%S")
         neurons_str = self.config_class.layer_neuron_string()
         expstr = f"lr-{self.lr}_epochs{self.epochs}_bs{self.batch_size}_neurons-{neurons_str}"
         LOG_DIR = f"runs/{expstr}_{nowstr}"
-        print(LOG_DIR)
+        if verbose:
+            print(LOG_DIR)
         writer = SummaryWriter(LOG_DIR)
 
         log_dir_variance = f"runs/ExpVar_{nowstr}"
@@ -148,29 +200,36 @@ class Trainer():
         # summary_variance = tf.summary.create_file_writer(log_dir_variance)
 
         # best_loss = 0 # for early stopping
-        # early_stopping = EarlyStopping(patience=200, delta=0.02, initial_delta=0.2)
+        early_stopping = EarlyStopping(patience=self.conf['training']['earlystop_patience'],
+                                       delta=0.00001,
+                                       initial_delta=0.0004,
+                                       minvalue=0.0002)
         # il seguente serve da quando è stata introdotta la batchnorm
         # early_stopping = EarlyStopping(patience=540, delta=0.01, initial_delta=0.04)
         # con task di regression
-        early_stopping = EarlyStopping(patience=100, delta=0.00000, initial_delta=0.00004, minvalue=0.00002)
+        #early_stopping = EarlyStopping(patience=self.conf['training']['earlystop_patience'],
+        #                              delta=0.00000,
+        #                              initial_delta=0.00004,
+        #                              minvalue=0.00002)
+
+
 
         train_loss_list = []
         test_loss_list = []
         print(f"Run training for {self.epochs} epochs")
         with tf.compat.v1.Graph().as_default():
             summary_writer = tf.compat.v1.summary.FileWriter(log_dir_variance)
-            test_loss, var_exp, embeddings_array = self.test(self.dataset.test_loader)
-            print(f'Before training Test loss: {test_loss}')
-
+            epoch = 0
             for epoch in range(self.epochs):
                 train_loss = self.train()
                 test_loss, var_exp, embeddings_array = self.test(self.dataset.test_loader)
+                test_acc = self.accuracy(self.dataset.test_loader)
                 #expvar = self.myExplained_variance.compute()
                 # add explained variance to tensorboard
                 add_histogram(summary_writer, "Explained variance", var_exp, step=epoch)
 
                 writer.add_scalar("Train Loss", train_loss, epoch)
-                # writer.add_scalar("Train accuracy", train_acc, epoch)
+                writer.add_scalar("Test accuracy", test_acc, epoch)
                 writer.add_scalar("Test Loss", test_loss, epoch)
                 # writer.add_scalars(f'Loss', {'Train': train_loss, 'Test': test_loss}, epoch)
                 # writer.add_scalars(f'Accuracy', {'Train': train_acc, 'Test': test_acc}, epoch)
@@ -179,7 +238,8 @@ class Trainer():
                 test_loss_list.append(test_loss)
                 # train_acc_list.append(train_acc)
                 # test_acc_list.append(test_acc)
-                if epoch % 100 == 0:
+                print_each_step = self.conf['logging']['train_step_print']
+                if epoch % print_each_step == 0 and verbose:
                     print(f'Epoch: {epoch}\tTest loss: {test_loss}')  # \t Explained Variance: {var_exp}')
                     #print(f'Embeddings: {embeddings_array}')
                     #print('\n')
@@ -190,6 +250,7 @@ class Trainer():
                 if early_stopping.early_stop:
                     print("Early stopping!!!")
                     break
+            print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\t FINE TRAINING')
 
         writer.flush()
         #writer_variance.flush()
@@ -197,13 +258,23 @@ class Trainer():
         return train_loss_list, test_loss_list  # , train_acc_list, test_acc_list
 
 
-class Dataset():
-
-    def __init__(self, dataset_list, labels, percentage_train, batch_size, device, config):
-        self.dataset = dataset_list  # rename in dataset_list
-        self.dataset_pyg = None
+class GeneralDataset:
+    def __init__(self, dataset_list, labels, **kwarg):
+        self.dataset_list = dataset_list
         self.labels = labels
-        self.len_data = len(self.dataset)
+        self.original_class = kwarg.get('original_class')
+
+        #calcola il max degree
+        #[dataset_list]
+
+class Dataset(GeneralDataset):
+
+    def __init__(self, percentage_train, batch_size, device, config, dataset_list, labels, original_class):
+        super().__init__(dataset_list, labels, original_class=original_class)
+        #self.dataset_list = dataset_list  # rename in dataset_list
+        self.dataset_pyg = None
+        #self.labels = labels
+        self.len_data = len(self.dataset_list)
         self.tt_split = int(self.len_data * percentage_train)
         self.train_dataset = None
         self.train_len = None
@@ -218,6 +289,10 @@ class Dataset():
         self.transform4ae = T.RandomLinkSplit(num_val=0.0, num_test=0.0, is_undirected=True,
                                               split_labels=True, add_negative_train_samples=False)
 
+    @classmethod
+    def from_super_instance(cls, percentage_train, batch_size, device, config, super_instance):
+        return cls(percentage_train, batch_size, device, config, **super_instance.__dict__)
+
     def convert_G(self, g_i):
         g, i = g_i
         # aggiungo i metadati x e y per l'oggetto Data di PYG
@@ -230,14 +305,32 @@ class Dataset():
         #if len(type_graph) == 1:
         #    type_graph = [type_graph]
         #print(f'type_graph {type_graph}')
-        if self.last_neurons == 1:  # TODO: cambiare anche qui
-            tipo = torch.float
-        else:
-            tipo = torch.long
+        # if self.config.modo == TrainingMode.mode1 or self.config.modo == TrainingMode.mode2:
+        #     tipo = torch.long
+        # if self.last_neurons == 1:  # TODO: cambiare anche qui
+        #     tipo = torch.float
+        # else:
+        #     tipo = torch.long
+        #
+        # if self.config['graph_dataset']['regular']:
+
         tipo = torch.float
-        pyg_graph.y = torch.tensor([type_graph], dtype=tipo)
+        # else:
+        #     tipo = torch.float
+        pyg_graph.y = torch.tensor(np.array([type_graph]), dtype=tipo)
         #print(pyg_graph.y)
 
+        return pyg_graph
+
+    def convert_G_random_feature(self, g_i):
+        g, i = g_i
+        nodi = list(g.nodes)
+        for n in nodi:
+            r = np.random.randn() + 1.0
+            g.nodes[n]["x"] = [r]
+        pyg_graph = from_networkx(g)
+        type_graph = self.labels[i]
+        pyg_graph.y = torch.tensor([type_graph], dtype=torch.float)
         return pyg_graph
 
     def convert_G_autoencoder(self, g_i):
@@ -245,15 +338,18 @@ class Dataset():
         pyg_graph, _, _ = self.transform4ae(pyg_graph)
         return pyg_graph
 
-    def process_each(self, each_list):
-        each_pyg = []
-        for i, g in enumerate(each_list):
-            if not self.config['model']['autoencoder']:
-                pyg_graph = self.convert_G((g, i))
-            else:
-                pyg_graph = self.convert_G_autoencoder((g, i))
-            each_pyg.append(pyg_graph)
-        return each_pyg
+    # def process_each(self, each_list):
+    #     each_pyg = []
+    #     for i, g in enumerate(each_list):
+    #         if self.config['model']['autoencoder']:
+    #             pyg_graph = self.convert_G_autoencoder((g, i))
+    #         elif self.config['graph_dataset']['random_node_feat']:
+    #             print("randommmm featureeeeee!!!!!!!!!!!")
+    #             pyg_graph = self.convert_G_random_feature((g, i))
+    #         else:
+    #             pyg_graph = self.convert_G((g, i))
+    #         each_pyg.append(pyg_graph)
+    #     return each_pyg
 
     def nx2pyg(self, graph_list_nx):
         dataset_pyg = []
@@ -265,15 +361,21 @@ class Dataset():
                 for pyg_graph in p.imap_unordered(self.convert_G, zip(graph_list_nx, range(total)) ):
                     pbar.update()
                     dataset_pyg.append(pyg_graph)
+        """
 
         # process the test list elements in parallel
-        pool = Pool(processes=32)
-        dataset_pyg = pool.map(self.convert_G, zip(graph_list_nx, range(total)))
+        # with Pool(processes=32) as pool:
+        #     dataset_pyg = pool.map(self.convert_G, zip(graph_list_nx, range(total)))
 
-        """
+
         i = 0
         for g in tqdm(graph_list_nx, total=len(graph_list_nx)):
-            pyg_graph = self.convert_G((g, i))
+            if self.config['model']['autoencoder']:
+                pyg_graph = self.convert_G_autoencoder((g, i))
+            elif self.config['graph_dataset']['random_node_feat']:
+                pyg_graph = self.convert_G_random_feature((g, i))
+            else:
+                pyg_graph = self.convert_G((g, i))
             dataset_pyg.append(pyg_graph)
             i += 1
 
@@ -285,15 +387,17 @@ class Dataset():
         results = Parallel(n_jobs=2)(delayed(process)(i) for i in range(10))
         print(results)  # prints [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]
         """
-
+        #starttime = time()
         for pyg_graph in dataset_pyg:
             pyg_graph = pyg_graph.to(self.device)
+        #durata = time() - starttime
+        #print(f"Tempo impiegato per spostare su GPU: {durata}")
 
         return dataset_pyg
 
     def prepare(self):
         starttime = time()
-        self.dataset_pyg = self.nx2pyg(self.dataset)
+        self.dataset_pyg = self.nx2pyg(self.dataset_list)
         durata = time() - starttime
         print(f"Tempo impiegato: {durata}")
 
@@ -303,15 +407,18 @@ class Dataset():
         indices, self.dataset_pyg = zip(*x)
         self.labels = self.labels[list(indices)]
         # cambio l'ordine anche al dataset di grafi nx (non uso la numpy mask)
-        self.dataset = [self.dataset[i] for i in list(indices)]
+        self.dataset_list = [self.dataset_list[i] for i in list(indices)]
+        # e cambio l'ordine anche alle orginal class nel caso regression con discrete distrib
+        if self.config['training']['mode'] == 'mode3' and not self.config['graph_dataset']['continuous_p']:
+            self.original_class = [self.original_class[i] for i in list(indices)]
 
         self.train_dataset = self.dataset_pyg[:self.tt_split]
         self.test_dataset = self.dataset_pyg[self.tt_split:]
         self.train_len = len(self.train_dataset)
         self.test_len = len(self.test_dataset)
 
-        print(self.train_dataset[0].y, self.train_len)
-        print(self.test_dataset[0].y, self.test_len)
+        #print(self.train_dataset[0].y, self.train_len)
+        #print(self.test_dataset[0].y, self.test_len)
 
         self.train_loader = DataLoader(self.train_dataset, batch_size=self.bs, shuffle=True)
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.bs, shuffle=False)
@@ -324,5 +431,11 @@ class Dataset():
             print(data)
             print()
         """
+
+    def sample_dummy_data(self):
+        whole_data = self.dataset_pyg
+        all_data_loader = DataLoader(whole_data, batch_size=self.bs, shuffle=False)
+        batch = next(iter(all_data_loader))
+        return batch
 
 

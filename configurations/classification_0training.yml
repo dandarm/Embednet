@@ -1,0 +1,38 @@
+graph_dataset:
+    ERmodel: False
+    regular: False
+    confmodel: True
+    continuous_p: False
+    list_p: [0.05, 0.3] #, 0.3, 0.4, 0.5, 0.6]
+    range_p: [0.05, 0.6]
+    Num_nodes: [600, 100000]
+    Num_grafi_per_tipo: 500
+    Num_grafi_totali: 1000
+    list_degree: [4, 50]
+    random_node_feat: False
+    list_exponents: [-1, -3]
+    
+training:
+    #mode1 = 'classification', CrossEntropyLoss, '1-hot', 'n_class'
+    #mode2 = 'classification', BCELoss, '{0,1}', 1
+    #mode3 = 'regression', MSELoss, 'p', 1}
+    mode: 'mode1'
+    learning_rate: 0.01
+    epochs: 0
+    batch_size: 250
+    percentage_train: 0.7
+    earlystop_patience: 10000
+    
+model:
+    last_layer_dense: True
+    # il primo elemento deve essere uguale alla dimensione delle feature del nodo
+    # l'ultimo deve essere uguale al numero di classi
+    neurons_per_layer: [1, 8, 8, 1, 2]
+    autoencoder: False
+    put_batchnorm: False
+    node_features_dim: 1
+    
+logging:
+    train_step_print: 1000
+    
+device: 'gpu'

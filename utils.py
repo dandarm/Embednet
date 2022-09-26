@@ -1,14 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+from matplotlib.pyplot import cm
 from copy import copy
 import networkx as nx
-import tensorflow as tf
 import torch
 
 from curved_edges import curved_edges
 
-dpi = 96
+
 edge_color = '#6666bb'
 node_color = '#df5c43'
 
@@ -45,73 +45,54 @@ def custom_draw_edges(ax, G, positions, edges_weights):
     #plt.setp(ax.spines.values(), visible=False)
     
     
-# def plot_grafo2(G, iterations, nome_file=None):
-#     plt.figure(figsize=(1000/dpi,1000/dpi))
-#
-#     print("Draw nodes")
-#     positions = nx.spring_layout(G, k=1.8, iterations=iterations)
-#     degrees = dict(G.degree)
-#     sizes = [v*2 + v*v/10  for v in degrees.values()]
-#     nx.draw_networkx_nodes(G, positions, node_size=sizes, node_color=node_color, alpha=0.7)
-#
-#     print("Draw edges")
-#     ax = plt.gca()
-#     edges_weights = [d['weight']/30 if 'weight' in d.keys() else 1 for (u, v, d) in G.edges(data=True)]
-#     custom_draw_edges(ax, G, positions, edges_weights)
-#
-#     print("Plot")
-#     plt.tick_params(axis='both',which='both',bottom=False,left=False,labelbottom=False,labelleft=False)
-#     plt.setp(ax.spines.values(), visible=False)
-#     fig = plt.gcf()
-#     fig.tight_layout()
-#
-#     cut = 1.00
-#     xmax = cut * max(xx for xx, yy in pos.values())
-#     ymax = cut * max(yy for xx, yy in pos.values())
-#     plt.xlim(0, xmax)
-#     plt.ylim(0, ymax)
-#
-#     if(nome_file is not None):
-#         print("Save graph png")
-#         plt.savefig(nome_file, dpi=dpi * 10)
-#
-#     print("Show")
-#     plt.show()
-
-
-def add_histogram(writer, tag, values, step):
+def plot_grafo2(G, iterations, sizes = None, edges_weights=None, communities=None,  limits=False, nome_file=None, dpi = 96):
     """
-    Logs the histogram of a list/vector of values.
-    From: https://gist.github.com/gyglim/1f8dfb1b5c82627ae3efcfbbadb9f514
+    Calcola le posizioni dei nodi secondo lo spring layout  https://networkx.org/documentation/stable/reference/generated/networkx.drawing.layout.spring_layout.html
+    
     """
-    # counts, bin_edges = np.histogram(values, bins=bins)
-    # Requires equal number as bins, where the first goes from -DBL_MAX to bin_edges[1]
-    # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto#L30
-    # Therefore we drop the start of the first bin
-    # bin_edges = bin_edges[1:]
+    degrees = dict(G.degree)
+    if not sizes:
+        sizes = [v*2 + v*v/10 for v in degrees.values()]
+    if not edges_weights:
+        edges_weights = [d['weight']/30 if 'weight' in d.keys() else 1 for (u, v, d) in G.edges(data=True)]
+    positions = nx.spring_layout(G, k=1.8, iterations=iterations) # default weight='weight' per le edges
+        
+    plt.figure(figsize=(1000/dpi,1000/dpi))
+    
+    print("Draw edges")
+    ax = plt.gca()
+    custom_draw_edges(ax, G, positions, edges_weights)
+    
+    print("Draw nodes")    
+    node_list = np.array(G.nodes())
+    node_size = np.array(sizes)
+    if communities is not None: # matrice con dimensione:  num_classi X num_nodi
+        colors = cm.rainbow(np.linspace(0, 1, len(communities)))
+        for i, c in enumerate(communities):
+            community_nodes = node_list[c.astype(bool)]
+            community_sizes = node_size[c.astype(bool)]
+            nx.draw_networkx_nodes(G, positions, nodelist=community_nodes, node_size=community_sizes, node_color=colors[i].reshape(1,-1), alpha=0.7)
+    else:
+        nx.draw_networkx_nodes(G, positions, node_size=sizes, node_color=node_color, alpha=0.7)
+    
+    print("Plot")
+    plt.tick_params(axis='both',which='both',bottom=False,left=False,labelbottom=False,labelleft=False)
+    plt.setp(ax.spines.values(), visible=False)
+    fig = plt.gcf()
+    fig.tight_layout()
+    cut = 1.00
+    xmax = cut * max(xx for xx, yy in positions.values())
+    ymax = cut * max(yy for xx, yy in positions.values())
+    if limits:
+        plt.xlim(0, xmax)
+        plt.ylim(0, ymax)
+    if(nome_file is not None):
+        print("Save graph png")
+        plt.savefig(nome_file, dpi=dpi)
+        
+    print("Show")
+    plt.show()
 
-    bins = np.arange(0, len(values)) + 1
-    bins = np.linspace(1, len(values), len(values) + 1, endpoint=True)
-
-    # Fill fields of histogram proto
-    hist = tf.compat.v1.HistogramProto()
-    hist.min = float(np.min(bins))
-    hist.max = float(np.max(bins))
-    # hist.num = int(np.prod(values.shape))
-    # hist.sum = float(np.sum(values))
-    # hist.sum_squares = float(np.sum(values ** 2))
-
-    bins = bins[1:]
-
-    for edge in bins:
-        hist.bucket_limit.append(edge)
-    for c in values:
-        d = c * 30.0 / float(len(values))
-        hist.bucket.append(d)
-
-    summary = tf.compat.v1.summary.Summary(value=[tf.compat.v1.summary.Summary.Value(tag=tag, histo=hist)])
-    writer.add_summary(summary, step)
-    writer.flush()
 
 
 # find minimum difference between any pair in an unsorted array
@@ -132,3 +113,42 @@ def findMinDiff(arr):
 
     # Return min diff
     return diff
+
+
+def is_outlier(points, thresh=3.5):
+    """
+    Returns a boolean array with True if points are outliers and False
+    otherwise.
+
+    Parameters:
+    -----------
+        points : An numobservations by numdimensions array of observations
+        thresh : The modified z-score to use as a threshold. Observations with
+            a modified z-score (based on the median absolute deviation) greater
+            than this value will be classified as outliers.
+
+    Returns:
+    --------
+        mask : A numobservations-length boolean array.
+
+    References:
+    ----------
+        Boris Iglewicz and David Hoaglin (1993), "Volume 16: How to Detect and
+        Handle Outliers", The ASQC Basic References in Quality Control:
+        Statistical Techniques, Edward F. Mykytka, Ph.D., Editor.
+    """
+    if len(points.shape) == 1:
+        points = points[:,None]
+    median = np.median(points, axis=0)
+    diff = np.sum((points - median)**2, axis=-1)
+    diff = np.sqrt(diff)
+    med_abs_deviation = np.median(diff)
+
+    modified_z_score = 0.6745 * diff / med_abs_deviation
+
+    return modified_z_score > thresh
+
+def plot_wo_outliers(x_array):
+    x_array = np.array(x_array)
+    filtered = x_array[~is_outlier(x_array)]
+    return filtered

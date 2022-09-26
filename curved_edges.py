@@ -6,7 +6,14 @@ import numpy as np
 
 def curved_edges(G, pos, dist_ratio=0.2, bezier_precision=20, polarity='random'):
     # Get nodes into np array
-    edges = np.array(G.edges())
+    list_edges = G.edges.data()
+    #if isinstance(list_edges, nx.classes.reportviews.MultiEdgeDataView):
+    edges = []
+    for edge in list_edges:
+        edges.append((edge[0], edge[1]))
+    edges = np.array(edges)
+    #else:
+    #    edges = np.array(list_edges)
     l = edges.shape[0]
 
     if polarity == 'random':
