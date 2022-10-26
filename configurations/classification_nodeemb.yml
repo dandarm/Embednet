@@ -9,7 +9,8 @@ graph_dataset:
     Num_grafi_per_tipo: 300
     Num_grafi_totali: 1000
     list_degree: [4, 35]
-    random_node_feat: False
+    random_node_feat: True
+    list_exponents: [-1.01, -3.0]
     
 training:
     #mode1 = 'classification', CrossEntropyLoss, '1-hot', 'n_class'
@@ -17,7 +18,7 @@ training:
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
     learning_rate: 0.01
-    epochs: 3000
+    epochs: 1000
     batch_size: 150
     percentage_train: 0.7
     earlystop_patience: 400
@@ -26,7 +27,8 @@ model:
     last_layer_dense: False
     # il primo elemento deve essere uguale alla dimensione delle feature del nodo
     # l'ultimo deve essere uguale al numero di classi
-    neurons_per_layer: [1, 8, 16, 8, 2] 
+    GCNneurons_per_layer: [1, 8, 8, 2] 
+    neurons_last_linear: [2, 2]
     autoencoder: False
     put_batchnorm: False
     final_pool_aggregator: True

@@ -1,13 +1,17 @@
+import numpy as np
+from enum import Enum
 import torch
 from torch.nn import Linear, BatchNorm1d, LeakyReLU
 from torch_geometric.nn import GCNConv, GAE, VGAE, TopKPooling
 #from torch_geometric.nn import global_mean_pool
+from torch_geometric import nn
 from torch_geometric.nn.aggr.basic import MeanAggregation
 import torch.nn.functional as F
 
 from torch_geometric.datasets import Planetoid
 
 
+# region myGCN
 class GCN(torch.nn.Module):
     #def __init__(self, neurons_per_layer, node_features=1, num_classes=2, autoencoder=False, put_batchnorm=False, mode='classification'):
     def __init__(self, config_class):
@@ -16,8 +20,9 @@ class GCN(torch.nn.Module):
         self.config_class = config_class
         self.conf = self.config_class.conf
 
-        self.neurons_per_layer = self.conf['model']['neurons_per_layer']
-        self.last_layer_neurons = self.neurons_per_layer[-1]
+        self.neurons_per_layer = self.conf['model']['GCNneurons_per_layer']
+        #self.last_layer_neurons = self.neurons_per_layer[-1]
+        self.last_layer_neurons = self.conf['model']['neurons_last_linear']
         self.node_features_dim = self.conf['model']['node_features_dim']
         self.num_classes = self.config_class.num_classes_ER()
         self.autoencoder = self.conf['model']['autoencoder']
@@ -27,18 +32,14 @@ class GCN(torch.nn.Module):
 
         self.convs = torch.nn.ModuleList()
         self.leakys = torch.nn.ModuleList()
+        self.linears = torch.nn.ModuleList()
+        self.dropouts = torch.nn.ModuleList()
         #self.pools = torch.nn.ModuleList()
         if self.put_batchnorm:
             print('Batch Normalization included')
             self.batchnorms = torch.nn.ModuleList()
 
-        if self.last_layer_dense:
-            rangeconv_layers = range(len(self.neurons_per_layer) - 2)
-            self.lin = Linear(self.neurons_per_layer[-2], self.last_layer_neurons)
-        else:
-            rangeconv_layers = range(len(self.neurons_per_layer) - 1)
-            self.lin = None
-
+        rangeconv_layers = range(len(self.neurons_per_layer) - 1)
         for i in rangeconv_layers:
             self.convs.append(GCNConv(self.neurons_per_layer[i], self.neurons_per_layer[i + 1]))
             self.leakys.append(LeakyReLU(0.03))
@@ -49,6 +50,18 @@ class GCN(torch.nn.Module):
 
         if self.final_pool_aggregator:
             self.mean_pool = MeanAggregation()
+
+        if self.last_layer_dense:
+            #il primo è uguale all'ultimo dei GCN layer
+            self.linears.append(Linear(self.neurons_per_layer[-1], self.last_layer_neurons[0]))
+            self.dropouts.append(torch.nn.Dropout(p=0.5))
+            for j in range(0, len(self.last_layer_neurons)-1):
+                lin = Linear(self.last_layer_neurons[j], self.last_layer_neurons[j+1])
+                self.linears.append(lin)
+                drop = torch.nn.Dropout(p=0.5)
+                self.dropouts.append(drop)
+        else:
+            self.lin = None
 
         # provo con gli oggetti per il grafo
         self.drop = torch.nn.Dropout(p=0.5) #F.dropout
@@ -64,6 +77,12 @@ class GCN(torch.nn.Module):
             x = self.leakys[i](x)
             # print(f"leakyrelu{i}")
             # x, edge_index, _, batch, _, _ = self.pools[i](x, edge_index, None, batch)
+        return x
+
+    def n_layers_linear(self, x):
+        for i, layer in enumerate(self.linears):
+            x = self.dropouts[i](x)
+            x = layer(x)
         return x
 
     def forward(self, x, edge_index, batch=None, graph_embedding=False, node_embedding=False):
@@ -84,10 +103,123 @@ class GCN(torch.nn.Module):
 
         # 3. Apply a final classifier
         # print(f"Dropout + Linear ")
-        x = self.drop(x)
-        x = self.lin(x)
+        #x = self.drop(x)
+        #x = self.lin(x)
+        if self.last_layer_dense:
+            x = self.n_layers_linear(x)
         #print(f"after linear: {x.shape}")
         return x
+
+# endregion
+
+# region imposta i pesi della rete
+
+class Inits():  # TODO: capire perché se estendo da Enum succede un CASINO! non vanno più bene le uguaglianze
+    normal = 'normal'
+    constant = 'constant'
+    uniform = 'uniform'
+    eye = 'eye'
+    dirac = 'dirac'
+    xavier_uniform = 'xavier_uniform'
+    xavier_normal = 'xavier_normal'
+    kaiming_uniform = 'kaiming_uniform'
+    kaiming_normal = 'kaiming_normal'
+    trunc_normal = 'trunc_normal'
+    orthogonal = 'orthogonal'
+    sparse = 'sparse'
+
+
+import matplotlib.pyplot as plt
+def view_parameters(model):
+    i = 0
+    for m in model.modules():
+        if isinstance(m, nn.GCNConv):
+            classname = m.__class__.__name__
+            #print(f"classname: {classname} \n\t parameters: {list(m.parameters())} \n \n")
+            array = []
+            for e in list(m.parameters()):
+                array.append(e.cpu().detach().numpy())
+            for a in array:
+                plt.hist(a.flatten(), alpha=0.5);
+
+            plt.title(f"{classname}_{i}")
+            i += 1
+            plt.show()
+        # print(f"classname: {classname} \n\t parameters: {list(m.parameters())} \n\t bias: {m.bias} \n\t weights: {m.lin.weight} \n \n \n")
+
+
+def new_parameters(model, method=Inits.xavier_uniform, const_value=1.0):
+    new_par = []
+
+    for m in model.modules():
+        if isinstance(m, nn.GCNConv):
+            shape = m.lin.weight.shape
+            custom_weight = torch.empty(shape)
+            if method is Inits.kaiming_normal:
+                gain = torch.nn.init.calculate_gain(nonlinearity='relu', param=None)  # nonlinearity – the non-linear function (nn.functional name)
+                torch.nn.init.kaiming_normal_(custom_weight, mode='fan_out', nonlinearity='relu')
+            elif method == Inits.kaiming_uniform:
+                torch.nn.init.kaiming_uniform_(custom_weight, a=0, mode='fan_in', nonlinearity='leaky_relu')
+            elif method == Inits.uniform:
+                torch.nn.init.uniform_(custom_weight, a=0, b=1)  # a: lower_bound, b: upper_bound
+            elif method == Inits.normal:
+                torch.nn.init.normal_(custom_weight, mean=0, std=1)
+            elif method == Inits.constant:
+                torch.nn.init.constant_(custom_weight, value=const_value)
+            elif method == Inits.eye:
+                torch.nn.init.eye_(custom_weight)
+            elif method == Inits.dirac:
+                torch.nn.init.dirac_(custom_weight)  # tensor deve essere almeno 3D
+            elif method == Inits.xavier_uniform:
+                torch.nn.init.xavier_uniform_(custom_weight, gain=1.0)
+            elif method == Inits.xavier_normal:
+                torch.nn.init.xavier_normal_(custom_weight, gain=1.0)
+            elif method == Inits.trunc_normal:
+                torch.nn.init.trunc_normal_(custom_weight, mean=0.0, std=1.0, a=- 2.0, b=2.0)
+            elif method == Inits.orthogonal:
+                torch.nn.init.orthogonal_(custom_weight, gain=1)
+            elif method == Inits.sparse:
+                torch.nn.init.sparse_(custom_weight, sparsity=0.5, std=0.01)  # The fraction of elements in each column to be set to zero
+            elif method == 'esn':
+                W = ESN_property(shape)
+                custom_weight = torch.Tensor(W)
+
+            new_par.append(custom_weight)
+    return new_par
+
+
+
+def ESN_property(array_shape):
+    #N, N = array_shape
+    #W = np.random.rand(N, N) - 0.5
+    W = np.random.normal(0, 1, array_shape)
+    W[np.random.rand(*array_shape) < 0.5] = 0
+    #print(W)
+    if W.ndim == 1:
+        W2 = W[:,np.newaxis]
+    if W.shape[0] != W.shape[1]: # e se è vero l'if sopra sarà vero anche questo
+        W2 = np.dot(W.T, W)
+    else:
+        W2 = W
+    autovalori = np.linalg.eig(W2)[0]
+    radius = np.max(np.abs(autovalori))#.reshape(array_shape))))
+    print(radius)
+    W = W * (0.95 / radius)
+    return W
+
+def modify_parameters(model, new_par, device=torch.device('cuda')):
+    i = 0
+    for m in model.modules():
+        if isinstance(m, nn.GCNConv):
+            shape = m.lin.weight.shape
+            # custom_weight = torch.empty(shape)
+            # 4torch.nn.init.kaiming_normal_(custom_weight, mode='fan_out', nonlinearity='relu')
+            par = torch.nn.parameter.Parameter(new_par[i]).to(device)
+            m.lin.weight.data = par
+            i += 1
+
+# endregion
+
 
 # region MODELLI AUTOENCODER
 

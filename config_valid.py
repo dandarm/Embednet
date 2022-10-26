@@ -27,8 +27,14 @@ class Config():
             self.config_file = basic_config_file_path
             self.load_conf()
 
+        neurons_per_layer = self.conf['model']['GCNneurons_per_layer']
+        if self.conf['model']['last_layer_dense']:
+            self.lastneuron = self.conf['model']['neurons_last_linear'][-1]
+        else:
+            self.lastneuron = neurons_per_layer[-1]
         self.valid_conf()
         self.modo = self.get_mode()
+
 
         #self.reload_conf()
 
@@ -53,13 +59,12 @@ class Config():
         modo_str = self.conf['training']['mode']
 
         # verifico che l'ultimo neurone sia consistente col training mode
-        neurons_per_layer = self.conf['model']['neurons_per_layer']
-        lastneuron = neurons_per_layer[-1]
-        if lastneuron == 1:
-            assert lastneuron == modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
+
+        if self.lastneuron == 1:
+            assert self.lastneuron == modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
         else:
             assert modo['last_neuron'] == 'n_class', 'Ultimi neuroni > 1 ma training mode diverso'
-            assert lastneuron == self.num_classes_ER(), 'Ultimi neuroni diversi dal numero di classi '
+            assert self.lastneuron == self.num_classes_ER(), 'Ultimi neuroni diversi dal numero di classi '
 
         #last_layer_dense = self.config['model']['last_layer_dense']
 
@@ -85,7 +90,7 @@ class Config():
         return true_found
 
     def layer_neuron_string(self):
-        neurons = self.conf['model']['neurons_per_layer']
+        neurons = self.conf['model']['GCNneurons_per_layer']
         return str(neurons).replace(', ', '-').strip('[').strip(']')
 
     def num_classes_ER(self):

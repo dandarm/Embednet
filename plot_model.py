@@ -173,6 +173,16 @@ def make_graph(mod, classes_to_visit=None, classes_found=None, dot=None, prefix=
     return dot
 
 def plot_model(model, batch_data):
+    """
+    Può generare il seguente warning:
+    TracerWarning: Output nr 1. of the traced function does not match the corresponding output of the Python function.
+    Detailed error: Tensor-likes are not close!
+    This warning occurs, when one tries to torch.jit.trace models which have data dependent control flow...
+    Insomma lo ignoro
+    :param model:
+    :param batch_data:
+    :return:
+    """
     traced_model = torch.jit.trace(model, [batch_data.x, batch_data.edge_index])
     traced_model.eval()
     for p in traced_model.parameters():

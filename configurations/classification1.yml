@@ -1,13 +1,14 @@
 graph_dataset:
     ERmodel: True
+    regular: False
+    confmodel: False
+    continuous_p: False
+    random_node_feat: False
     list_p: [0.05, 0.3] #, 0.3, 0.4, 0.5, 0.6]
     range_p: [0.05, 0.6]
     Num_nodes: 300
     Num_grafi_per_tipo: 300
     Num_grafi_totali: 1000
-    continuous_p: False
-    #
-    regular: False
     list_degree: [10, 20, 30]
     
 training:
@@ -26,6 +27,10 @@ model:
     neurons_per_layer: [1, 8, 2]  # il primo elemento deve essere uguale alla dimensione delle feature del nodo
     autoencoder: False
     put_batchnorm: False
+    final_pool_aggregator: True
     node_features_dim: 1
+    
+logging:
+    train_step_print: 100
     
 device: 'gpu'

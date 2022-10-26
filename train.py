@@ -44,11 +44,7 @@ class Trainer():
         else:
             self.device = "cpu"
 
-        # self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr , )
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0,
-                                          amsgrad=False)
-        decayRate = 0.96
-        # self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
+        self.set_optimizer(model)
 
         self.criterion = self.config_class.get_mode()['criterion']
         # if criterion == 'MSELoss':
@@ -60,6 +56,17 @@ class Trainer():
 
         self.dataset = None
         #self.myExplained_variance = ExplainedVarianceMetric(dimension=self.last_layer_neurons)
+        self.last_accuracy = None
+
+    def set_optimizer(self, model):
+        # self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr , )
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr,
+                                          betas=(0.9, 0.999),
+                                          eps=1e-08,
+                                          weight_decay=0,
+                                          amsgrad=False)
+        decayRate = 0.96
+        # self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
 
     def reinit_conf(self, config_class):
         self.config_class = config_class
@@ -79,6 +86,8 @@ class Trainer():
 
     def reinit_model(self, new_model):
         self.model = new_model
+        self.model.to(self.device)
+        self.set_optimizer(self.model)
 
     def correct_shape(self, y):
         if self.last_layer_neurons == 1:
@@ -137,6 +146,7 @@ class Trainer():
         self.model.eval()
         graph_embeddings_array = []
         node_embeddings_array = []
+        node_embeddings_array_id = []
         for data in loader:
             if type_embedding == 'graph':
                 out = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
@@ -144,13 +154,15 @@ class Trainer():
             elif type_embedding == 'node':
                 out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
                 node_embeddings_array.extend(out)
-            elif type_embedding == 'both':
+                node_embeddings_array_id.extend(data.id)
+            elif type_embedding == 'both':  # quì ho garantito che i graph embedding sono ordinati come i node_embedding
                 node_out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
                 node_embeddings_array.extend(node_out)
+                node_embeddings_array_id.extend(data.id)
                 graph_out = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
                 graph_embeddings_array.extend(graph_out)
 
-        return graph_embeddings_array, node_embeddings_array
+        return graph_embeddings_array, node_embeddings_array, node_embeddings_array_id
 
 
     def accuracy(self, loader):
@@ -160,12 +172,21 @@ class Trainer():
         for data in loader:  # Iterate in batches over the training/test dataset.
             out = self.model(data.x, data.edge_index, data.batch)
             target = data.y
+            #print(out, out.shape)
+            #print(target, target.shape)
             #target = self.correct_shape(data.y)
-            pred = out.argmax(dim=1)  # Use the class with highest probability.
-            label = target.argmax(dim=1)
-            #print(out)
-            #print(pred)
-            #print(target)
+            if not self.config_class.modo == TrainingMode.mode2:
+                pred = out.argmax(dim=1)  # Use the class with highest probability.
+                label = target.argmax(dim=1)
+                correct += int((pred == label).sum())
+            else:
+                #pred = out.argmax(dim=1)
+                #label = target.argmax(dim=-1)
+                #print(out.flatten())
+                #print(target)
+                correct += self.binary_accuracy(target, out.flatten())
+
+
             out2 = out.to(torch.device('cuda'))
             target2 = target.to(torch.device('cuda'), dtype=torch.int16)
             #print(self.model.device())
@@ -173,12 +194,18 @@ class Trainer():
 
             #correct += accuracy_class(out2.cpu(), target2.cpu())
             #correct += int((out == target).sum())  # Check against ground-truth labels.
-            correct += int((pred == label).sum())
+
         return correct / len(loader.dataset)  # Derive ratio of correct predictions.
 
-    def load_dataset(self, dataset, percentage_train=0.7):  # dataset è di classe GeneralDataset
-        self.dataset = Dataset.from_super_instance(percentage_train, self.batch_size, self.device, self.conf, dataset)
-        self.dataset.prepare()
+    def binary_accuracy(self, y_true, y_prob):
+        assert y_true.ndim == 1, "dim not 1"
+        assert y_true.size() == y_prob.size(), "size non equal"
+        y_prob = y_prob > 0.5
+        return (y_true == y_prob).sum().item()# / y_true.size(0)
+
+    def load_dataset(self, dataset, percentage_train=0.7, parallel=False):  # dataset è di classe GeneralDataset
+        self.dataset = Dataset.from_super_instance(percentage_train, self.batch_size, self.device, self.config_class, dataset)
+        self.dataset.prepare(parallel)
 
     def launch_training(self, verbose=False):
         test_loss, var_exp, embeddings_array = self.test(self.dataset.test_loader)
@@ -255,7 +282,8 @@ class Trainer():
         writer.flush()
         #writer_variance.flush()
         #self.myExplained_variance.reset()
-        return train_loss_list, test_loss_list  # , train_acc_list, test_acc_list
+        self.last_accuracy = test_acc
+        return train_loss_list, test_loss_list  # , train_acc_list, test_acc_list, last accuracy
 
 
 class GeneralDataset:
@@ -269,7 +297,7 @@ class GeneralDataset:
 
 class Dataset(GeneralDataset):
 
-    def __init__(self, percentage_train, batch_size, device, config, dataset_list, labels, original_class):
+    def __init__(self, percentage_train, batch_size, device, config_class, dataset_list, labels, original_class):
         super().__init__(dataset_list, labels, original_class=original_class)
         #self.dataset_list = dataset_list  # rename in dataset_list
         self.dataset_pyg = None
@@ -284,14 +312,15 @@ class Dataset(GeneralDataset):
         self.device = device
         self.train_loader = None
         self.test_loader = None
-        self.config = config
-        self.last_neurons = config['model']['neurons_per_layer'][-1]
+        self.config_class = config_class
+        self.config = config_class.conf
+        self.last_neurons = self.config_class.lastneuron
         self.transform4ae = T.RandomLinkSplit(num_val=0.0, num_test=0.0, is_undirected=True,
                                               split_labels=True, add_negative_train_samples=False)
 
     @classmethod
-    def from_super_instance(cls, percentage_train, batch_size, device, config, super_instance):
-        return cls(percentage_train, batch_size, device, config, **super_instance.__dict__)
+    def from_super_instance(cls, percentage_train, batch_size, device, config_class, super_instance):
+        return cls(percentage_train, batch_size, device, config_class, **super_instance.__dict__)
 
     def convert_G(self, g_i):
         g, i = g_i
@@ -299,6 +328,7 @@ class Dataset(GeneralDataset):
         nodi = list(g.nodes)
         for n in nodi:
             g.nodes[n]["x"] = [1.0]
+            g.nodes[n]["id"] = [n]
 
         pyg_graph = from_networkx(g)
         type_graph = self.labels[i]
@@ -351,7 +381,7 @@ class Dataset(GeneralDataset):
     #         each_pyg.append(pyg_graph)
     #     return each_pyg
 
-    def nx2pyg(self, graph_list_nx):
+    def nx2pyg(self, graph_list_nx, parallel=False):
         dataset_pyg = []
         total = len(graph_list_nx)
         """
@@ -363,21 +393,22 @@ class Dataset(GeneralDataset):
                     dataset_pyg.append(pyg_graph)
         """
 
-        # process the test list elements in parallel
-        # with Pool(processes=32) as pool:
-        #     dataset_pyg = pool.map(self.convert_G, zip(graph_list_nx, range(total)))
+        if parallel:
+            #process the test list elements in parallel
+            with Pool(processes=2) as pool:
+                dataset_pyg = pool.map(self.convert_G, zip(graph_list_nx, range(total)))
 
-
-        i = 0
-        for g in tqdm(graph_list_nx, total=len(graph_list_nx)):
-            if self.config['model']['autoencoder']:
-                pyg_graph = self.convert_G_autoencoder((g, i))
-            elif self.config['graph_dataset']['random_node_feat']:
-                pyg_graph = self.convert_G_random_feature((g, i))
-            else:
-                pyg_graph = self.convert_G((g, i))
-            dataset_pyg.append(pyg_graph)
-            i += 1
+        else:
+            i = 0
+            for g in tqdm(graph_list_nx, total=len(graph_list_nx)):
+                if self.config['model']['autoencoder']:
+                    pyg_graph = self.convert_G_autoencoder((g, i))
+                elif self.config['graph_dataset']['random_node_feat']:
+                    pyg_graph = self.convert_G_random_feature((g, i))
+                else:
+                    pyg_graph = self.convert_G((g, i))
+                dataset_pyg.append(pyg_graph)
+                i += 1
 
         """
         from joblib import Parallel, delayed
@@ -395,9 +426,9 @@ class Dataset(GeneralDataset):
 
         return dataset_pyg
 
-    def prepare(self):
+    def prepare(self, parallel=False):
         starttime = time()
-        self.dataset_pyg = self.nx2pyg(self.dataset_list)
+        self.dataset_pyg = self.nx2pyg(self.dataset_list, parallel)
         durata = time() - starttime
         print(f"Tempo impiegato: {durata}")
 
@@ -409,8 +440,8 @@ class Dataset(GeneralDataset):
         # cambio l'ordine anche al dataset di grafi nx (non uso la numpy mask)
         self.dataset_list = [self.dataset_list[i] for i in list(indices)]
         # e cambio l'ordine anche alle orginal class nel caso regression con discrete distrib
-        if self.config['training']['mode'] == 'mode3' and not self.config['graph_dataset']['continuous_p']:
-            self.original_class = [self.original_class[i] for i in list(indices)]
+        #if self.config['training']['mode'] == 'mode3' and not self.config['graph_dataset']['continuous_p']:
+        self.original_class = [self.original_class[i] for i in list(indices)]
 
         self.train_dataset = self.dataset_pyg[:self.tt_split]
         self.test_dataset = self.dataset_pyg[self.tt_split:]

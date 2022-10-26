@@ -56,7 +56,7 @@ class GenerateGraph():
         encoded = OneHotEncoder().fit_transform(lista).toarray()
         return encoded
 
-    def initialize_dataset(self):
+    def initialize_dataset(self, parallel=True):
         print('Generating dataset...')
         modo = self.config_class.modo
         dataset = None
@@ -70,7 +70,7 @@ class GenerateGraph():
             dataset = self.dataset_regular()
 
         elif self.type == GraphType.CM:
-            dataset = self.dataset_classification_CM()
+            dataset = self.dataset_classification_CM(parallel=parallel)
 
         print("Dataset generated")
         return dataset
@@ -120,37 +120,46 @@ class GenerateGraph():
         d, n = d_n
         return nx.random_regular_graph(d=d, n=n)
 
-    def create_confmodel(self, Num_nodes, N_graphs, exponent=-1):
-        grafi_actual_degrees = []
-        with Pool(processes=32) as pool:
-            input_list = zip([Num_nodes]*N_graphs, [exponent]*N_graphs)
-            grafi_actual_degrees = pool.map(self.build_cm_graph, input_list)
-        grafi_actual_degrees = np.array(grafi_actual_degrees)
-        grafi = grafi_actual_degrees[:,0]
-        actual_degrees = grafi_actual_degrees[:,1]
+    def create_confmodel(self, Num_nodes, N_graphs, exponent=-1, parallel=True):
+        if parallel:
+            with Pool(processes=32) as pool:
+                input_list = zip([Num_nodes]*N_graphs, [exponent]*N_graphs)
+                grafi_actual_degrees = pool.map(self.build_cm_graph, input_list)
+                grafi = [gr[0] for gr in grafi_actual_degrees]
+                actual_degrees = [gr[1] for gr in grafi_actual_degrees]
+        else:
+            grafi = []
+            actual_degrees = []
+            for n in range(N_graphs):
+                gr0, degree = self.build_cm_graph((Num_nodes, exponent))
+                grafi.append(gr0)
+                actual_degrees.append(degree)
+
+        #actual_degrees = grafi_actual_degrees[:,1]
         #print(grafi, len(grafi), type(grafi))
         #print(actual_degrees, len(actual_degrees), type(actual_degrees))
-        print(f"Nodi rimanenti in media: {np.array([len(gr.nodes()) for gr in grafi]).mean()}")
+        #print(type(grafi))
+        #print(f"Nodi rimanenti in media: {np.array([len(gr.nodes()) for gr in grafi]).mean()}")
         return grafi, actual_degrees
 
     def build_cm_graph(self, Num_nodes_exponent):
         Num_nodes, exponent = Num_nodes_exponent
-        s = rndm(1, 100, exponent, Num_nodes)
+        s = rndm(3, Num_nodes, exponent, Num_nodes)
         s = np.array(s, int)
         if s.sum() % 2 != 0:
-            s[0] += 1
+            s[-1] += 1
         gr = nx.configuration_model(s)
         # check for graphical sequence:
         gr = nx.Graph(gr)  # remove multiple edges
         gr.remove_edges_from(nx.selfloop_edges(gr))  # remove self loops
-        # print(f"Nodi iniziali: {Num_nodes}")
+        #print(f"Nodi iniziali: {Num_nodes}")
         # tengo solo la giant component
         Gcc = sorted(nx.connected_components(gr), key=len, reverse=True)
         gr0 = gr.subgraph(Gcc[0]).copy()
         gr.clear()
-        # print(f"Nodi rimanenti: {len(gr0.nodes())}")
-        degree = [d for v, d in gr0.degree()]
-        return gr0, degree
+        #print(f"Nodi rimanenti: {len(gr0.nodes())}")
+        #degree = [d for v, d in gr0.degree()]
+        return gr0, gr0.degree()  # !!! quì ora voglio portarmi appresso anche il node ID
 
     def dataset_nclass_ER(self):
         N = self.conf['graph_dataset']['Num_nodes']
@@ -237,13 +246,16 @@ class GenerateGraph():
         self.dataset = GeneralDataset(dataset_grafi_nx, np.array(dataset_labels))
         return self.dataset
 
-    def dataset_classification_CM(self):
+    def dataset_classification_CM(self, parallel=True):
         N = self.conf['graph_dataset']['Num_nodes']
         Num_grafi_per_tipo = self.conf['graph_dataset']['Num_grafi_per_tipo']
         Num_grafi_tot = self.conf['graph_dataset']['Num_grafi_totali']
         list_exp = self.conf['graph_dataset']['list_exponents']
-        list_exp = [int(i) for i in list_exp]
-        encoded = self.hot_encoding(list_exp)
+        list_exp = [float(i) for i in list_exp]
+        if self.config_class.modo == TrainingMode.mode1:
+            encoded = self.hot_encoding(list_exp)
+        elif self.config_class.modo == TrainingMode.mode2:
+            encoded = [0, 1]
 
         dataset_grafi_nx = []
         dataset_labels = []
@@ -253,9 +265,7 @@ class GenerateGraph():
                 num_nodes = N[i]
             else:
                 num_nodes = N
-            grafi, actual_degrees = self.create_confmodel(num_nodes, Num_grafi_per_tipo, exponent=exp)
-            grafi = grafi.tolist()
-            actual_degrees = actual_degrees.tolist()
+            grafi, actual_degrees = self.create_confmodel(num_nodes, Num_grafi_per_tipo, exponent=exp, parallel=parallel)
             dataset_grafi_nx = dataset_grafi_nx + grafi
             dataset_labels = dataset_labels + [encoded[i]] * len(grafi)
             dataset_degree_seq.extend(actual_degrees)
@@ -265,11 +275,11 @@ class GenerateGraph():
 
 
 
-    def perturb_dataset(self, amount_sigma, verbose=False):
+    def perturb_dataset(self, amount_p, verbose=False):
         dataset_list_perturbed = []
         with Pool(processes=32) as pool:
             l = len(self.dataset.dataset_list)
-            input_list = zip(self.dataset.dataset_list, [amount_sigma]*l, [verbose]*l)
+            input_list = zip(self.dataset.dataset_list, [amount_p] * l, [verbose] * l)
             #dataset_list_perturbed = [perturb_nx_graph(g, amount_sigma, verbose) for g in self.dataset.dataset_list]
             dataset_list_perturbed = pool.map(parallel_perturb_nx_graph, input_list)
         # con l'algoritmo che ho creato la connettività mi aumenta di 1 circa
@@ -278,7 +288,7 @@ class GenerateGraph():
         self.dataset.dataset_list = dataset_list_perturbed
 
 
-def perturb_np_array(np_array, p=10):
+def perturb_np_array(np_array, p=10, verbose=False):
     """
     Perturba una matrice numpy con valori random da una bernoulliana
     le modifiche effettuate da 0 a 1 sono tante quante quelle da 1 a 0, in media
@@ -286,53 +296,63 @@ def perturb_np_array(np_array, p=10):
     :param p: la probabilità non normalizzata di ottenere 1 da una bernoulliana
     :return:
     """
-    #print(f"Original mean: {np_array.sum(axis=1).mean()}")
-    noise = np.random.normal(loc=0.5, scale=sigma, size=np_array.shape)
-    flattened = noise.flatten()
+    if verbose: print(f"Original mean connectivity: {np_array.sum(axis=1).mean()}")
+    uni = np_array == 1
+    zeri = np_array == 0
+    if verbose: print(f"1: {np_array[uni].sum()}, 0:{np.logical_not(np_array[zeri]).sum()}")
+    s_create = np.random.binomial(1, p / zeri.sum(), zeri.sum())
+    s_delete = np.random.binomial(1, p / uni.sum(), uni.sum())
+    if verbose: print(f"elementi che saranno aggiunti: {s_create.sum()}, elementi che saranno tolti: {s_delete.sum()}")
 
-    m1 = flattened > 1
-    percent_great_than_1 = flattened[m1].shape[0] / flattened.shape[0]
-    effective_noise1 = np.where(noise > 1, 1, 0)
-    m2 = flattened < 0
-    percent_less_than_1 = flattened[m2].shape[0] / flattened.shape[0]
-    effective_noise2 = np.where(noise < 0, 0, 0)
-    effective_noise = effective_noise1 + effective_noise2
-    #print(round(effective_noise.sum() / effective_noise.size))
+    # prendo gli 1 e li cambio in base ai True(1) in s_delete con XOR
+    np_array[uni] = np.logical_xor(np_array[uni], s_delete).astype(int)
+    # prendo gli 0 e li cambio in base ai True(1) in s_create con XOR
+    np_array[zeri] = np.logical_xor(np_array[zeri], s_create).astype(int)
+    if verbose: print(f"Nuovi 1: {np_array[uni].sum()}, 0:{np.logical_not(np_array[zeri]).sum()}")
 
-    #perturbed = np_array + effective_noise
-    perturbed = np.logical_xor(np_array, effective_noise).astype(int)
-    #perturbed_pos = np.where(perturbed > 1, 1, perturbed)
-    #perturbed = np.where(perturbed_pos < 0, 0, perturbed_pos)
-    #print(f"Perturbed mean: {perturbed.sum(axis=1).mean()}")
+    if verbose: print(f"Perturbed mean: {np_array.sum(axis=1).mean()}")
 
     # adesso dobbiamo renderla simmetrica
-    perturb_tri = np.triu(perturbed)
+    perturb_tri = np.triu(np_array)
     perturbed_final = perturb_tri + perturb_tri.T - np.diag(perturb_tri.diagonal())
     assert np.allclose(perturbed_final, perturbed_final.T, rtol=1e-05, atol=1e-08), "Errore: la matrice di adiacenza non è simmetrica"
 
-    return perturbed_final, percent_great_than_1, percent_less_than_1, effective_noise
+    return perturbed_final
 
 
-def perturb_nx_graph(nx_graph, sigma=0.5, verbose=False):
+def perturb_nx_graph(nx_graph, p=100, verbose=False):
     np_arr = nx.to_numpy_array(nx_graph)
-    perturbed_array, percent_great_than_1, percent_less_than_1, effective_noise = perturb_np_array(np_arr, sigma)
+    perturbed_array = perturb_np_array(np_arr, p, verbose)
     graph_perturbed = nx.from_numpy_matrix(perturbed_array)
-    if verbose:
-        print(f'% valori > 1: {percent_great_than_1}, valori < -1 : {percent_less_than_1}')
     return graph_perturbed
 def parallel_perturb_nx_graph(args):
-    nx_graph, sigma , verbose = args
-    return perturb_nx_graph(nx_graph, sigma, verbose)
+    nx_graph, p , verbose = args
+    return perturb_nx_graph(nx_graph, p, verbose)
 
 def rndm(a, b, g, size=1):
     """Power-law gen for pdf(x)\propto x^{g-1} for a<=x<=b
     Secondo questa formula il vero esponente è g-1 quindi se voglio una power law con -3 devo passare g=-2
     ---> aggiungo quì 1. ma per 0 non è definita quindi aggiungo 0.99"""
-    g = g + 0.99
+
+    g = g + 1.0
+    #print(f"a: {a}, b: {b}, g: {g}")
     r = np.random.random(size=size)
     ag, bg = a**g, b**g
     return (ag + (bg - ag)*r)**(1./g)
 
+def powerlaw_dist(x0, x1, n, size):
+    """
+    da: https://stackoverflow.com/questions/918736/random-number-generator-that-produces-a-power-law-distribution
+    y is a uniform variate,
+    n is the distribution power,
+    x0 and x1 define the range of the distribution,
+    x is power-law distributed variate
+    x = [(x1 ^ (n + 1) - x0 ^ (n + 1)) * y + x0 ^ (n + 1)] ^ (1 / (n + 1))
+    :return:
+    """
+    n = n + 1
+    y = np.random.random(size=size)
+    ((x1**n - x0**n) * y + x0**n) ** (1. / n)  # risulta la stessa della funzione rndm
 
 import matplotlib.pyplot as plt
 def plott(flattened, sigma):

@@ -20,12 +20,12 @@ def plot_degree_dist(G):
     plt.xscale('log')
     plt.show()
     
-def plot_grafo(G):
-    degrees = dict(G.degree)
-    sizes = [v*20 + v*v/10  for v in degrees.values()]
-    edges_weights = [d['weight']/3 for (u, v, d) in G.edges(data=True)]
-    pos = nx.spring_layout(G, k=1.8, iterations=200) 
-    nx.draw(G, nodelist=list(degrees.keys()), node_size=sizes, pos=pos)
+# def plot_grafo(G):
+#     degrees = dict(G.degree)
+#     sizes = [v*20 + v*v/10  for v in degrees.values()]
+#     edges_weights = [d['weight']/3 for (u, v, d) in G.edges(data=True)]
+#     pos = nx.spring_layout(G, k=1.8, iterations=200)
+#     nx.draw(G, nodelist=list(degrees.keys()), node_size=sizes, pos=pos)
     
 def custom_draw_edges(ax, G, positions, edges_weights):    
     
@@ -45,54 +45,57 @@ def custom_draw_edges(ax, G, positions, edges_weights):
     #plt.setp(ax.spines.values(), visible=False)
     
     
-def plot_grafo2(G, iterations, sizes = None, edges_weights=None, communities=None,  limits=False, nome_file=None, dpi = 96):
+def plot_grafo2(G, iterations, sizes=None, edges_weights=None, communities=None,  limits=False, nome_file=None, dpi=96):
     """
     Calcola le posizioni dei nodi secondo lo spring layout  https://networkx.org/documentation/stable/reference/generated/networkx.drawing.layout.spring_layout.html
     
     """
-    degrees = dict(G.degree)
-    if not sizes:
-        sizes = [v*2 + v*v/10 for v in degrees.values()]
-    if not edges_weights:
-        edges_weights = [d['weight']/30 if 'weight' in d.keys() else 1 for (u, v, d) in G.edges(data=True)]
-    positions = nx.spring_layout(G, k=1.8, iterations=iterations) # default weight='weight' per le edges
-        
-    plt.figure(figsize=(1000/dpi,1000/dpi))
-    
-    print("Draw edges")
+    plt.figure(figsize=(1000 / dpi, 1000 / dpi))
     ax = plt.gca()
-    custom_draw_edges(ax, G, positions, edges_weights)
-    
-    print("Draw nodes")    
-    node_list = np.array(G.nodes())
-    node_size = np.array(sizes)
-    if communities is not None: # matrice con dimensione:  num_classi X num_nodi
-        colors = cm.rainbow(np.linspace(0, 1, len(communities)))
-        for i, c in enumerate(communities):
-            community_nodes = node_list[c.astype(bool)]
-            community_sizes = node_size[c.astype(bool)]
-            nx.draw_networkx_nodes(G, positions, nodelist=community_nodes, node_size=community_sizes, node_color=colors[i].reshape(1,-1), alpha=0.7)
-    else:
-        nx.draw_networkx_nodes(G, positions, node_size=sizes, node_color=node_color, alpha=0.7)
-    
-    print("Plot")
-    plt.tick_params(axis='both',which='both',bottom=False,left=False,labelbottom=False,labelleft=False)
-    plt.setp(ax.spines.values(), visible=False)
+
+    plot_grafo(ax, G, iterations, communities, edges_weights, limits, sizes)
+
     fig = plt.gcf()
     fig.tight_layout()
-    cut = 1.00
-    xmax = cut * max(xx for xx, yy in positions.values())
-    ymax = cut * max(yy for xx, yy in positions.values())
-    if limits:
-        plt.xlim(0, xmax)
-        plt.ylim(0, ymax)
     if(nome_file is not None):
         print("Save graph png")
         plt.savefig(nome_file, dpi=dpi)
         
     print("Show")
     plt.show()
+    return fig
 
+
+def plot_grafo(ax, G, iterations, communities=None, edges_weights=None, limits=None, sizes=None):
+    degrees = dict(G.degree)
+    if not sizes:
+        sizes = [v * 2 + v * v / 10 for v in degrees.values()]
+    if not edges_weights:
+        edges_weights = [d['weight'] / 30 if 'weight' in d.keys() else 1 for (u, v, d) in G.edges(data=True)]
+    positions = nx.spring_layout(G, k=1.8, iterations=iterations)  # default weight='weight' per le edges
+    print("Draw edges")
+    custom_draw_edges(ax, G, positions, edges_weights)
+    print("Draw nodes")
+    node_list = np.array(G.nodes())
+    node_size = np.array(sizes)
+    if communities is not None:  # matrice con dimensione:  num_classi X num_nodi
+        colors = cm.rainbow(np.linspace(0, 1, len(communities)))
+        for i, c in enumerate(communities):
+            community_nodes = node_list[c.astype(bool)]
+            community_sizes = node_size[c.astype(bool)]
+            nx.draw_networkx_nodes(G, positions, nodelist=community_nodes, node_size=community_sizes,
+                                   node_color=colors[i].reshape(1, -1), alpha=0.7, ax = ax)
+    else:
+        nx.draw_networkx_nodes(G, positions, node_size=sizes, node_color=node_color, alpha=0.7, ax = ax)
+    print("Plot")
+    plt.tick_params(axis='both', which='both', bottom=False, left=False, labelbottom=False, labelleft=False)
+    plt.setp(ax.spines.values(), visible=False)
+    cut = 1.00
+    xmax = cut * max(xx for xx, yy in positions.values())
+    ymax = cut * max(yy for xx, yy in positions.values())
+    if limits:
+        plt.xlim(0, xmax)
+        plt.ylim(0, ymax)
 
 
 # find minimum difference between any pair in an unsorted array

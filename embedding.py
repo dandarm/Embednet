@@ -9,6 +9,7 @@ from config_valid import Config, TrainingMode
 class Embedding():
     def __init__(self, embeddings_array, dataset, test_loss_list=None, config_c=None):
         self.embeddings_array = embeddings_array
+        self.dataset = dataset
         self.dataset_nx = dataset.dataset_list
         self.coppie = None
         self.embedding_labels = dataset.labels
@@ -36,7 +37,10 @@ class Embedding():
         if self.original_class is not None:
             for s in self.original_class:
                 # la original class quì sarebbe la distribuzione del grado
-                self.max_degree.append(max(s))
+                if isinstance(s, list):
+                    self.max_degree.append(max(s))
+                else:
+                    self.max_degree.append(s)
         
     def cosdist(self, a,b):
         return dot(a, b)/(norm(a)*norm(b))
@@ -49,7 +53,7 @@ class Embedding():
         #self.coppie = np.array([self.embeddings_array[c,:] for c in coppie_numeric])
         self.coppie = self.embeddings_array[coppie_numeric] # è equivalente alla riga precedente: numpy integer mask, prende la shape della mask
         self.coppie_labels = [(self.embedding_labels[c[0]], self.embedding_labels[c[1]]) for c in coppie_numeric]
-        if self.original_class:
+        if self.original_class: # TODO: correggere perché ora original class contiene anche il modo ID
             self.coppie_orig_class = [(self.original_class[c[0]], self.original_class[c[1]]) for c in coppie_numeric]
             assert len(self.coppie_orig_class) == (NN * (NN-1))/2
 
@@ -62,7 +66,7 @@ class Embedding():
             label_a = self.coppie_labels[i][0]
             label_b = self.coppie_labels[i][1]
             self.cos_distances.append((cos_dist, (label_a, label_b)))
-            if self.original_class:
+            if self.original_class: # TODO: correggere perché ora original class contiene anche il modo ID
                 orig_class_a = self.coppie_orig_class[i][0]
                 orig_class_b = self.coppie_orig_class[i][1]
                 self.distances.append((dist, (label_a, label_b), (orig_class_a, orig_class_b)))
@@ -140,7 +144,7 @@ class Embedding():
         num_nodes = self.config_class.conf['graph_dataset']['Num_nodes']
 
         if self.config_class.conf['graph_dataset']['confmodel']:  # self.original_class ha un'array (degree sequence) per ciascun grafo
-            #self.original_class
+            #self.original_class # TODO: correggere perché ora original class contiene anche il modo ID
             correlazioni = np.corrcoef(self.embeddings_array.flatten(), self.original_class)[0, 1]
             embs = None
         elif self.continuous_p:
@@ -172,34 +176,58 @@ class Embedding():
             self.calc_distances()  # calcola self.difference_of_means
             return self.difference_of_means
 
+class Embedding_per_graph():
+    def __init__(self, graph_embeddings_array, node_embedding_array, node_embeddings_array_id, graph_label, node_label_and_id):
+        self.graph_embeddings_array = graph_embeddings_array
+        self.node_embedding_array = node_embedding_array
+        self.node_embeddings_array_id = node_embeddings_array_id
+        self.graph_label = graph_label
+        self.node_label_and_id = node_label_and_id
 
+        self.node_label = [n[1] for n in list(node_label_and_id)]  # contiene anche i node ID
+
+        self.align_embedding_id_with_degree_sequence_id()
+
+    def align_embedding_id_with_degree_sequence_id(self):
+        #print(self.node_embeddings_array_id)
+        #print(self.node_label)
+        pass
 
 class NodeEmbedding(Embedding):
-    def __init__(self, embeddings_array, dataset, test_loss_list=None, config_c=None):
+    def __init__(self, embeddings_array, embeddings_array_nodeid, dataset, test_loss_list=None, config_c=None):
         super().__init__(embeddings_array, dataset, test_loss_list, config_c)
+        self.embeddings_array_nodeid = embeddings_array_nodeid
 
-        if self.original_class is not None:
-            self.get_emb_pergraph_cm()
-            self.calc_max_degree()
+        #if self.original_class is not None:
+        #    self.get_emb_per_graph_class_cm()
+        #    self.calc_max_degree()
 
-    def get_emb_pergraph_cm(self):
+    def get_emb_per_graph_class_cm(self, graph_embedding=None):
         """
         Suddivide i node embeddings per ciascun grafo, in self.node_emb_pergraph
-        -> riprendo gli embeddings suddividendo i nodi come sono le lunghezze di original class
+        -> riprendo gli embeddings suddividendo i nodi come sono le lunghezze di original class (in questo caso la sequenza di grado, che quindi è lunga come il num di nodi)
         poiché gli embedding presi come output della rete vengono dal dataloader che suddivide in batch size, non in Num_grafi_per_tipo,
         né tantomeno in quanti nodi sono rimasti dopo il pruning dei nodi sconnessi, come cioè mi serve ora
         """
-        self.node_emb_pergraph = []
+        self.node_emb_pergraphclass = []
         r = 0
-        for s in self.original_class:
-            l = len(s)
-            self.node_emb_pergraph.append(self.embeddings_array[r:r + l].flatten())
+        for i, s in enumerate(self.original_class):  # tanti elementi quanti sono i grafi
+            exp = self.dataset.labels[i]
+            l = len(s)  # s ha tanti elementi quanti sono i nodi
+            g_emb = None
+            if graph_embedding is not None:
+                g_emb = graph_embedding[i]
+            # poiché nel training prepare ho shufflato coerentemente sia dataset_pyg che original_class che labels,
+            # anche embeddings_array che arriva dal dataloader con shuffle=false ha il loro stesso ordine
+            toappend = Embedding_per_graph(g_emb, self.embeddings_array[r:r + l], self.embeddings_array_nodeid[r:r + l], exp, s)
+            self.node_emb_pergraphclass.append(toappend)
             r += l
-        return self.node_emb_pergraph
+            #print(f"l: {l}, r: {r}, toappend: {len(toappend)}, differenza: {(r + l)-r}")
+        return self.node_emb_pergraphclass
 
     def get_emb_pergraph_cost(self):
         self.node_emb_pergraph = []
-        Num_grafi_per_tipo = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo']
+        Num_grafi_per_tipo = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo']  # siamo sicuri che sia questo e non Num_nodes?
         tot = len(self.dataset_nx)
         j = 0
         for i in range(tot):
@@ -216,7 +244,7 @@ class NodeEmbedding(Embedding):
         for i, emb in enumerate(self.node_emb_pergraph):
             #print(f"emb len: {len(emb)}")
             #print(f"015: {emb_i[0:3]}")
-            class_i = np.array(self.original_class[i])
+            class_i = np.array(self.original_class[i]) # TODO: correggere perché ora original class contiene anche il modo ID
             #print(f"len class_i: {len(class_i)}")
             corr = np.corrcoef(emb, class_i)[0, 1]
             correlations.append(corr)
