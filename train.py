@@ -35,7 +35,6 @@ class Trainer():
         self.lr = self.conf['training']['learning_rate']
         self.epochs = self.conf['training']['epochs']
         self.batch_size = self.conf['training']['batch_size']
-
         self.last_layer_neurons = self.config_class.get_mode()['last_neuron']
         self.mode = self.conf['training']['mode']    # 'classification'  or 'regression'  or 'unsupervised'
 
@@ -45,7 +44,6 @@ class Trainer():
             self.device = "cpu"
 
         self.set_optimizer(model)
-
         self.criterion = self.config_class.get_mode()['criterion']
         # if criterion == 'MSELoss':
         #     self.criterion = torch.nn.MSELoss()
@@ -57,6 +55,11 @@ class Trainer():
         self.dataset = None
         #self.myExplained_variance = ExplainedVarianceMetric(dimension=self.last_layer_neurons)
         self.last_accuracy = None
+        self.accuracy_list = None
+        self.test_loss_list = None
+
+        self.graph_embedding_per_epoch = []
+        self.node_embedding_per_epoch = []
 
     def set_optimizer(self, model):
         # self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr , )
@@ -68,6 +71,9 @@ class Trainer():
         decayRate = 0.96
         # self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
 
+    def reinit_conf_file(self, config_file):
+        config_c = Config(config_file)
+        self.reinit_conf(config_c)
     def reinit_conf(self, config_class):
         self.config_class = config_class
         self.conf = self.config_class.conf
@@ -118,7 +124,8 @@ class Trainer():
     def test(self, loader):
         self.model.eval()
         running_loss = 0
-        embeddings_array = []
+        graph_embeddings_array = []
+        node_embeddings_array = []
 
         for data in loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
@@ -129,20 +136,19 @@ class Trainer():
             #print(f'out: {out}')
             loss = self.criterion(out, target)  # Compute the loss.
             running_loss += loss.item()
-            emb = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
-            embeddings_array.extend(emb.cpu().detach().numpy())
             #print(f"out and target shape")
             #print(emb.shape, target.shape)
 
+        graph_embeddings_array, node_embeddings_array, _ = self.take_embedding(loader)
+
         #calcola la PCA
-        embeddings_array = np.array(embeddings_array)
-        obj = PCA(embeddings_array)
+        obj = PCA(np.array(graph_embeddings_array))
         var_exp, _, _ = obj.get_ex_var()
         #var_exp = torch.as_tensor(np.array(var_exp))
         #var_exp = self.myExplained_variance(emb, target)  # sul singolo batch
-        return running_loss / self.dataset.test_len, var_exp, embeddings_array
+        return running_loss / self.dataset.test_len, var_exp, graph_embeddings_array, node_embeddings_array
 
-    def take_embedding(self, loader, type_embedding='graph'):
+    def take_embedding(self, loader, type_embedding='both'):
         self.model.eval()
         graph_embeddings_array = []
         node_embeddings_array = []
@@ -150,24 +156,24 @@ class Trainer():
         for data in loader:
             if type_embedding == 'graph':
                 out = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
-                graph_embeddings_array.extend(out)
+                graph_embeddings_array.extend(out.cpu().detach().numpy())
             elif type_embedding == 'node':
                 out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
-                node_embeddings_array.extend(out)
-                node_embeddings_array_id.extend(data.id)
+                node_embeddings_array.extend(out.cpu().detach().numpy())
+                #node_embeddings_array_id.extend(data.id) TODO: rimettere
             elif type_embedding == 'both':  # quì ho garantito che i graph embedding sono ordinati come i node_embedding
                 node_out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
-                node_embeddings_array.extend(node_out)
-                node_embeddings_array_id.extend(data.id)
+                node_embeddings_array.extend(node_out.cpu().detach().numpy())
+                #node_embeddings_array_id.extend(data.id) TODO: rimettere
                 graph_out = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
-                graph_embeddings_array.extend(graph_out)
+                graph_embeddings_array.extend(graph_out.cpu().detach().numpy())
 
         return graph_embeddings_array, node_embeddings_array, node_embeddings_array_id
 
 
     def accuracy(self, loader):
         self.model.eval()
-        accuracy_class = Accuracy()
+        # accuracy_class = Accuracy()
         correct = 0
         for data in loader:  # Iterate in batches over the training/test dataset.
             out = self.model(data.x, data.edge_index, data.batch)
@@ -208,7 +214,7 @@ class Trainer():
         self.dataset.prepare(parallel)
 
     def launch_training(self, verbose=False):
-        test_loss, var_exp, embeddings_array = self.test(self.dataset.test_loader)
+        test_loss, var_exp, graph_embeddings_array, node_embeddings_array = self.test(self.dataset.test_loader)
         print(f'Before training Test loss: {test_loss}')
 
         if self.epochs == 0:
@@ -242,15 +248,23 @@ class Trainer():
 
 
         train_loss_list = []
-        test_loss_list = []
+        self.test_loss_list = []
+        self.accuracy_list = []
+
         print(f"Run training for {self.epochs} epochs")
         with tf.compat.v1.Graph().as_default():
             summary_writer = tf.compat.v1.summary.FileWriter(log_dir_variance)
             epoch = 0
             for epoch in range(self.epochs):
                 train_loss = self.train()
-                test_loss, var_exp, embeddings_array = self.test(self.dataset.test_loader)
+                test_loss, var_exp, graph_embeddings_array_test, node_embeddings_array_test = self.test(self.dataset.test_loader)
                 test_acc = self.accuracy(self.dataset.test_loader)
+
+                # prendo l'embedding a ogni epoca
+                all_data_loader = DataLoader(self.dataset.dataset_pyg, batch_size=self.dataset.bs, shuffle=False)
+                graph_embeddings_array, node_embeddings_array, _ = self.take_embedding(all_data_loader)
+                self.graph_embedding_per_epoch.append(graph_embeddings_array)
+                self.node_embedding_per_epoch.append(node_embeddings_array)
                 #expvar = self.myExplained_variance.compute()
                 # add explained variance to tensorboard
                 add_histogram(summary_writer, "Explained variance", var_exp, step=epoch)
@@ -262,14 +276,14 @@ class Trainer():
                 # writer.add_scalars(f'Accuracy', {'Train': train_acc, 'Test': test_acc}, epoch)
                 # print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')
                 train_loss_list.append(train_loss)
-                test_loss_list.append(test_loss)
+                self.test_loss_list.append(test_loss)
+                self.accuracy_list.append(test_acc)
                 # train_acc_list.append(train_acc)
                 # test_acc_list.append(test_acc)
                 print_each_step = self.conf['logging']['train_step_print']
-                if epoch % print_each_step == 0 and verbose:
-                    print(f'Epoch: {epoch}\tTest loss: {test_loss}')  # \t Explained Variance: {var_exp}')
-                    #print(f'Embeddings: {embeddings_array}')
-                    #print('\n')
+                if epoch % print_each_step == 0:
+                    if verbose:
+                        print(f'Epoch: {epoch}\tTest loss: {test_loss}')  # \t Explained Variance: {var_exp}')
 
                 # if test_loss > best_loss:  # check for early stopping
                 #    best_loss = test_loss
@@ -283,7 +297,7 @@ class Trainer():
         #writer_variance.flush()
         #self.myExplained_variance.reset()
         self.last_accuracy = test_acc
-        return train_loss_list, test_loss_list  # , train_acc_list, test_acc_list, last accuracy
+        return train_loss_list, self.test_loss_list  # , train_acc_list, test_acc_list
 
 
 class GeneralDataset:

@@ -139,7 +139,7 @@ class Embedding():
                 mask.append(False)
         return mask
 
-    def calc_correlation(self):
+    def calc_graph_emb_correlation(self):
         # solo nel caso della dimensione di embedding = 1
         num_nodes = self.config_class.conf['graph_dataset']['Num_nodes']
 
@@ -170,7 +170,7 @@ class Embedding():
 
     def get_metrics(self, num_emb_neurons):
         if num_emb_neurons == 1:
-            correlazioni, error, embeddings_per_cluster = self.calc_correlation()
+            correlazioni, error, embeddings_per_cluster = self.calc_graph_emb_correlation()
             return correlazioni, error, embeddings_per_cluster
         else:
             self.calc_distances()  # calcola self.difference_of_means
@@ -197,6 +197,7 @@ class NodeEmbedding(Embedding):
     def __init__(self, embeddings_array, embeddings_array_nodeid, dataset, test_loss_list=None, config_c=None):
         super().__init__(embeddings_array, dataset, test_loss_list, config_c)
         self.embeddings_array_nodeid = embeddings_array_nodeid
+        self.node_emb_pergraphclass = []
 
         #if self.original_class is not None:
         #    self.get_emb_per_graph_class_cm()
@@ -209,7 +210,7 @@ class NodeEmbedding(Embedding):
         poiché gli embedding presi come output della rete vengono dal dataloader che suddivide in batch size, non in Num_grafi_per_tipo,
         né tantomeno in quanti nodi sono rimasti dopo il pruning dei nodi sconnessi, come cioè mi serve ora
         """
-        self.node_emb_pergraphclass = []
+
         r = 0
         for i, s in enumerate(self.original_class):  # tanti elementi quanti sono i grafi
             exp = self.dataset.labels[i]

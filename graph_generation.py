@@ -67,7 +67,7 @@ class GenerateGraph():
                 dataset = self.dataset_regression_ER()
 
         elif self.type == GraphType.Regular:
-            dataset = self.dataset_regular()
+            dataset = self.dataset_regular(parallel=parallel)
 
         elif self.type == GraphType.CM:
             dataset = self.dataset_classification_CM(parallel=parallel)
@@ -99,19 +99,21 @@ class GenerateGraph():
         print(round(np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() for t in grafi]).mean(), 3), end=' ')
         print(f'p={p}')
 
-    def create_regular(self, Num_nodes, d, N_graphs):
+    def create_regular(self, Num_nodes, d, N_graphs, parallel=True):
         """
             Num_nodes:  Graph nodes number
             d: Degree of each node
             N_graphs: quanti grafi restituire
             """
         grafi = []
-        with Pool(processes=32) as pool:
-            input_list = zip([d] * N_graphs, [Num_nodes] * N_graphs)
-            grafi = pool.map(self.dummy_nx_random_reg_graph, input_list)
-        # for i in range(N_graphs):
-        #     gr = nx.random_regular_graph(d=d, n=Num_nodes)
-        #     grafi.append(gr)
+        if parallel:
+            with Pool(processes=32) as pool:
+                input_list = zip([d] * N_graphs, [Num_nodes] * N_graphs)
+                grafi = pool.map(self.dummy_nx_random_reg_graph, input_list)
+        else:
+            for i in range(N_graphs):
+                gr = nx.random_regular_graph(d=d, n=Num_nodes)
+                grafi.append(gr)
 
         self.info_connectivity(grafi, d)
         return grafi
@@ -192,7 +194,9 @@ class GenerateGraph():
                 dataset_grafi_nx = dataset_grafi_nx + grafi_p
                 dataset_labels.extend(actual_probs)
 
-        self.dataset = GeneralDataset(dataset_grafi_nx, np.array(dataset_labels))
+        # TODO: original class lo facciamo diventare un target vettoriale
+        original_class = [[i] for i in dataset_labels]
+        self.dataset = GeneralDataset(dataset_grafi_nx, np.array(dataset_labels), original_class=original_class)
         return self.dataset
 
     def dataset_regression_ER(self):
@@ -226,7 +230,7 @@ class GenerateGraph():
 
         return self.dataset
 
-    def dataset_regular(self):
+    def dataset_regular(self, parallel=True):
         N = self.conf['graph_dataset']['Num_nodes']
         Num_grafi_per_tipo = self.conf['graph_dataset']['Num_grafi_per_tipo']
         list_degree = self.conf['graph_dataset']['list_degree']
@@ -234,16 +238,21 @@ class GenerateGraph():
 
         dataset_grafi_nx = []
         dataset_labels = []
-        encoded = self.hot_encoding(list_degree)
+        if self.config_class.modo == TrainingMode.mode1:
+            encoded = self.hot_encoding(list_degree)
+        elif self.config_class.modo == TrainingMode.mode2:
+            encoded = [0, 1]
+
         n_classi = len(list_degree)
         onehot_matrix = np.eye(n_classi)
         #assert (onehot_matrix == encoded).all(), "Errore nella costruzione del 1-hot encoding"
         for i, d in enumerate(list_degree):
-            grafi_d = self.create_regular(N, d, Num_grafi_per_tipo)
+            grafi_d = self.create_regular(N, d, Num_grafi_per_tipo, parallel=parallel)
             dataset_grafi_nx = dataset_grafi_nx + grafi_d
             dataset_labels = dataset_labels + [encoded[i]] * len(grafi_d)
 
-        self.dataset = GeneralDataset(dataset_grafi_nx, np.array(dataset_labels))
+        original_class = [[i] for i in dataset_labels]
+        self.dataset = GeneralDataset(dataset_grafi_nx, np.array(dataset_labels), original_class=original_class)
         return self.dataset
 
     def dataset_classification_CM(self, parallel=True):

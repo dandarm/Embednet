@@ -9,7 +9,7 @@ from tqdm import tqdm
 from models import Inits
 from train import Trainer, GeneralDataset
 from embedding import Embedding
-from experiments import experiment_graph_embedding, experiment_node_emb_cm
+from experiments import experiment_graph_embedding, experiment_node_embedding, experiment_node_emb_cm
 from config_valid import Config, TrainingMode
 
 import torch
@@ -24,13 +24,16 @@ def studio_embedding():
     config_file = "configs.yml"
     experiment_graph_embedding(config_file)
 
+def studio_init(config_file):
+    methods = [Inits.xavier_uniform, Inits.kaiming_uniform, Inits.uniform, 'esn']
+    experiment_node_emb_cm(config_file, methods, ripetiz=30)
 
 
 if __name__ == "__main__":
     #studio_embedding()
     config_file = "configurations/classification_cm.yml"
-    methods = [Inits.xavier_uniform, Inits.kaiming_uniform, Inits.uniform, 'esn']
-    experiment_node_emb_cm(config_file, methods, ripetiz=30)
+    experiment_node_embedding(config_file)
+
 
 
 

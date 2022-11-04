@@ -151,7 +151,7 @@ def is_outlier(points, thresh=3.5):
 
     return modified_z_score > thresh
 
-def plot_wo_outliers(x_array):
+def array_wo_outliers(x_array):
     x_array = np.array(x_array)
     filtered = x_array[~is_outlier(x_array)]
     return filtered
