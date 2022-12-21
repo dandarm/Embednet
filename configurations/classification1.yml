@@ -4,31 +4,39 @@ graph_dataset:
     confmodel: False
     continuous_p: False
     random_node_feat: False
-    list_p: [0.05, 0.3] #, 0.3, 0.4, 0.5, 0.6]
+    list_p: [0.05, 0.1] #, 0.3, 0.4, 0.5, 0.6]
     range_p: [0.05, 0.6]
     Num_nodes: 300
-    Num_grafi_per_tipo: 300
+    Num_grafi_per_tipo: 500
     Num_grafi_totali: 1000
     list_degree: [10, 20, 30]
+    
     
 training:
     #mode1 = 'classification', CrossEntropyLoss, '1-hot', 'n_class'
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
-    mode: 'mode1'
+    mode: 'mode2'
     learning_rate: 0.01
-    epochs: 2500
-    batch_size: 150
+    epochs: 20000
+    batch_size: 700
     percentage_train: 0.7
-    earlystop_patience: 10000
+    earlystop_patience: 250
+    epochs_model_checkpoint: [-1]
+    every_epoch_embedding: False
+    shuffle_dataset: True
     
 model:
     last_layer_dense: True
-    neurons_per_layer: [1, 8, 2]  # il primo elemento deve essere uguale alla dimensione delle feature del nodo
+    GCNneurons_per_layer: [1, 16, 16, 1]
+    neurons_last_linear: [8, 8, 1]
+    freezeGCNlayers: True
     autoencoder: False
     put_batchnorm: False
     final_pool_aggregator: True
+    put_dropout: False
     node_features_dim: 1
+    init_weights: 'eye'  #'xavier_normal'
     
 logging:
     train_step_print: 100

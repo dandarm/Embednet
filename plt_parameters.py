@@ -1,4 +1,6 @@
 import matplotlib as mpl
+import matplotlib as mpl
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cycler
 #matplotlib.matplotlib_fname()
@@ -23,5 +25,33 @@ def init_params():
     #plt.rcParams["figure.figsize"] = (20,23)
     #plt.figure(figsize=(12, 6))
 
+    plt.rc('figure', titlesize='large')
+    plt.rc('axes', titlesize='large')
+    plt.rcParams.update({'figure.titlesize': 'large'})
+    plt.rcParams.update({'axes.titlesize': 'large'})
+    plt.rcParams['axes.labelsize'] = 16
+    plt.rcParams['axes.titlesize'] = 18
+    plt.rcParams['figure.titlesize'] = 20
     #plt.xlabel('Degrees', fontsize=16);
     #plt.ylabel('Number of nodes', fontsize=16);
+
+
+    # colori
+
+    colors_to_cycle = get_colors_to_cycle_rainbow8()
+    plt.rc('axes', prop_cycle=(cycler('color', colors_to_cycle)))
+
+
+
+def get_colors_to_cycle_rainbow8():
+    n = 8
+    order = np.array([6, 0, 3, 1, 7, 5, 2, 4]) + 0.1
+    return [plt.get_cmap('gist_rainbow')(1. * i/n) for i in order]
+
+def get_colors_to_cycle_rainbowN(n):
+    order = np.arange(n)
+    return [plt.get_cmap('gist_rainbow')(1. * i/n) for i in order]
+
+def get_colors_to_cycle_sequential(n):
+    order = np.arange(n)
+    return [plt.get_cmap('Spectral')(1. * i / n) for i in order] # 'winter'

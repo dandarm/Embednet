@@ -1,20 +1,21 @@
-import random
 import datetime
 import os
+import copy
 from time import time
 from tqdm import tqdm
-from multiprocessing import Pool
+
 from config_valid import Config
 
 import numpy as np
 import torch
+from torch.nn import Softmax
 from torch_geometric.loader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tensorboardX import SummaryWriter as WriterX
-from torch_geometric.utils.convert import from_networkx
-import torch_geometric.transforms as T
+
 import tensorflow as tf
 from torchmetrics import Accuracy
+from sklearn.metrics import f1_score
 
 from pytorchtools import EarlyStopping
 from metrics import ExplainedVarianceMetric
@@ -22,28 +23,38 @@ from TorchPCA import PCA
 
 from utils_tf import add_histogram
 from config_valid import TrainingMode
+from models import GCN, view_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
+from Dataset import Dataset, GeneralDataset
+from graph_generation import GenerateGraph
+from plot_model import plot_model
 
 
 
 class Trainer():
 
-    def __init__(self, model, config_class, verbose=False):
-        self.model = model
+    def __init__(self, config_class, verbose=False):
+        self.model = None
+        self.model_checkpoint = None
+        self.best_model = None
         self.config_class = config_class
         self.conf = self.config_class.conf
 
+        self.percentage_train = self.conf['training']['percentage_train']
         self.lr = self.conf['training']['learning_rate']
         self.epochs = self.conf['training']['epochs']
         self.batch_size = self.conf['training']['batch_size']
         self.last_layer_neurons = self.config_class.get_mode()['last_neuron']
-        self.mode = self.conf['training']['mode']    # 'classification'  or 'regression'  or 'unsupervised'
+        #self.mode = self.conf['training']['mode']    # 'classification'  or 'regression'  or 'unsupervised'
+        self.epochs_checkpoint = self.conf['training'].get('epochs_model_checkpoint')
+        #self.every_epoch_embedding = self.conf['training'].get('every_epoch_embedding')
+        self.shuffle_dataset = self.conf['training']['shuffle_dataset']
+        self.save_best_model = self.conf['training']['save_best_model']
 
         if self.conf['device'] == 'gpu':
             self.device = torch.device('cuda')
         else:
             self.device = "cpu"
 
-        self.set_optimizer(model)
         self.criterion = self.config_class.get_mode()['criterion']
         # if criterion == 'MSELoss':
         #     self.criterion = torch.nn.MSELoss()
@@ -52,14 +63,43 @@ class Trainer():
         if verbose:
             print(self.criterion)
 
+        self.softmax = Softmax(dim=1)
+
+        self.gg = None  # class generate_graph
         self.dataset = None
         #self.myExplained_variance = ExplainedVarianceMetric(dimension=self.last_layer_neurons)
         self.last_accuracy = None
         self.accuracy_list = None
+        self.f1score_list = None
         self.test_loss_list = None
+        self.train_loss_list = None
+        self.last_epoch = None
 
         self.graph_embedding_per_epoch = []
         self.node_embedding_per_epoch = []
+        self.output_per_epoch = []
+
+    def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False):
+        """
+        Returns the GCN model given the class of configurations
+        :param config_class:
+        :param verbose:
+        :return:
+        """
+        if verbose: print("Initialize model")
+        if self.config_class.conf['device'] == 'gpu':
+            device = torch.device('cuda')
+        else:
+            device = "cpu"
+        model = GCN(self.config_class)
+        model.to(device)
+        if init_weights_gcn is not None:
+            modify_parameters(model, init_weights_gcn)
+        if init_weights_lin is not None:
+            modify_parameters_linear(model, init_weights_lin)
+        if verbose:
+            print(model)
+        return model
 
     def set_optimizer(self, model):
         # self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr , )
@@ -83,17 +123,53 @@ class Trainer():
         self.batch_size = self.conf['training']['batch_size']
 
         self.last_layer_neurons = self.config_class.get_mode()['last_neuron']
-        self.mode = self.conf['training']['mode']  # 'classification'  or 'regression'  or 'unsupervised'
+        #self.mode = self.conf['training']['mode']  # 'classification'  or 'regression'  or 'unsupervised'
 
         if self.conf['device'] == 'gpu':
             self.device = torch.device('cuda')
         else:
             self.device = "cpu"
 
-    def reinit_model(self, new_model):
-        self.model = new_model
-        self.model.to(self.device)
+    def load_model(self, model):
+        self.model = model
+        #self.model.to(self.device)
         self.set_optimizer(self.model)
+
+    def init_dataset(self, parallel=True, verbose=False):
+        """
+        la classe GenerateGraph contiene un dataset in formato NetworkX
+        :param parallel:
+        :param verbose:
+        :return:
+        """
+        self.gg = GenerateGraph(self.config_class)
+        self.gg.initialize_dataset(parallel=parallel)  # istanzia il dataset networkx
+
+    def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
+        print("Loading Dataset...")
+        self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
+        self.dataset.prepare(self.shuffle_dataset, parallel)
+
+    def init_all(self, parallel=True, verbose=False):
+        """
+        Inizializza modello e datasest
+        :param parallel:
+        :param verbose: se True ritorna il plot object del model
+        :return:
+        """
+        init_weigths_method = self.config_class.init_weights_mode
+        w = new_parameters(self.init_GCN(), init_weigths_method)
+        model = self.init_GCN(init_weights_gcn=w, verbose=verbose)
+        self.load_model(model)
+        self.init_dataset(parallel=parallel, verbose=verbose)
+        self.load_dataset(self.gg.dataset, parallel=False)  # parallel false perché con load_from_networkx non c'è nulla da fare...
+        if verbose:
+            batch = self.dataset.sample_dummy_data()
+            plot = plot_model(self.model, batch)
+            return plot
+
+
+
 
     def correct_shape(self, y):
         if self.last_layer_neurons == 1:
@@ -119,6 +195,8 @@ class Trainer():
             self.optimizer.zero_grad()  # Clear gradients.
             # self.scheduler.step()
             running_loss += loss.item()
+            del loss
+            del out
         return running_loss / self.dataset.train_len
 
     def test(self, loader):
@@ -126,7 +204,6 @@ class Trainer():
         running_loss = 0
         graph_embeddings_array = []
         node_embeddings_array = []
-
         for data in loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
             target = data.y
@@ -138,37 +215,89 @@ class Trainer():
             running_loss += loss.item()
             #print(f"out and target shape")
             #print(emb.shape, target.shape)
+            del loss
+            del out
 
-        graph_embeddings_array, node_embeddings_array, _ = self.take_embedding(loader)
+        graph_embeddings_array, node_embeddings_array, _, final_output = self.get_embedding(loader)
 
         #calcola la PCA
-        obj = PCA(np.array(graph_embeddings_array))
+        obj = PCA(graph_embeddings_array)
         var_exp, _, _ = obj.get_ex_var()
         #var_exp = torch.as_tensor(np.array(var_exp))
         #var_exp = self.myExplained_variance(emb, target)  # sul singolo batch
         return running_loss / self.dataset.test_len, var_exp, graph_embeddings_array, node_embeddings_array
 
-    def take_embedding(self, loader, type_embedding='both'):
+    def take_embedding_all_data(self, type_embedding='both'):
+        all_data_loader = self.dataset.get_all_data_loader()
+        return self.get_embedding(all_data_loader, type_embedding=type_embedding)
+    def take_embedding_test(self, type_embedding='both'):
+        return self.get_embedding(self.dataset.test_loader, type_embedding=type_embedding)
+    def take_embedding_train(self, type_embedding='both'):
+        return self.get_embedding(self.dataset.train_loader, type_embedding=type_embedding)
+
+    def get_embedding(self, loader, type_embedding='both'):
         self.model.eval()
         graph_embeddings_array = []
         node_embeddings_array = []
         node_embeddings_array_id = []
+        final_output = []
         for data in loader:
             if type_embedding == 'graph':
                 out = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
-                graph_embeddings_array.extend(out.cpu().detach().numpy())
+                to = out.cpu().detach().numpy()
+                graph_embeddings_array.extend(to)
             elif type_embedding == 'node':
                 out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
-                node_embeddings_array.extend(out.cpu().detach().numpy())
+                to = out.cpu().detach().numpy()
+                node_embeddings_array.extend(to)
                 #node_embeddings_array_id.extend(data.id) TODO: rimettere
             elif type_embedding == 'both':  # quì ho garantito che i graph embedding sono ordinati come i node_embedding
                 node_out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
-                node_embeddings_array.extend(node_out.cpu().detach().numpy())
+                to = node_out.cpu().detach().numpy()
+                #print(f"node emb size: {to.nbytes}")
+                node_embeddings_array.extend(to)
                 #node_embeddings_array_id.extend(data.id) TODO: rimettere
                 graph_out = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
-                graph_embeddings_array.extend(graph_out.cpu().detach().numpy())
+                to = graph_out.cpu().detach().numpy()
+                #print(f"graph emb size: {to.nbytes}")
+                graph_embeddings_array.extend(to)
 
-        return graph_embeddings_array, node_embeddings_array, node_embeddings_array_id
+                out = self.model(data.x, data.edge_index, data.batch)
+                to = out.cpu().detach().numpy()
+                final_output.extend(to)
+
+        graph_embeddings_array = np.array(graph_embeddings_array)
+        node_embeddings_array = np.array(node_embeddings_array)
+        return graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output
+
+    def take_embedding_gpuversion(self, loader, type_embedding='both'):
+        print("take_embedding_gpuversion")
+        self.model.eval()
+        node_embeddings_array_id = []
+        graph_embeddings_array = torch.empty((1,1), device=torch.device('cuda'))
+        node_embeddings_array = torch.empty((1,1), device=torch.device('cuda'))
+        final_output = torch.empty((1, 1), device=torch.device('cuda'))
+        for data in loader:
+            if type_embedding == 'graph':
+                out = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
+                graph_embeddings_array = torch.cat((graph_embeddings_array, out))
+            elif type_embedding == 'node':
+                out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
+                node_embeddings_array = torch.cat((node_embeddings_array, out))
+                #node_embeddings_array_id.extend(data.id) TODO: rimettere
+            elif type_embedding == 'both':  # quì ho garantito che i graph embedding sono ordinati come i node_embedding
+                node_out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
+                #print(f"node_out shape : {node_out.shape}")
+                node_embeddings_array = torch.cat((node_embeddings_array, node_out))
+                #node_embeddings_array_id.extend(data.id) TODO: rimettere
+                graph_out = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
+                #print(f"graph_out shape : {graph_out.shape}")
+                graph_embeddings_array = torch.cat((graph_embeddings_array, graph_out))
+
+                out = self.model(data.x, data.edge_index, data.batch)
+                final_output = torch.cat((final_output, out))
+
+        return graph_embeddings_array[1:], node_embeddings_array[1:], node_embeddings_array_id, final_output[1:]
 
 
     def accuracy(self, loader):
@@ -186,12 +315,10 @@ class Trainer():
                 label = target.argmax(dim=1)
                 correct += int((pred == label).sum())
             else:
-                #pred = out.argmax(dim=1)
-                #label = target.argmax(dim=-1)
-                #print(out.flatten())
-                #print(target)
                 correct += self.binary_accuracy(target, out.flatten())
 
+            #f1 = self.calc_f1score(target.detach().cpu(), out.detach().cpu())  TODO:  riprovare a chiamare prima detach e poi cpu
+            f1 = 0
 
             out2 = out.to(torch.device('cuda'))
             target2 = target.to(torch.device('cuda'), dtype=torch.int16)
@@ -201,7 +328,7 @@ class Trainer():
             #correct += accuracy_class(out2.cpu(), target2.cpu())
             #correct += int((out == target).sum())  # Check against ground-truth labels.
 
-        return correct / len(loader.dataset)  # Derive ratio of correct predictions.
+        return correct / len(loader.dataset), f1  # Derive ratio of correct predictions.
 
     def binary_accuracy(self, y_true, y_prob):
         assert y_true.ndim == 1, "dim not 1"
@@ -209,30 +336,67 @@ class Trainer():
         y_prob = y_prob > 0.5
         return (y_true == y_prob).sum().item()# / y_true.size(0)
 
-    def load_dataset(self, dataset, percentage_train=0.7, parallel=False):  # dataset è di classe GeneralDataset
-        self.dataset = Dataset.from_super_instance(percentage_train, self.batch_size, self.device, self.config_class, dataset)
-        self.dataset.prepare(parallel)
+    def calc_f1score(self, y_true, y_pred):
+        if self.config_class.modo == TrainingMode.mode2:
+            pred = y_pred > 0.5
+            label = y_true
+        else:
+            y_pred = self.softmax(y_pred)
+            pred = torch.argmax(y_pred, dim=1)  # Use the class with highest probability.
+            label = torch.argmax(y_true, dim=1)
+        #print(y_true, y_pred)
+        f1 = f1_score(label, pred, average=None)
+        #print(f"f1:{f1}")
+        return f1
 
-    def launch_training(self, verbose=False):
+
+    def launch_training(self, verbose=0):
+        self.train_loss_list = []
+        self.test_loss_list = []
+        self.accuracy_list = []
+        self.f1score_list = []
+        self.graph_embedding_per_epoch = []
+        self.node_embedding_per_epoch = []
+        self.output_per_epoch = []
+
         test_loss, var_exp, graph_embeddings_array, node_embeddings_array = self.test(self.dataset.test_loader)
-        print(f'Before training Test loss: {test_loss}')
+        all_data_loader = DataLoader(self.dataset.dataset_pyg, batch_size=self.dataset.bs, shuffle=False)
+        alldata_loss, var_exp, all_graph_embeddings_array, all_node_embeddings_array = self.test(all_data_loader)
+        if self.config_class.modo != TrainingMode.mode3:
+            test_acc, test_f1score = self.accuracy(self.dataset.test_loader)
+        else:
+            test_acc = None
+            test_f1score = None
+        if verbose > 1:
+            print(f'Before training Test loss: {test_loss}')
+            print(f"test accuracy iniziale: {test_acc}")
+            print(f'Before training Training + Test loss: {alldata_loss}')
+
+
+        self.test_loss_list.append(test_loss)
+        self.accuracy_list.append(test_acc)
+        self.f1score_list.append(test_f1score)
+        self.last_accuracy = test_acc
+        self.last_epoch = 0
+        self.graph_embedding_per_epoch.append(all_graph_embeddings_array)
+        self.node_embedding_per_epoch.append(all_node_embeddings_array)
 
         if self.epochs == 0:
-            return None, None
+            return
 
         nowstr = datetime.datetime.now().strftime("%d%b_%H-%M-%S")
         neurons_str = self.config_class.layer_neuron_string()
         expstr = f"lr-{self.lr}_epochs{self.epochs}_bs{self.batch_size}_neurons-{neurons_str}"
         LOG_DIR = f"runs/{expstr}_{nowstr}"
-        if verbose:
-            print(LOG_DIR)
+        if verbose > 0: print(LOG_DIR)
         writer = SummaryWriter(LOG_DIR)
+        writerX = WriterX(LOG_DIR)
 
         log_dir_variance = f"runs/ExpVar_{nowstr}"
         #writer_variance = SummaryWriter(log_dir_variance)
         # summary_variance = tf.summary.create_file_writer(log_dir_variance)
 
-        # best_loss = 0 # for early stopping
+        best_loss = 100  # for model saving
         early_stopping = EarlyStopping(patience=self.conf['training']['earlystop_patience'],
                                        delta=0.00001,
                                        initial_delta=0.0004,
@@ -246,241 +410,79 @@ class Trainer():
         #                              minvalue=0.00002)
 
 
-
-        train_loss_list = []
-        self.test_loss_list = []
-        self.accuracy_list = []
-
-        print(f"Run training for {self.epochs} epochs")
+        if verbose > 0: print(f"Run training for {self.epochs} epochs")
         with tf.compat.v1.Graph().as_default():
-            summary_writer = tf.compat.v1.summary.FileWriter(log_dir_variance)
+            #summary_writer = tf.compat.v1.summary.FileWriter(log_dir_variance) TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
             epoch = 0
-            for epoch in range(self.epochs):
+            for epoch in tqdm(range(self.epochs), total=self.epochs):
                 train_loss = self.train()
                 test_loss, var_exp, graph_embeddings_array_test, node_embeddings_array_test = self.test(self.dataset.test_loader)
-                test_acc = self.accuracy(self.dataset.test_loader)
+                if self.config_class.modo != TrainingMode.mode3:
+                    test_acc, test_f1score = self.accuracy(self.dataset.test_loader)
+                else:
+                    test_acc = 0
 
                 # prendo l'embedding a ogni epoca
-                all_data_loader = DataLoader(self.dataset.dataset_pyg, batch_size=self.dataset.bs, shuffle=False)
-                graph_embeddings_array, node_embeddings_array, _ = self.take_embedding(all_data_loader)
-                self.graph_embedding_per_epoch.append(graph_embeddings_array)
-                self.node_embedding_per_epoch.append(node_embeddings_array)
+                if self.conf['training'].get('every_epoch_embedding'):
+                    #######  _____________take embedding  (switch tra gpuversion e normale)
+                    graph_embeddings_array, node_embeddings_array, _, final_output = self.get_embedding(all_data_loader)
+                    self.graph_embedding_per_epoch.append(graph_embeddings_array)
+                    self.node_embedding_per_epoch.append(node_embeddings_array)
+                    # prendo anche l'output nel caso in cui abbiamo il layer denso finale
+                    self.output_per_epoch.append(final_output)
+
                 #expvar = self.myExplained_variance.compute()
                 # add explained variance to tensorboard
-                add_histogram(summary_writer, "Explained variance", var_exp, step=epoch)
+                #add_histogram(summary_writer, "Explained variance", var_exp, step=epoch)  TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
 
                 writer.add_scalar("Train Loss", train_loss, epoch)
                 writer.add_scalar("Test accuracy", test_acc, epoch)
                 writer.add_scalar("Test Loss", test_loss, epoch)
+                #for i, v in enumerate(test_f1score):
+                #    writer.add_scalar(f"Test F1 Score/{i}", v, epoch)
+                #writerX.add_scalars("Test F1 Score", {f"Class_{i}": v for i, v in enumerate(test_f1score)}, epoch)   TODO: rimettere!!!!!
                 # writer.add_scalars(f'Loss', {'Train': train_loss, 'Test': test_loss}, epoch)
                 # writer.add_scalars(f'Accuracy', {'Train': train_acc, 'Test': test_acc}, epoch)
                 # print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')
-                train_loss_list.append(train_loss)
+                self.train_loss_list.append(train_loss)
                 self.test_loss_list.append(test_loss)
                 self.accuracy_list.append(test_acc)
+                self.f1score_list.append(test_f1score)
                 # train_acc_list.append(train_acc)
                 # test_acc_list.append(test_acc)
+
                 print_each_step = self.conf['logging']['train_step_print']
                 if epoch % print_each_step == 0:
-                    if verbose:
-                        print(f'Epoch: {epoch}\tTest loss: {test_loss}')  # \t Explained Variance: {var_exp}')
+                    if verbose > 1: print(f'Epoch: {epoch}\tTest loss: {test_loss}')  # \t Explained Variance: {var_exp}')
 
-                # if test_loss > best_loss:  # check for early stopping
-                #    best_loss = test_loss
+                # save model
+                if epoch in self.epochs_checkpoint:
+                    self.model_checkpoint = copy.deepcopy(self.model)
+                if test_loss < best_loss:  # check for save best model
+                    best_loss = test_loss
+                    if verbose:
+                        print(best_loss)
+                    if self.save_best_model:
+                        self.best_model = copy.deepcopy(self.model)
+
                 early_stopping(test_loss)
                 if early_stopping.early_stop:
+                    #if verbose > 0:
                     print("Early stopping!!!")
                     break
-            print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\t FINE TRAINING')
-
+            if verbose > 0: print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\t FINE TRAINING')
+        print(f"test accuracy finale: {test_acc}")
         writer.flush()
         #writer_variance.flush()
         #self.myExplained_variance.reset()
-        self.last_accuracy = test_acc
-        return train_loss_list, self.test_loss_list  # , train_acc_list, test_acc_list
+        self.last_accuracy = self.accuracy_list[-1]
+        self.last_epoch = epoch
 
-
-class GeneralDataset:
-    def __init__(self, dataset_list, labels, **kwarg):
-        self.dataset_list = dataset_list
-        self.labels = labels
-        self.original_class = kwarg.get('original_class')
-
-        #calcola il max degree
-        #[dataset_list]
-
-class Dataset(GeneralDataset):
-
-    def __init__(self, percentage_train, batch_size, device, config_class, dataset_list, labels, original_class):
-        super().__init__(dataset_list, labels, original_class=original_class)
-        #self.dataset_list = dataset_list  # rename in dataset_list
-        self.dataset_pyg = None
-        #self.labels = labels
-        self.len_data = len(self.dataset_list)
-        self.tt_split = int(self.len_data * percentage_train)
-        self.train_dataset = None
-        self.train_len = None
-        self.test_dataset = None
-        self.test_len = None
-        self.bs = batch_size
-        self.device = device
-        self.train_loader = None
-        self.test_loader = None
-        self.config_class = config_class
-        self.config = config_class.conf
-        self.last_neurons = self.config_class.lastneuron
-        self.transform4ae = T.RandomLinkSplit(num_val=0.0, num_test=0.0, is_undirected=True,
-                                              split_labels=True, add_negative_train_samples=False)
-
-    @classmethod
-    def from_super_instance(cls, percentage_train, batch_size, device, config_class, super_instance):
-        return cls(percentage_train, batch_size, device, config_class, **super_instance.__dict__)
-
-    def convert_G(self, g_i):
-        g, i = g_i
-        # aggiungo i metadati x e y per l'oggetto Data di PYG
-        nodi = list(g.nodes)
-        for n in nodi:
-            g.nodes[n]["x"] = [1.0]
-            g.nodes[n]["id"] = [n]
-
-        pyg_graph = from_networkx(g)
-        type_graph = self.labels[i]
-        #if len(type_graph) == 1:
-        #    type_graph = [type_graph]
-        #print(f'type_graph {type_graph}')
-        # if self.config.modo == TrainingMode.mode1 or self.config.modo == TrainingMode.mode2:
-        #     tipo = torch.long
-        # if self.last_neurons == 1:  # TODO: cambiare anche qui
-        #     tipo = torch.float
-        # else:
-        #     tipo = torch.long
-        #
-        # if self.config['graph_dataset']['regular']:
-
-        tipo = torch.float
-        # else:
-        #     tipo = torch.float
-        pyg_graph.y = torch.tensor(np.array([type_graph]), dtype=tipo)
-        #print(pyg_graph.y)
-
-        return pyg_graph
-
-    def convert_G_random_feature(self, g_i):
-        g, i = g_i
-        nodi = list(g.nodes)
-        for n in nodi:
-            r = np.random.randn() + 1.0
-            g.nodes[n]["x"] = [r]
-        pyg_graph = from_networkx(g)
-        type_graph = self.labels[i]
-        pyg_graph.y = torch.tensor([type_graph], dtype=torch.float)
-        return pyg_graph
-
-    def convert_G_autoencoder(self, g_i):
-        pyg_graph = self.convert_G(g_i)
-        pyg_graph, _, _ = self.transform4ae(pyg_graph)
-        return pyg_graph
-
-    # def process_each(self, each_list):
-    #     each_pyg = []
-    #     for i, g in enumerate(each_list):
-    #         if self.config['model']['autoencoder']:
-    #             pyg_graph = self.convert_G_autoencoder((g, i))
-    #         elif self.config['graph_dataset']['random_node_feat']:
-    #             print("randommmm featureeeeee!!!!!!!!!!!")
-    #             pyg_graph = self.convert_G_random_feature((g, i))
-    #         else:
-    #             pyg_graph = self.convert_G((g, i))
-    #         each_pyg.append(pyg_graph)
-    #     return each_pyg
-
-    def nx2pyg(self, graph_list_nx, parallel=False):
-        dataset_pyg = []
-        total = len(graph_list_nx)
-        """
-        with Pool(processes=12) as p:
-            total = len(graph_list_nx)
-            with tqdm(total=total) as pbar:
-                for pyg_graph in p.imap_unordered(self.convert_G, zip(graph_list_nx, range(total)) ):
-                    pbar.update()
-                    dataset_pyg.append(pyg_graph)
-        """
-
-        if parallel:
-            #process the test list elements in parallel
-            with Pool(processes=2) as pool:
-                dataset_pyg = pool.map(self.convert_G, zip(graph_list_nx, range(total)))
-
-        else:
-            i = 0
-            for g in tqdm(graph_list_nx, total=len(graph_list_nx)):
-                if self.config['model']['autoencoder']:
-                    pyg_graph = self.convert_G_autoencoder((g, i))
-                elif self.config['graph_dataset']['random_node_feat']:
-                    pyg_graph = self.convert_G_random_feature((g, i))
-                else:
-                    pyg_graph = self.convert_G((g, i))
-                dataset_pyg.append(pyg_graph)
-                i += 1
-
-        """
-        from joblib import Parallel, delayed
-        def process(i):
-            return i * i
-
-        results = Parallel(n_jobs=2)(delayed(process)(i) for i in range(10))
-        print(results)  # prints [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]
-        """
-        #starttime = time()
-        for pyg_graph in dataset_pyg:
-            pyg_graph = pyg_graph.to(self.device)
-        #durata = time() - starttime
-        #print(f"Tempo impiegato per spostare su GPU: {durata}")
-
-        return dataset_pyg
-
-    def prepare(self, parallel=False):
-        starttime = time()
-        self.dataset_pyg = self.nx2pyg(self.dataset_list, parallel)
-        durata = time() - starttime
-        print(f"Tempo impiegato: {durata}")
-
-        # shuffle before train test split
-        x = list(enumerate(self.dataset_pyg))
-        random.shuffle(x)
-        indices, self.dataset_pyg = zip(*x)
-        self.labels = self.labels[list(indices)]
-        # cambio l'ordine anche al dataset di grafi nx (non uso la numpy mask)
-        self.dataset_list = [self.dataset_list[i] for i in list(indices)]
-        # e cambio l'ordine anche alle orginal class nel caso regression con discrete distrib
-        #if self.config['training']['mode'] == 'mode3' and not self.config['graph_dataset']['continuous_p']:
-        self.original_class = [self.original_class[i] for i in list(indices)]
-
-        self.train_dataset = self.dataset_pyg[:self.tt_split]
-        self.test_dataset = self.dataset_pyg[self.tt_split:]
-        self.train_len = len(self.train_dataset)
-        self.test_len = len(self.test_dataset)
-
-        #print(self.train_dataset[0].y, self.train_len)
-        #print(self.test_dataset[0].y, self.test_len)
-
-        self.train_loader = DataLoader(self.train_dataset, batch_size=self.bs, shuffle=True)
-        self.test_loader = DataLoader(self.test_dataset, batch_size=self.bs, shuffle=False)
-
-        """
-        for step, data in enumerate(self.train_loader):
-            print(f'Step {step + 1}:')
-            print('=======')
-            print(f'Number of graphs in the current batch: {data.num_graphs}')
-            print(data)
-            print()
-        """
-
-    def sample_dummy_data(self):
-        whole_data = self.dataset_pyg
-        all_data_loader = DataLoader(whole_data, batch_size=self.bs, shuffle=False)
-        batch = next(iter(all_data_loader))
-        return batch
+        # riporto su cpu gli embedding per epoca
+        #print("Take to cpu the embedding array ")
+        #self.graph_embedding_per_epoch = [a.squeeze().cpu().detach().numpy() for a in self.graph_embedding_per_epoch]
+        #self.node_embedding_per_epoch = [a.squeeze().cpu().detach().numpy() for a in self.node_embedding_per_epoch]
+        #self.output_per_epoch = [a.squeeze().cpu().detach().numpy() for a in self.output_per_epoch]
+        return
 
 

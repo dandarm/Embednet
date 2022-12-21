@@ -5,7 +5,7 @@ from sklearn.preprocessing import OneHotEncoder
 from multiprocessing import Pool
 
 from config_valid import Labels, TrainingMode
-from train import GeneralDataset
+from Dataset import Dataset, GeneralDataset
 
 class GraphType(Enum):
     ER = 1
@@ -21,10 +21,15 @@ class GenerateGraph():
         if isinstance(self.N, list):
             self.numnodes_islist = True
         self.list_p = self.conf['graph_dataset']['list_p']
-        self.Num_grafi_per_tipo = self.conf['graph_dataset']['Num_grafi_per_tipo']
+        self.Num_grafi_per_tipo = int(self.conf['graph_dataset']['Num_grafi_per_tipo'])
         self.list_d = self.conf['graph_dataset']['list_degree']
 
         self.dataset = None
+        self.dataset_grafi_nx = []
+        self.dataset_labels = []
+        self.dataset_degree_seq = []
+        self.dataset_scalar_label = []
+        self.node_label = []
 
         if self.conf['graph_dataset']['ERmodel']:
             self.type = GraphType.ER
@@ -59,21 +64,22 @@ class GenerateGraph():
     def initialize_dataset(self, parallel=True):
         print('Generating dataset...')
         modo = self.config_class.modo
-        dataset = None
         if self.type == GraphType.ER:
             if modo == TrainingMode.mode1 or modo == TrainingMode.mode2:
-                dataset = self.dataset_nclass_ER()
+                self.dataset_nclass_ER()
             if modo == TrainingMode.mode3:
-                dataset = self.dataset_regression_ER()
+                self.dataset_regression_ER()
 
         elif self.type == GraphType.Regular:
-            dataset = self.dataset_regular(parallel=parallel)
+            self.dataset_regular(parallel=parallel)
 
         elif self.type == GraphType.CM:
-            dataset = self.dataset_classification_CM(parallel=parallel)
+            if modo == TrainingMode.mode1 or modo == TrainingMode.mode2:
+                self.dataset_classification_CM(parallel=parallel)
+            if modo == TrainingMode.mode3:
+                self.dataset_regression_CM(parallel=parallel)
 
         print("Dataset generated")
-        return dataset
 
     def create_ER(self, Num_nodes, p, N_graphs):
         """
@@ -168,8 +174,7 @@ class GenerateGraph():
         list_p = self.conf['graph_dataset']['list_p']
         Num_grafi_per_tipo = self.conf['graph_dataset']['Num_grafi_per_tipo']
 
-        dataset_grafi_nx = []
-        dataset_labels = []
+
         label_kind = self.config_class.get_mode()['labels']
 
         if label_kind == Labels.onehot:
@@ -177,27 +182,32 @@ class GenerateGraph():
             onehot_matrix = np.eye(n_classi)
             for i, p in enumerate(list_p):
                 grafi_p, _ = self.create_ER(N, p, Num_grafi_per_tipo)
-                dataset_grafi_nx = dataset_grafi_nx + grafi_p
-                dataset_labels = dataset_labels + [onehot_matrix[i]] * len(grafi_p)
-                #print(dataset_labels)
+                self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
+                self.dataset_labels = self.dataset_labels + [onehot_matrix[i]] * len(grafi_p)
+                self.dataset_scalar_label = self.dataset_scalar_label + [p]*Num_grafi_per_tipo
+                self.node_label.extend([p]*Num_grafi_per_tipo*N)
 
         elif label_kind == Labels.zero_one:
             # ho quindi solo due classi
             for i, p in enumerate(list_p):
                 grafi_p, _ = self.create_ER(N, p, Num_grafi_per_tipo)
-                dataset_grafi_nx = dataset_grafi_nx + grafi_p
-                dataset_labels = dataset_labels + [i] * len(grafi_p)
+                self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
+                self.dataset_labels = self.dataset_labels + [i] * len(grafi_p)
+                self.dataset_scalar_label = self.dataset_scalar_label + [p]*Num_grafi_per_tipo
+                self.node_label.extend([p] * Num_grafi_per_tipo * N)
+                # TODO: valutare se serve anche quì portarsi appresso la actualprobs
 
         elif label_kind == Labels.prob:
             for i, p in enumerate(list_p):
                 grafi_p, actual_probs = self.create_ER(N, p, Num_grafi_per_tipo)
-                dataset_grafi_nx = dataset_grafi_nx + grafi_p
-                dataset_labels.extend(actual_probs)
+                self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
+                self.dataset_labels.extend(actual_probs)
+                self.dataset_scalar_label = self.dataset_scalar_label + [p] * Num_grafi_per_tipo
+                self.node_label.extend([p] * Num_grafi_per_tipo * N)
 
         # TODO: original class lo facciamo diventare un target vettoriale
-        original_class = [[i] for i in dataset_labels]
-        self.dataset = GeneralDataset(dataset_grafi_nx, np.array(dataset_labels), original_class=original_class)
-        return self.dataset
+        original_class = [[i] for i in self.dataset_labels]
+        self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.dataset_labels), node_label=self.node_label, dataset_scalar_label=self.dataset_scalar_label)
 
     def dataset_regression_ER(self):
         Num_nodes = self.conf['graph_dataset']['Num_nodes']
@@ -207,28 +217,25 @@ class GenerateGraph():
         Num_grafi_per_tipo = self.conf['graph_dataset']['Num_grafi_per_tipo']
         is_continuous_distribution = self.conf['graph_dataset']['continuous_p']
 
-        dataset_grafi_nx = []
-        dataset_labels = []
-        original_class = []  # used for recovering original class other than label for regression in discrete distrib.
-        assert self.conf['model']['neurons_per_layer'][-1] == 1
-
         if is_continuous_distribution:
             probs = np.random.uniform(low=range_p[0], high=range_p[1], size=Num_grafi_tot)
             for p in probs:
                 gr = nx.erdos_renyi_graph(Num_nodes, p)
-                dataset_grafi_nx.append(gr)
+                self.dataset_grafi_nx.append(gr)
                 actual_p = nx.to_numpy_matrix(gr).sum(axis=1).mean() / (Num_nodes - 1)
-                dataset_labels.append(actual_p)
+                self.dataset_labels.append(actual_p)
+                self.node_label.extend([p] * Num_nodes)
+                self.dataset_scalar_label.append(p)  # voglio tracciare la probabilità usata per generare il grafo
         else:
             for i, p in enumerate(list_p):
                 grafi_p, actual_probs = self.create_ER(Num_nodes, p, Num_grafi_per_tipo)
-                dataset_grafi_nx = dataset_grafi_nx + grafi_p
-                dataset_labels.extend(actual_probs)
-                original_class = original_class + [p]*len(actual_probs)
+                self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
+                self.dataset_labels.extend(actual_probs)
+                self.dataset_scalar_label = self.dataset_scalar_label + [p] * Num_grafi_per_tipo
+                self.node_label.extend([p]*Num_grafi_per_tipo*Num_nodes)
 
-        self.dataset = GeneralDataset(dataset_grafi_nx, np.array(dataset_labels), original_class=original_class)
+        self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.dataset_labels), dataset_scalar_label=self.dataset_scalar_label, node_label=self.node_label)
 
-        return self.dataset
 
     def dataset_regular(self, parallel=True):
         N = self.conf['graph_dataset']['Num_nodes']
@@ -236,8 +243,6 @@ class GenerateGraph():
         list_degree = self.conf['graph_dataset']['list_degree']
         list_degree = [int(i) for i in list_degree]
 
-        dataset_grafi_nx = []
-        dataset_labels = []
         if self.config_class.modo == TrainingMode.mode1:
             encoded = self.hot_encoding(list_degree)
         elif self.config_class.modo == TrainingMode.mode2:
@@ -248,17 +253,16 @@ class GenerateGraph():
         #assert (onehot_matrix == encoded).all(), "Errore nella costruzione del 1-hot encoding"
         for i, d in enumerate(list_degree):
             grafi_d = self.create_regular(N, d, Num_grafi_per_tipo, parallel=parallel)
-            dataset_grafi_nx = dataset_grafi_nx + grafi_d
-            dataset_labels = dataset_labels + [encoded[i]] * len(grafi_d)
+            self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_d
+            self.dataset_labels = self.dataset_labels + [encoded[i]] * len(grafi_d)
 
-        original_class = [[i] for i in dataset_labels]
-        self.dataset = GeneralDataset(dataset_grafi_nx, np.array(dataset_labels), original_class=original_class)
-        return self.dataset
+        original_class = [[i] for i in self.dataset_labels]
+        self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.dataset_labels), original_class=original_class)
 
     def dataset_classification_CM(self, parallel=True):
-        N = self.conf['graph_dataset']['Num_nodes']
-        Num_grafi_per_tipo = self.conf['graph_dataset']['Num_grafi_per_tipo']
-        Num_grafi_tot = self.conf['graph_dataset']['Num_grafi_totali']
+        #N = self.conf['graph_dataset']['Num_nodes']
+        #Num_grafi_per_tipo = self.conf['graph_dataset']['Num_grafi_per_tipo']
+        #Num_grafi_tot = self.conf['graph_dataset']['Num_grafi_totali']
         list_exp = self.conf['graph_dataset']['list_exponents']
         list_exp = [float(i) for i in list_exp]
         if self.config_class.modo == TrainingMode.mode1:
@@ -266,22 +270,54 @@ class GenerateGraph():
         elif self.config_class.modo == TrainingMode.mode2:
             encoded = [0, 1]
 
-        dataset_grafi_nx = []
-        dataset_labels = []
-        dataset_degree_seq = []
         for i, exp in enumerate(list_exp):
             if self.numnodes_islist:
-                num_nodes = N[i]
+                num_nodes = int(self.N[i])
             else:
-                num_nodes = N
-            grafi, actual_degrees = self.create_confmodel(num_nodes, Num_grafi_per_tipo, exponent=exp, parallel=parallel)
-            dataset_grafi_nx = dataset_grafi_nx + grafi
-            dataset_labels = dataset_labels + [encoded[i]] * len(grafi)
-            dataset_degree_seq.extend(actual_degrees)
+                num_nodes = int(self.N)
+            grafi, actual_degrees = self.create_confmodel(num_nodes, self.Num_grafi_per_tipo, exponent=exp, parallel=parallel)
+            self.dataset_grafi_nx = self.dataset_grafi_nx + grafi
+            self.dataset_labels = self.dataset_labels + [encoded[i]] * len(grafi)
+            self.dataset_degree_seq.extend(actual_degrees)
+            self.dataset_scalar_label = self.dataset_scalar_label + [exp]*len(grafi)
 
-        self.dataset = GeneralDataset(dataset_grafi_nx, np.array(dataset_labels), original_class=dataset_degree_seq)
-        return self.dataset
+        self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.dataset_labels), original_class=self.dataset_degree_seq, exponent=list(zip(self.dataset_scalar_label, self.dataset_labels)))
 
+    def dataset_regression_CM(self, parallel=True):
+        N = self.conf['graph_dataset']['Num_nodes']
+        if self.numnodes_islist:
+            Num_nodes = N[0]
+        else:
+            Num_nodes = N
+        Num_grafi_per_tipo = self.conf['graph_dataset']['Num_grafi_per_tipo']
+        Num_grafi_tot = self.conf['graph_dataset']['Num_grafi_totali']
+        list_exp = self.conf['graph_dataset']['list_exponents']
+        list_exp = [float(i) for i in list_exp]
+        is_continuous_distribution = self.conf['graph_dataset']['continuous_p']
+
+        if is_continuous_distribution:
+            esponenti = np.random.uniform(low=list_exp[0], high=list_exp[1], size=Num_grafi_tot)
+            if parallel:
+                with Pool(processes=32) as pool:
+                    input_list = zip([Num_nodes] * Num_grafi_tot, esponenti)
+                    grafi_actual_degrees = pool.map(self.build_cm_graph, input_list)
+                    self.dataset_grafi_nx = [gr[0] for gr in grafi_actual_degrees]
+                    self.dataset_degree_seq = [gr[1] for gr in grafi_actual_degrees]
+                self.dataset_labels = esponenti
+            else:
+                for e in esponenti:
+                    gr, actual_degrees = self.build_cm_graph((Num_nodes, e))
+                    self.dataset_grafi_nx.append(gr)
+                    self.dataset_degree_seq.append(actual_degrees)
+                    self.dataset_labels.append(e)
+        else:
+            for i, p in enumerate(list_exp):
+                grafi_p, actual_probs = self.create_ER(Num_nodes, p, Num_grafi_per_tipo)
+                self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
+                self.dataset_labels.extend(actual_probs)
+                original_class = original_class + [p]*len(actual_probs)
+
+        self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.dataset_labels), original_class=self.dataset_degree_seq)
 
 
     def perturb_dataset(self, amount_p, verbose=False):
@@ -342,7 +378,6 @@ def rndm(a, b, g, size=1):
     """Power-law gen for pdf(x)\propto x^{g-1} for a<=x<=b
     Secondo questa formula il vero esponente è g-1 quindi se voglio una power law con -3 devo passare g=-2
     ---> aggiungo quì 1. ma per 0 non è definita quindi aggiungo 0.99"""
-
     g = g + 1.0
     #print(f"a: {a}, b: {b}, g: {g}")
     r = np.random.random(size=size)

@@ -7,9 +7,10 @@ graph_dataset:
     list_p: [0.05, 0.3] #, 0.3, 0.4, 0.5, 0.6]
     range_p: [0.05, 0.6]
     Num_nodes: 300
-    Num_grafi_per_tipo: 300
+    Num_grafi_per_tipo: 200
     Num_grafi_totali: 800
     list_degree: [10, 20, 30]
+    
     
 training:
     #mode1 = 'classification', CrossEntropyLoss, '1-hot', 'n_class'
@@ -18,17 +19,24 @@ training:
     mode: 'mode3'
     learning_rate: 0.01
     epochs: 800
-    batch_size: 150
+    batch_size: 250
     percentage_train: 0.7
     earlystop_patience: 10000
+    epochs_model_checkpoint: [-1]
+    every_epoch_embedding: False
+    shuffle_dataset: True
     
 model:
     last_layer_dense: False
-    neurons_per_layer: [1, 8, 8, 1]  # il primo elemento deve essere uguale alla dimensione delle feature del nodo
+    GCNneurons_per_layer: [1, 8, 8, 1]  # il primo elemento deve essere uguale alla dimensione delle feature del nodo
+    neurons_last_linear: [5, 5, 1]
+    freezeGCNlayers: False
     autoencoder: False
     put_batchnorm: False
+    put_dropout: False
     final_pool_aggregator: True
     node_features_dim: 1
+    init_weights: 'eye'
     
 logging:
     train_step_print: 100

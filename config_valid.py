@@ -1,6 +1,7 @@
 import yaml
 from enum import Enum
 import torch
+from pandas import json_normalize
 
 basic_config_file_path = "configs.yml"
 
@@ -13,6 +14,20 @@ class TrainingMode():
     mode1 = {'type': 'classification', 'criterion': torch.nn.CrossEntropyLoss(), 'labels': Labels.onehot, 'last_neuron': 'n_class'}
     mode2 = {'type': 'classification', 'criterion': torch.nn.BCEWithLogitsLoss(), 'labels': Labels.zero_one, 'last_neuron': 1}
     mode3 = {'type': 'regression', 'criterion': torch.nn.MSELoss(), 'labels': Labels.prob, 'last_neuron': 1}
+
+class Inits():  # TODO: capire perché se estendo da Enum succede un CASINO! non vanno più bene le uguaglianze
+    normal = 'normal'
+    constant = 'constant'
+    uniform = 'uniform'
+    eye = 'eye'
+    dirac = 'dirac'
+    xavier_uniform = 'xavier_uniform'
+    xavier_normal = 'xavier_normal'
+    kaiming_uniform = 'kaiming_uniform'
+    kaiming_normal = 'kaiming_normal'
+    trunc_normal = 'trunc_normal'
+    orthogonal = 'orthogonal'
+    sparse = 'sparse'
 
 class Config():
     def __init__(self, config_file=None, data_dict=None):
@@ -34,6 +49,7 @@ class Config():
             self.lastneuron = neurons_per_layer[-1]
         self.valid_conf()
         self.modo = self.get_mode()
+        self.init_weights_mode = self.get_init_weights_mode()
 
 
         #self.reload_conf()
@@ -54,17 +70,22 @@ class Config():
     def get_mode(self):
         return eval(f"TrainingMode.{self.conf['training']['mode']}")
 
+    def get_init_weights_mode(self):
+        init_weights_mode = self.conf['model']['init_weights']
+        if init_weights_mode == 'None':
+            return None
+        return eval(f"Inits.{init_weights_mode}")
+
     def valid_conf(self):
         modo = self.get_mode()
         modo_str = self.conf['training']['mode']
 
         # verifico che l'ultimo neurone sia consistente col training mode
-
         if self.lastneuron == 1:
             assert self.lastneuron == modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
         else:
             assert modo['last_neuron'] == 'n_class', 'Ultimi neuroni > 1 ma training mode diverso'
-            assert self.lastneuron == self.num_classes_ER(), 'Ultimi neuroni diversi dal numero di classi '
+            assert self.lastneuron == self.num_classes(), 'Ultimi neuroni diversi dal numero di classi '
 
         #last_layer_dense = self.config['model']['last_layer_dense']
 
@@ -79,6 +100,10 @@ class Config():
                     self.conf['graph_dataset']['confmodel']]
         assert self.only1(bool_arr), "Errore nel config file: scegliere un solo tipo di grafi"
 
+        # verifico nel cm multiclass che il numero di numnodes sia uguale al numero di esponenti
+        if self.conf['graph_dataset']['confmodel']:
+            assert len(self.conf['graph_dataset']['Num_nodes']) == len(self.conf['graph_dataset']['list_exponents'])
+
     def only1(self, bool_array):
         # check if bool_array contains one and only one True
         true_found = False
@@ -90,10 +115,22 @@ class Config():
         return true_found
 
     def layer_neuron_string(self):
-        neurons = self.conf['model']['GCNneurons_per_layer']
-        return str(neurons).replace(', ', '-').strip('[').strip(']')
+        gcnneurons = self.conf['model']['GCNneurons_per_layer']
+        linears = self.conf['model']['neurons_last_linear']
+        s1 = str(gcnneurons).replace(', ', '-').strip('[').strip(']')
+        s2 = str(linears).replace(', ', '-').strip('[').strip(']')
+        return s1 + s2
 
-    def num_classes_ER(self):
-        return len(self.conf['graph_dataset']['list_p'])
+    def num_classes(self):
+        if self.conf['graph_dataset']['ERmodel']:
+            return len(self.conf['graph_dataset']['list_p'])
+        elif self.conf['graph_dataset']['confmodel']:
+            return len(self.conf['graph_dataset']['list_exponents'])
 
+    def get_config_dataframe(self):
+        if self.conf:
+            conf_df = json_normalize(self.conf)
+            return conf_df
+        else:
+            raise Exception("Configuration dictionary not initialized")
         

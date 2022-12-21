@@ -2,7 +2,7 @@ from train import Trainer
 
 class Trainer_Autoencoder(Trainer):
     def __init__(self, model, config):
-        super().__init__(model, config)
+        super().__init__(config)
 
     def train(self):
         self.model.train()
@@ -30,7 +30,7 @@ class Trainer_Autoencoder(Trainer):
     def accuracy(self, loader):
         return None
 
-    def take_embedding(self, loader):
+    def get_embedding(self, loader):
         self.model.eval()
         embeddings_array = []
         for data in loader:  # Iterate in batches over the training dataset.

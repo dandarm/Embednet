@@ -172,7 +172,7 @@ def make_graph(mod, classes_to_visit=None, classes_found=None, dot=None, prefix=
         make_edges(pr, 'inp_ ' +name, name, op)
     return dot
 
-def plot_model(model, batch_data):
+def plot_model(model, batch_data, filename=None):
     """
     Può generare il seguente warning:
     TracerWarning: Output nr 1. of the traced function does not match the corresponding output of the Python function.
@@ -189,5 +189,8 @@ def plot_model(model, batch_data):
         p.requires_grad_(False)
 
     d = make_graph(traced_model, classes_to_visit='Sequential')
-    d.render('GCN')
+    if filename:
+        d.render(filename)
+    else:
+        d.render('GCN')
     return d

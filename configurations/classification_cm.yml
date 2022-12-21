@@ -2,39 +2,45 @@ graph_dataset:
     ERmodel: False
     regular: False
     confmodel: True
-    continuous_p: False
+    continuous_p: True
     list_p: [0.05, 0.3] #, 0.3, 0.4, 0.5, 0.6]
     range_p: [0.05, 0.6]
-    Num_nodes: [250, 250]
+    Num_nodes: [700, 700]
     Num_grafi_per_tipo: 300
-    Num_grafi_totali: 1000
+    Num_grafi_totali: 400
     list_degree: [4, 50]
     random_node_feat: False
     list_exponents: [-2.5, -4.5]
     
 training:
     #mode1 = 'classification', CrossEntropyLoss, '1-hot', 'n_class'
-    #mode2 = 'classification', BCELoss, '{0,1}', 1
+    #mode2 = 'classification', BCEWithLogitsLoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
-    mode: 'mode1'
+    mode: 'mode2'
     learning_rate: 0.01
-    epochs: 50
-    batch_size: 50
+    epochs: 500
+    batch_size: 300
     percentage_train: 0.7
-    earlystop_patience: 10000
+    earlystop_patience: 30
+    epochs_model_checkpoint: [-1]
+    every_epoch_embedding: True
+    shuffle_dataset: True
     
 model:
     last_layer_dense: True
     # il primo elemento deve essere uguale alla dimensione delle feature del nodo
     # l'ultimo deve essere uguale al numero di classi
-    GCNneurons_per_layer: [1, 16, 16, 1]  
-    neurons_last_linear: [2, 2]
+    GCNneurons_per_layer: [1, 32, 16, 1]  
+    neurons_last_linear: [10, 10, 1]
+    freezeGCNlayers: False
     autoencoder: False
     put_batchnorm: False
+    put_dropout: False
     final_pool_aggregator: True
     node_features_dim: 1
+    init_weights: 'xavier_uniform'    #'normal', 'constant', 'uniform', 'eye', 'dirac', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform', 'kaiming_normal', 'trunc_normal', 'orthogonal', 'sparse'
     
 logging:
-    train_step_print: 10
+    train_step_print: 100
     
 device: 'gpu'
