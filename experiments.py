@@ -58,17 +58,18 @@ class Experiments():
         self.gc = None
         self.diz_trials = diz_trials
 
+        all_seeds()
+
+        if self.diz_trials:
+            self.gc = GridConfigurations(self.config_class, self.diz_trials)
+            self.gc.make_configs()
+
         # risultati
         #self.graph_embedding_per_epoch = []
         #self.node_embedding_per_epoch = []
 
     def stesso_init_diversi_dataset(self):
-        all_seeds()
-
-        self.gc = GridConfigurations(self.config_class, self.diz_trials)
-        self.gc.make_configs()
         self.GS_same_weight_inits_different_datasets(test_same_training=False)
-
     def GS_same_weight_inits_different_datasets(self):
         # modello di base per avere l'architettura dei parametri da impostare
         modello_base = self.trainer.init_GCN()
@@ -83,39 +84,84 @@ class Experiments():
             model = self.trainer.init_GCN(saved_initial_weights_gcn, saved_initial_weights_lin)
             self.trainer.load_model(model)
 
+            # TODO: verificare che vengono effettivamente diversi i dataset perché ho resettatto i seed subito prima
             self.trainer.init_dataset()
             self.trainer.load_dataset(self.trainer.gg.dataset)
 
             self.trainer.launch_training()
 
-    def diversi_init_weights_stesso_dataset(self):  #, metodi, ripetizioni):
+    def diversi_init_weights_stesso_dataset(self, parallel=True):  #, metodi, ripetizioni):
+        self.GS_different_weight_inits( train_with_same_dataset=True, test_same_training=False, parallel_take_result=parallel)
+
+    def GSdiversi_init_weights_diversi_dataset(self, dataset_key1, initw_key2=None, parallel_take_result=True):
+        global graph_embedding_per_epoch
+        global node_embedding_per_epoch
+        global dataset
+        global loss_list
         global exp_config
-        global exp_trainer
 
-        all_seeds()
+        k = 0
+        for el in self.diz_trials[dataset_key1]:  # come fosse for d in dataset_distinti
+            cs1 = [(i, c) for i, c in enumerate(self.gc.configs) if c.conf['graph_dataset']['list_exponents'] == el]
+            print(f"Run {k + 1}: \t {el}")
+            # devo comfigurare il trainer con uno di questi config per poter inizializzare il dataset
+            # inoltre serve pure per il modello di base, per avere l'architettura dei parametri da impostare
+            # per l'architettura del modello mi serve il numero delle classi, la prendo in uno dei config col dato dataset
+            self.trainer.reinit_conf(cs1[0][1])
 
-        config_class = Config(self.config_file)
-        trainer = Trainer(config_class)
-        exp_config = config_class
-        exp_trainer = trainer
+            self.trainer.init_dataset()
+            self.trainer.load_dataset(self.trainer.gg.dataset)
 
+            modello_base = self.trainer.init_GCN()
+            saved_initial_weights_lin = new_parameters_linears(modello_base)  # indifferente se epoch==0
 
-        #self.diz_trials = {'model.init_weights': metodi * ripetizioni}
-        self.gc = GridConfigurations(config_class, self.diz_trials)
-        self.gc.make_configs()
-        self.GS_different_weight_inits(trainer, train_with_same_dataset=True, test_same_training=False)
+            # inizializzazioni distinte
+            metodi_distinti = set([c.conf['model']['init_weights'] for i, c in cs1])
+            for m in metodi_distinti:
+                cs2 = [(i, c) for i, c in cs1 if c.conf['model']['init_weights'] == m]
+                print(f"Run {k + 1} \t metodo:{m}")
 
-    def GS_different_weight_inits(self, trainer, train_with_same_dataset=False, test_same_training=False):
+                for ord_config in cs2:
+                    i, c = ord_config
+
+                    init_weight_parameters = new_parameters(modello_base, method=c.init_weights_mode)
+                    model = self.trainer.init_GCN(init_weight_parameters, saved_initial_weights_lin)
+                    self.trainer.reinit_conf(c)
+                    self.trainer.load_model(model)
+                    self.trainer.launch_training()
+                    embedding_class = self.embedding()
+
+                    print("calcolo i risultati di interesse")
+                    if c.conf['model']['freezeGCNlayers']:  # non ha senso guardare la correlazione iun funzione delle epoche di training
+                        fill_df_with_results(self.gc.config_dataframe, i, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+                    else:
+                        if parallel_take_result:
+                            graph_embedding_per_epoch = self.trainer.graph_embedding_per_epoch
+                            node_embedding_per_epoch = self.trainer.node_embedding_per_epoch
+                            dataset = self.trainer.dataset
+                            loss_list = self.trainer.test_loss_list
+                            exp_config = c
+                        avg_corr_classes, avg_tau_classes = self.get_corrs_training(parallel=parallel_take_result)
+                        avg_corr_classes = np.array(avg_corr_classes).T
+                        avg_tau_classes = np.array(avg_tau_classes).T
+
+                        fill_df_with_results(self.gc.config_dataframe, i, avg_corr_classes, avg_tau_classes, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+                    k += 1
+
+    def GS_different_weight_inits(self, train_with_same_dataset=False, test_same_training=False, parallel_take_result=True):
+        global graph_embedding_per_epoch
+        global node_embedding_per_epoch
+        global dataset
+        global loss_list
         global exp_config
-        global exp_trainer
 
         if train_with_same_dataset:
             print("Carico il dataset e lo tengo invariato per tutti i trial")
-            trainer.init_dataset()
-            trainer.load_dataset(trainer.gg.dataset)
+            self.trainer.init_dataset()
+            self.trainer.load_dataset(self.trainer.gg.dataset)
 
         # modello di base per avere l'architettura dei parametri da impostare
-        modello_base = trainer.init_GCN()
+        modello_base = self.trainer.init_GCN()
         saved_initial_weights_lin = new_parameters_linears(modello_base)
         if test_same_training:
             saved_initial_weights_gcn = new_parameters(modello_base)
@@ -124,60 +170,55 @@ class Experiments():
         # gc.configs = sorted(gc.configs, key=lambda c: c.conf['model']['init_weights'])
         # meglio il seguente metodo
         metodi_distinti = set([c.conf['model']['init_weights'] for c in self.gc.configs])
-
+        print(metodi_distinti)
         k = 0
         for m in metodi_distinti:
-            cs = [(i, c) for i, c in self.gc.ordinal_configs if c.conf['model']['init_weights'] == m]
+            print(m)
+            cs = [(i, c) for i, c in enumerate(self.gc.configs) if c.conf['model']['init_weights'] == m]
             all_seeds()
             # diversi training dell'unico parametro ripescato random dalla stessa distribuzione
             for ord_config in cs:
                 i, c = ord_config
-                print(f'Run {k + 1}')
+                print(f"Run {k + 1} \t metodo:{c.conf['model']['init_weights']}")
 
-                trainer.reinit_conf(c)
+                self.trainer.reinit_conf(c)
                 if not train_with_same_dataset:
-                    trainer.init_dataset()
-                    trainer.load_dataset(trainer.gg.dataset)
+                    self.trainer.init_dataset()
+                    self.trainer.load_dataset(self.trainer.gg.dataset)
                 if test_same_training:
-                    model = trainer.init_GCN(saved_initial_weights_gcn, saved_initial_weights_lin)
+                    model = self.trainer.init_GCN(saved_initial_weights_gcn, saved_initial_weights_lin)
                 else:
                     # questa chiamata non deve avere i seed resettati altrimenti otterrò gli stessi pesi e lo stesso training
                     init_weight_parameters = new_parameters(modello_base, method=c.init_weights_mode)
-                    model = trainer.init_GCN(init_weight_parameters, saved_initial_weights_lin)
+                    model = self.trainer.init_GCN(init_weight_parameters, saved_initial_weights_lin)
 
 
-                trainer.load_model(model)
+                self.trainer.load_model(model)
 
-                trainer.launch_training()
+                self.trainer.launch_training()
+                embedding_class = self.embedding()
 
                 print("calcolo i risultati di interesse")
-                exp_trainer = trainer
-                exp_config = c
-                avg_corr_classes, avg_tau_classes = self.get_corrs_training()
-                avg_corr_classes = np.array(avg_corr_classes).T
-                avg_tau_classes = np.array(avg_tau_classes).T
+                if c.conf['model']['freezeGCNlayers']:  # non ha senso guardare la correlazione iun funzione delle epoche di training
+                    fill_df_with_results(self.gc.config_dataframe, i, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+                else:
+                    if parallel_take_result:
+                        graph_embedding_per_epoch = self.trainer.graph_embedding_per_epoch
+                        node_embedding_per_epoch = self.trainer.node_embedding_per_epoch
+                        dataset = self.trainer.dataset
+                        loss_list = self.trainer.test_loss_list
+                        exp_config = c
+                    avg_corr_classes, avg_tau_classes = self.get_corrs_training(parallel=parallel_take_result)
+                    avg_corr_classes = np.array(avg_corr_classes).T
+                    avg_tau_classes = np.array(avg_tau_classes).T
 
-                fill_df_with_results(self.gc.config_dataframe, i, avg_corr_classes, avg_tau_classes, trainer.test_loss_list, trainer.accuracy_list)
+                    fill_df_with_results(self.gc.config_dataframe, i, avg_corr_classes, avg_tau_classes, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
                 k+=1
 
     def diverse_classi_stesso_dataset(self, parallel_take_result):  #, metodi, ripetizioni):
-        global exp_config
-        global exp_trainer
+        self.GS_different_classes(test_same_training=False)
 
-        all_seeds()
-
-        config_class = Config(self.config_file)
-        self.trainer = Trainer(config_class)
-        exp_config = config_class
-        exp_trainer = self.trainer
-
-
-        #self.diz_trials = {'model.init_weights': metodi * ripetizioni}
-        self.gc = GridConfigurations(config_class, self.diz_trials)
-        self.gc.make_configs()
-        self.GS_different_classes(self.trainer, test_same_training=False)
-
-    def GS_different_classes(self, trainer, test_same_training=False, parallel_take_result=False):
+    def GS_different_classes(self, test_same_training=False, parallel_take_result=False):
         global graph_embedding_per_epoch
         global node_embedding_per_epoch
         global dataset
@@ -185,41 +226,41 @@ class Experiments():
         global exp_config
 
         # modello di base per avere l'architettura dei parametri da impostare
-        modello_base = trainer.init_GCN()
+        modello_base = self.trainer.init_GCN()
         #saved_initial_weights_lin = new_parameters_linears(modello_base)
-        saved_initial_weights_gcn = new_parameters(modello_base, method=trainer.config_class.init_weights_mode)
+        saved_initial_weights_gcn = new_parameters(modello_base, method=self.trainer.config_class.init_weights_mode)
         if test_same_training:
-            trainer.init_dataset()
-            trainer.load_dataset(trainer.gg.dataset)
+            self.trainer.init_dataset()
+            self.trainer.load_dataset(self.trainer.gg.dataset)
 
         k = 0
         for c in self.gc.configs:
             print(f'Run {k + 1}')
-            trainer.reinit_conf(c)
+            self.trainer.reinit_conf(c)
             if not test_same_training:
-                trainer.init_dataset()
-                trainer.load_dataset(trainer.gg.dataset)
-            model = trainer.init_GCN(saved_initial_weights_gcn) #, saved_initial_weights_lin)
-            trainer.load_model(model)
+                self.trainer.init_dataset()
+                self.trainer.load_dataset(self.trainer.gg.dataset)
+            model = self.trainer.init_GCN(saved_initial_weights_gcn) #, saved_initial_weights_lin)
+            self.trainer.load_model(model)
 
-            trainer.launch_training()
+            self.trainer.launch_training()
             embedding_class = self.embedding()
 
             print("calcolo i risultati di interesse")
             #exp_trainer = trainer
             #exp_config = c
             if parallel_take_result:
-                graph_embedding_per_epoch = trainer.graph_embedding_per_epoch
-                node_embedding_per_epoch = trainer.node_embedding_per_epoch
+                graph_embedding_per_epoch = self.trainer.graph_embedding_per_epoch
+                node_embedding_per_epoch = self.trainer.node_embedding_per_epoch
                 dataset = self.trainer.dataset
                 loss_list = self.trainer.test_loss_list
-                exp_config = self.trainer.config_class
+                exp_config = c
 
             avg_corr_classes, avg_tau_classes = self.get_corrs_training(parallel=parallel_take_result)
             avg_corr_classes = np.array(avg_corr_classes).T
             avg_tau_classes = np.array(avg_tau_classes).T
 
-            fill_df_with_results(self.gc.config_dataframe, k, avg_corr_classes, avg_tau_classes, trainer.test_loss_list, trainer.accuracy_list, embedding_class)
+            fill_df_with_results(self.gc.config_dataframe, k, avg_corr_classes, avg_tau_classes, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
             #fill_embedding_df(self.gc.embedding_dataframe, trainer, k)
             k += 1
 
@@ -253,7 +294,7 @@ class Experiments():
 
         avg_corr_classes = []
         avg_tau_classes = []
-        for classe in node_embedding_class.node_emb_perclass:
+        for classe in node_embedding_class.emb_perclass:
             corrs = []
             kendall_tau = []
             for e in classe:
@@ -269,15 +310,16 @@ class Experiments():
         return avg_corr_classes, avg_tau_classes
 
     def get_corrs_training(self, parallel=True):
+        print(self.trainer.last_epoch)
         if parallel:
             with Pool(processes=32) as pool:
-                res = pool.map(parallel_take_corr, range(self.trainer.last_epoch + 1))
+                res = pool.map(parallel_take_corr, range(max(self.trainer.last_epoch, 1)))
                 avg_corr_classes = [r[0] for r in res]
                 avg_tau_classes = [r[1] for r in res]
         else:
             avg_corr_classes = []
             avg_tau_classes = []
-            for e in range(exp_trainer.last_epoch + 1):
+            for e in range(self.trainer.last_epoch + 1):
                 rr = self.take_corr(e)
                 avg_corr_classes.append(rr[0])
                 avg_tau_classes.append(rr[1])
@@ -375,7 +417,7 @@ class Experiments():
     # endregion
 
 
-def parallel_take_corr(epoca):
+def parallel_take_corr(epoca):  # TODO: correggere errore quando chiama Embedding: 'Embedding' object has no attribute 'node_emb_perclass'
     graph_embeddings_array = graph_embedding_per_epoch[epoca]
     node_embeddings_array = node_embedding_per_epoch[epoca]
     embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, dataset, exp_config)
@@ -457,13 +499,19 @@ def experiment_node_embedding(config_file):
 
 
 
-def fill_df_with_results(df, i, avg_corr_classes, avg_tau_classes, test_loss_list, accuracy_list, node_embedding_class):
+def fill_df_with_results(df, i, avg_corr_classes, avg_tau_classes, test_loss_list, accuracy_list, embedding_class):
     df.loc[i, ('risultati', 'data')] = pd.Timestamp.now()
     df.at[i, ('risultati', 'test_loss')] = test_loss_list
     df.at[i, ('risultati', 'test_accuracy')] = accuracy_list
-    df.at[i, ('risultati', 'correlation_allclasses')] = avg_corr_classes.tolist()
-    df.at[i, ('risultati', 'tau_allclasses')] = avg_tau_classes.tolist()
-    df.at[i, ('risultati', 'node_embedding_class')] = node_embedding_class
+    if avg_corr_classes:
+        df.at[i, ('risultati', 'correlation_allclasses')] = avg_corr_classes.tolist()
+    else:
+        df.at[i, ('risultati', 'correlation_allclasses')] = None
+    if avg_tau_classes:
+        df.at[i, ('risultati', 'tau_allclasses')] = avg_tau_classes.tolist()
+    else:
+        df.at[i, ('risultati', 'tau_allclasses')] = None
+    df.at[i, ('risultati', 'embedding_class')] = embedding_class
 
 def fill_embedding_df(df, trainer):
     """

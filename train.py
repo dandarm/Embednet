@@ -145,6 +145,10 @@ class Trainer():
         self.gg = GenerateGraph(self.config_class)
         self.gg.initialize_dataset(parallel=parallel)  # istanzia il dataset networkx
 
+        # alcuni controlli
+        # print(self.gg.node_label)
+        # print(self.gg.dataset_scalar_label)
+
     def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
         print("Loading Dataset...")
         self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)

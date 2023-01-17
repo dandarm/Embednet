@@ -9,7 +9,7 @@ from pathlib import Path
 from config_valid import Inits
 from train import Trainer, GeneralDataset
 from embedding import Embedding
-from experiments import experiment_graph_embedding, experiment_node_embedding, experiment_node_emb_cm
+from experiments import experiment_node_embedding, experiment_node_emb_cm
 from experiments import Experiments
 from config_valid import Config, TrainingMode
 
@@ -21,9 +21,7 @@ from scipy import stats
 
 import yaml
 
-def studio_embedding():
-    config_file = "configs.yml"
-    experiment_graph_embedding(config_file)
+rootsave = Path("output_plots/")
 
 def studio_init(config_file):
     methods = [Inits.xavier_uniform, Inits.kaiming_uniform, Inits.uniform, 'esn']
@@ -50,14 +48,30 @@ def many_classes():
     xp = Experiments(config_file, diz_trials, rootsave)
     xp.diverse_classi_stesso_dataset()
 
+def diversi_init_weights_diversi_dataset():
+    config_file = "configurations/classification_cm_manyclasses.yml"
+    diz_trials = {'graph_dataset.Num_nodes': [[350] * 6],
+                  'graph_dataset.list_exponents': [list(np.round(np.linspace(-3.5, -6.5, 6), 2)),
+                                                   list(np.round(np.linspace(-1.5, -4.5, 6), 2)),
+                                                   ],
+                  'model.neurons_last_linear': [[10, 10, 6]],
+                  'model.init_weights': ['uniform'] * 5 + ['kaiming_uniform'] * 5}
+    xp = Experiments(config_file, diz_trials, rootsave)
+    xp.GSdiversi_init_weights_diversi_dataset(dataset_key1='graph_dataset.list_exponents')
+    outfile = "output_data/df_configs_unif_kaimunif_init_weights_diverse_classi_gcn_freezed.pkl"
+    df = xp.gc.config_dataframe
+    df.to_pickle(outfile)
 
 if __name__ == "__main__":
+
+
     #studio_embedding()
     #config_file = "configurations/classification_cm.yml"
     #experiment_node_embedding(config_file)
 
     #studio_init_weights()
-    many_classes()
+    #many_classes()
+    diversi_init_weights_diversi_dataset()
 
 
 

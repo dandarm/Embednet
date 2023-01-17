@@ -180,6 +180,9 @@ runs_before_6dic/
 #la cartella data generato per Planetoid
 data/
 
+# cartella di altri dati per tetsare umap
+archive/
+
 # cartella di output vari e grafici
 output/
 
@@ -201,3 +204,5 @@ output/
 
 *_old.ipynb
 *.soft
+
+*.zip

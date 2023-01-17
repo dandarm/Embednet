@@ -8,6 +8,12 @@ from torch_geometric.utils.convert import from_networkx
 import torch_geometric.transforms as T
 from multiprocessing import Pool
 
+class SingleGraph():
+    def __init__(self, nx_graph, graph_label, node_labels):
+        self.nx_graph = nx_graph
+        self.graph_label = graph_label
+        self.node_labels = node_labels
+
 class GeneralDataset:
     def __init__(self, dataset_list, labels, **kwarg):
         self.dataset_list = dataset_list
@@ -157,6 +163,9 @@ class Dataset(GeneralDataset):
         durata = time() - starttime
         print(f"Tempo impiegato: {durata}")
 
+        print(self.node_label)
+        print(self.dataset_scalar_label)
+
         # shuffle before train test split
         if shuffle:
             x = list(enumerate(self.dataset_pyg))
@@ -175,6 +184,13 @@ class Dataset(GeneralDataset):
                 self.exponent = [self.exponent[i] for i in lista_indici]
             if self.dataset_scalar_label is not None:
                 self.dataset_scalar_label = [self.dataset_scalar_label[i] for i in lista_indici]
+
+            # NON STAVO CAMBIANDO ANCHE LE NODE LABEL.... :'(
+            self.node_label =
+
+        print("ciao")
+        print(self.node_label)
+        print(self.dataset_scalar_label)
 
         self.train_dataset = self.dataset_pyg[:self.tt_split]
         self.test_dataset = self.dataset_pyg[self.tt_split:]

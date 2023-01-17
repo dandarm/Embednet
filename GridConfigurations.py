@@ -56,7 +56,6 @@ class GridConfigurations():
             config_is_back = yaml.safe_load(json.dumps(result))
             config_is_back['device'] = 'gpu'
 
-
             try:
                 config_class = Config.fromdict(config_is_back)  # faccio la validazione della config
                 self.configs.append(config_class)

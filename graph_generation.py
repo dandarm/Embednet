@@ -184,8 +184,9 @@ class GenerateGraph():
                 grafi_p, _ = self.create_ER(N, p, Num_grafi_per_tipo)
                 self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
                 self.dataset_labels = self.dataset_labels + [onehot_matrix[i]] * len(grafi_p)
-                self.dataset_scalar_label = self.dataset_scalar_label + [p]*Num_grafi_per_tipo
-                self.node_label.extend([p]*Num_grafi_per_tipo*N)
+                self.dataset_scalar_label = self.dataset_scalar_label + [p] * Num_grafi_per_tipo
+                self.node_label.append([p] * Num_grafi_per_tipo * N)
+                #print(f"{set(self.node_label)} <-> {set(self.dataset_scalar_label)}")
 
         elif label_kind == Labels.zero_one:
             # ho quindi solo due classi
@@ -193,8 +194,8 @@ class GenerateGraph():
                 grafi_p, _ = self.create_ER(N, p, Num_grafi_per_tipo)
                 self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
                 self.dataset_labels = self.dataset_labels + [i] * len(grafi_p)
-                self.dataset_scalar_label = self.dataset_scalar_label + [p]*Num_grafi_per_tipo
-                self.node_label.extend([p] * Num_grafi_per_tipo * N)
+                self.dataset_scalar_label = self.dataset_scalar_label + [p] * Num_grafi_per_tipo
+                self.node_label.append([p] * Num_grafi_per_tipo * N)
                 # TODO: valutare se serve anche quì portarsi appresso la actualprobs
 
         elif label_kind == Labels.prob:
@@ -203,7 +204,7 @@ class GenerateGraph():
                 self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
                 self.dataset_labels.extend(actual_probs)
                 self.dataset_scalar_label = self.dataset_scalar_label + [p] * Num_grafi_per_tipo
-                self.node_label.extend([p] * Num_grafi_per_tipo * N)
+                self.node_label.append([p] * Num_grafi_per_tipo * N)
 
         # TODO: original class lo facciamo diventare un target vettoriale
         original_class = [[i] for i in self.dataset_labels]
@@ -224,7 +225,7 @@ class GenerateGraph():
                 self.dataset_grafi_nx.append(gr)
                 actual_p = nx.to_numpy_matrix(gr).sum(axis=1).mean() / (Num_nodes - 1)
                 self.dataset_labels.append(actual_p)
-                self.node_label.extend([p] * Num_nodes)
+                self.node_label.append([p] * Num_nodes)
                 self.dataset_scalar_label.append(p)  # voglio tracciare la probabilità usata per generare il grafo
         else:
             for i, p in enumerate(list_p):
@@ -232,7 +233,7 @@ class GenerateGraph():
                 self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
                 self.dataset_labels.extend(actual_probs)
                 self.dataset_scalar_label = self.dataset_scalar_label + [p] * Num_grafi_per_tipo
-                self.node_label.extend([p]*Num_grafi_per_tipo*Num_nodes)
+                self.node_label.append([p]*Num_grafi_per_tipo*Num_nodes)
 
         self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.dataset_labels), dataset_scalar_label=self.dataset_scalar_label, node_label=self.node_label)
 

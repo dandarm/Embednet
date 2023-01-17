@@ -6,11 +6,14 @@ from plt_parameters import get_colors_to_cycle_rainbow8, get_colors_to_cycle_rai
 from matplotlib.lines import Line2D
 from config_valid import TrainingMode
 
-
+from matplotlib import ticker
+formatter = ticker.ScalarFormatter(useMathText=True)
+formatter.set_scientific(True)
+formatter.set_powerlimits((-1,1))
 
 # region plots
 def plot_metrics(embeddings, num_emb_neurons, training_mode):
-    embeddings.get_metrics(num_emb_neurons)
+    embeddings.get_metrics(num_emb_neurons, training_mode)
     if num_emb_neurons == 1:
         # embeddings_per_cluster solo per distribuzione discreta
         graph_emb_perclass = embeddings.get_all_graph_emb_per_class()
@@ -80,7 +83,7 @@ def plot_dimN(embeddings, bins):
 
 
 
-def plot_graph_emb_1D(emb_by_class, config_c, str_filename=None, show=True, ax=None, close=False, sequential_colors=False):
+def plot_graph_emb_1D(emb_by_class, str_filename=None, show=True, ax=None, close=False, sequential_colors=False):
     if ax is None:
         fig, ax = plt.subplots(figsize=(12, 6))
     # plt.scatter(graph_embeddings.embeddings_array[:,0], graph_embeddings.embeddings_array[:,1], s=0.1, marker='.')
@@ -174,7 +177,12 @@ def plot_graph_emb_1D_continuousregression(embedding_class, config_c, str_filena
         plt.close()
 
 
-def scatter_node_emb(emb_by_class, config_c, filename=None, show=True, epoch=None, ax=None, close=False, sequential_colors=False):
+def scatter_node_emb(emb_by_class, filename=None, show=True, epoch=None, ax=None, close=False, sequential_colors=False, labels=True, xlim=None, ylim=None, log=False):
+    """
+    Plotta il node embedding rispetto a una label di classe vettoriale, va bene nel caso della power law
+    dove c'è una label per ogni nodo
+    :return:
+    """
     num_nodi_totali = len(emb_by_class[0]) * 2 * len(emb_by_class[0][0].node_embedding_array)
     alpha_value = min(1, 3000 / num_nodi_totali)
     exps = [] #config_c.conf['graph_dataset']['list_exponents']
@@ -188,18 +196,31 @@ def scatter_node_emb(emb_by_class, config_c, filename=None, show=True, epoch=Non
         custom_lines.append(Line2D([0], [0], color=color, lw=3))
         exps.append(emb_class[0].exponent)
         for emb_pergraph in emb_class:
-            ax.scatter(emb_pergraph.node_label, emb_pergraph.node_embedding_array, marker='.', color=color, alpha=alpha_value)
-    #for emb_pergraph in emb_perclass1:
-    #    ax.scatter(emb_pergraph.node_label, emb_pergraph.node_embedding_array, marker='.', color='red', alpha=alpha_value)
-    ax.set_ylabel('Node Emb. values', fontsize=16);
-    ax.set_xlabel('Degree sequence', fontsize=16);
-    titolo = "Node embedding vs. Degree sequence"   #f'Final Test Acc. {round(accuracy,5)}'
-    if epoch:
-        titolo += f'\t epoch {epoch}'
-    ax.set_title(titolo)
+            if log:
+                ax.plot(np.log10(np.array(emb_pergraph.node_label)), np.log10(emb_pergraph.node_embedding_array + 1), marker='.', linestyle='None', color=color, alpha=alpha_value)
+                #ax.yaxis.set_major_formatter(formatter)
+            else:
+                ax.plot(emb_pergraph.node_label, emb_pergraph.node_embedding_array, marker='.', linestyle='None', color=color, alpha=alpha_value)
+
+    if ylim:
+        ax.set_ylim(ylim)
+    if xlim:
+        ax.set_xlim(xlim)
+    # if log:
+    #     ax.set_yscale('log')
+    #     plt.yscale('log')
+    if labels:
+        ax.set_ylabel('Node Emb. values', fontsize=16);
+        ax.set_xlabel('Degree sequence', fontsize=16);
+        titolo = "Node embedding vs. Degree sequence"   #f'Final Test Acc. {round(accuracy,5)}'
+        if epoch:
+            titolo += f'\t epoch {epoch}'
+        ax.set_title(titolo)
+    else:
+        plt.setp(ax.get_yticklabels(), visible=False)
     ax.legend(custom_lines, [f"exp {round(e,2)}" for e in exps], loc=1, prop={'size': 6})
     if filename:
-        plt.savefig(filename, bbox_inches='tight', dpi=100)
+        plt.savefig(filename, bbox_inches='tight', dpi=200)
     if show:
         plt.show()
     if close:
@@ -433,36 +454,41 @@ def plot_ripetizioni_stesso_trial(xp, dot_key, folder):
     plt.show()
 
 
-def plot_onlyloss_ripetizioni_stesso_trial(xp, dot_key, ylim=None, xlim=None, filename=None):
+def plot_onlyloss_ripetizioni_stesso_trial_xp(xp, dot_key, ylim=None, xlim=None, figsize=(25,50), filename=None):
     df = xp.gc.config_dataframe
+    diz_trials = xp.diz_trials
+    rootsave = xp.rootsave
+    plot_onlyloss_ripetizioni_stesso_trial(df, diz_trials, dot_key, figsize, rootsave, filename, xlim, ylim)
+
+def plot_onlyloss_ripetizioni_stesso_trial(df, diz_trials, dot_key, figsize=(25,50), rootsave=None, filename=None, xlim=None, ylim=None):
     multicolumns = tuple(dot_key.split('.'))
-    distinte = list(set(xp.diz_trials[dot_key]))
-    fig, axs = plt.subplots(len(distinte), 1, figsize=(25,50))
-    k=0
-    for var in set(xp.diz_trials[dot_key]):
+    distinte = list(set(diz_trials[dot_key]))
+    fig, axs = plt.subplots(len(distinte), 1, figsize=figsize)
+    k = 0
+    for var in set(diz_trials[dot_key]):
         m1 = df[multicolumns] == var
         if m1.sum() > 0:
             res = df[m1]
             ax = axs[k]
-            k+=1
+            k += 1
             for i, (j, row) in enumerate(res.iterrows()):
                 ax.plot(row[('risultati', 'test_loss')], color='black')  # get_colors_to_cycle()[i])
 
             ax.set_ylabel('Test Loss')  # , color=get_colors_to_cycle()[4])
             ax.set_title(f"{var}", fontsize=30)
-            ax.set_xlim(0, 500)
+            #ax.set_xlim(0, 500)
             if ylim:
                 ax.set_ylim(ylim)
             if xlim:
                 ax.set_xlim(xlim)
             # axt = axs[1][i].twinx()
             # axt.plot(row[('risultati', 'test_accuracy')], '.', color=get_colors_to_cycle()[5])
-
     if filename:
-        filenamesave = xp.rootsave / filename
+        filenamesave = rootsave / filename
         plt.savefig(filenamesave, bbox_inches='tight')
     plt.tight_layout()
     plt.show()
+
 
 def plot_onlyloss_ripetizioni_stesso_trial_superimposed(xp, dot_key, ylim=None, xlim=None, filename=None, lista_keys=None):
     df = xp.gc.config_dataframe

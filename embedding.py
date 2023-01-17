@@ -56,6 +56,8 @@ class Embedding():
         """
 
         Num_nodi = self.config_class.conf['graph_dataset']['Num_nodes']
+        if isinstance(Num_nodi, list):
+            Num_nodi = Num_nodi[0]
         total_num_grafi = len(self.dataset_nx)
         r = 0
         for i in range(total_num_grafi):
@@ -73,7 +75,9 @@ class Embedding():
             if self.original_class is not None:
                 node_label_and_id = self.original_class[i]
 
-            scalar_label = self.dataset.dataset_scalar_label[i]
+            scalar_label = None
+            if self.dataset.dataset_scalar_label:
+                scalar_label = self.dataset.dataset_scalar_label[i]
 
             graph_emb = self.graph_embedding_array[i]
             node_emb = self.node_embedding_array[r:r + Num_nodi]
@@ -306,8 +310,8 @@ class Embedding():
     def calc_regression_error(self):
         self.regression_error = np.sqrt(np.sum((self.graph_embedding_array.flatten() - self.training_labels) ** 2)) / len(self.graph_embedding_array)
 
-    def get_metrics(self, num_emb_neurons):
-        if num_emb_neurons == 1:
+    def get_metrics(self, num_emb_neurons, training_mode):
+        if num_emb_neurons == 1 and training_mode == TrainingMode.mode3:
             self.calc_graph_emb_correlation()  # calcola self.graph_correlation_per_class o self.total_graph_correlation
             self.calc_regression_error()
         else:
@@ -340,11 +344,11 @@ class Embedding_per_graph():
 
     def get_correlation_with_degree_sequence(self):
         node_emb_array = np.array(self.node_embedding_array).flatten()
-        self.correlation_with_degree = np.corrcoef(node_emb_array, self.node_label)[0, 1]
+        self.correlation_with_degree = np.corrcoef(node_emb_array, self.node_label)[0, 1]  # TODO: node_label flatten!!!
 
     def get_kendall_with_degree_sequence(self):
         node_emb_array = np.array(self.node_embedding_array).flatten()
-        self.kendall_with_degree, p_value = kendalltau(node_emb_array, self.node_label)
+        self.kendall_with_degree, p_value = kendalltau(node_emb_array, self.node_label) # TODO: node_label flatten!!!
 
 
 
