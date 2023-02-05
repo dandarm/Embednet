@@ -173,6 +173,7 @@ runs_before_agosto/
 runs_before_10nov/
 runs_before_231122/
 runs_before_6dic/
+runs_before_18gen23/
 
 #la cartella di pycharm
 .idea/
@@ -182,6 +183,8 @@ data/
 
 # cartella di altri dati per tetsare umap
 archive/
+
+ml-100k/
 
 # cartella di output vari e grafici
 output/
@@ -206,3 +209,5 @@ output/
 *.soft
 
 *.zip
+
+plot_funcs_old.py

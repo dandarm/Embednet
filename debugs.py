@@ -15,7 +15,7 @@ from config_valid import Config, TrainingMode
 from graph_generation import GenerateGraph
 #from experiments import (train_take_embedding, plot_dim1, plot_dimN, plot_correlation_error, get_metrics,
 #                         init_GCN, init_model_dataset, train_take_embedding_alreadyinit)
-from plot_funcs import (plot_dim1, plot_dimN, plot_correlation_error, get_metrics, plot_node_emb_1D_perclass, scatter_node_emb,
+from plot_funcs import (plot_dim1, plot_dimN, plot_correlation_error, get_metrics, plot_node_emb_1D, scatter_node_emb,
                         plot_graph_emb_1D, plot_data_degree_sequence)
 
 import torch
@@ -60,7 +60,7 @@ def debug2():
 
     plot_data_degree_sequence(xp.trainer.config_class, embs_by_class)
     i, j = 15, 3
-    plt.scatter(embs_by_class[i][j].node_label, embs_by_class[i][j].node_embedding_array)
+    plt.scatter(embs_by_class[i][j].actual_node_class, embs_by_class[i][j].node_embedding_array)
     print(embs_by_class[i][j].graph_label)
 
 if __name__ == "__main__":

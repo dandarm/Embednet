@@ -15,9 +15,10 @@ from models import GAEGCNEncoder, view_parameters, new_parameters, modify_parame
 from train import Trainer
 from train_autoencoder import Trainer_Autoencoder
 from embedding import Embedding
-from plot_funcs import scatter_node_emb, plot_graph_emb_1D, plot_node_emb_1D_perclass, save_ffmpeg
+from plot_funcs import scatter_node_emb, plot_graph_emb_1D, plot_node_emb_1D, save_ffmpeg, Data2Plot
 from config_valid import Config
 from GridConfigurations import GridConfigurations
+from graph_generation import GraphType
 from utils import array_wo_outliers
 
 # per usare il trainer e il config nei processi paralleli
@@ -28,6 +29,9 @@ loss_list = []
 exp_config = None
 output_per_epoch = []
 accuracy_list = []
+dataset_type = None
+embedding_dimension = None
+sequential_colors = False
 def all_seeds():
     os.environ['PYTHONHASHSEED'] = str(0)
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":4096:8"
@@ -89,6 +93,9 @@ class Experiments():
             self.trainer.load_dataset(self.trainer.gg.dataset)
 
             self.trainer.launch_training()
+
+            embedding_class = self.embedding()
+            fill_df_with_results(self.gc.config_dataframe, i, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
 
     def diversi_init_weights_stesso_dataset(self, parallel=True):  #, metodi, ripetizioni):
         self.GS_different_weight_inits( train_with_same_dataset=True, test_same_training=False, parallel_take_result=parallel)
@@ -264,20 +271,20 @@ class Experiments():
             #fill_embedding_df(self.gc.embedding_dataframe, trainer, k)
             k += 1
 
-    def just_train(self):
-        self.trainer = Trainer(self.config_class)
-        self.trainer.init_all()
+    def just_train(self, parallel=True, verbose=False):
+        #self.trainer = Trainer(self.config_class)
+        self.trainer.init_all(parallel=parallel, verbose=verbose)
         self.trainer.launch_training()
     def embedding(self):
         if self.config_class.conf['training']['save_best_model']:
             self.trainer.model = self.trainer.best_model
         graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output = self.trainer.take_embedding_all_data()
-        embedding_class = self.elaborate_embedding(graph_embeddings_array, node_embeddings_array, node_embeddings_array_id)
+        embedding_class = self.elaborate_embedding(graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output)
 
         return embedding_class
 
-    def elaborate_embedding(self, graph_embeddings_array, node_embeddings_array, node_embeddings_array_id):
-        embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, self.trainer.dataset, self.trainer.config_class)
+    def elaborate_embedding(self, graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, output_array):
+        embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, self.trainer.dataset, self.trainer.config_class, output_array)
         embedding_class.get_emb_per_graph()  # riempie node_emb_pergraph
         embedding_class.separate_embedding_by_classes()  # riempie node_emb_perclass e graph_emb_perclass
         #if not self.config_class.conf['graph_dataset']['continuous_p']:
@@ -348,13 +355,15 @@ class Experiments():
             bios = pool.map(mylambda_memory, lista)
         return bios
 
-    def make_video(self, skip, fromfiles=True, isgif=False, both=True, custom_list=None):
+    def make_video(self, skip=1, fromfiles=True, isgif=False, both=True, custom_list=None, seq_colors=False):
         global output_per_epoch
         global loss_list
         global accuracy_list
+        global sequential_colors
         output_per_epoch = self.trainer.output_per_epoch
         loss_list = self.trainer.test_loss_list
         accuracy_list = self.trainer.accuracy_list
+        sequential_colors = seq_colors
 
         if both:
             isgif = True
@@ -374,15 +383,19 @@ class Experiments():
         if isinstance(numnodi, list):
             numnodi = numnodi[0]
         numgrafi = exp_config.conf['graph_dataset']['Num_grafi_per_tipo'] * 2
-        exps = exp_config.conf['graph_dataset']['list_exponents']
-        if isinstance(exps, list):
-            exps = f"{len(exps)}"
         percentuale_train = exp_config.conf['training']['percentage_train']
         layers = exp_config.conf['model']['GCNneurons_per_layer']
         denso = exp_config.conf['model']['last_layer_dense']
         modo = exp_config.conf['training']['mode']
         freezed = exp_config.conf['model']['freezeGCNlayers']
-        nomefile = f"scatter_exp{exps}_nodi{numnodi}_grafi{numgrafi}_percent{percentuale_train}_{modo}_layers{layers}_finaldense{denso}_freezed{freezed}"
+        data_label = ""
+        if dataset_type == GraphType.ER:
+            data_label = exp_config.conf['graph_dataset']['list_p']
+        else:
+            data_label = exp_config.conf['graph_dataset']['list_exponents']
+            if isinstance(data_label, list):
+                data_label = f"{len(data_label)}"
+        nomefile = f"scatter_exp{data_label}_nodi{numnodi}_grafi{numgrafi}_percent{percentuale_train}_{modo}_layers{layers}_finaldense{denso}_freezed{freezed}"
         nomefile = nomefile.replace(', ', '_')
         print(nomefile)
 
@@ -461,14 +474,24 @@ def mylambda_memory(i):
 def mylambda_figure(i):
     graph_embeddings_array = graph_embedding_per_epoch[i]
     node_embeddings_array = node_embedding_per_epoch[i]
-    embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, dataset, exp_config)
+    output_array = output_per_epoch[i]
+    embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, dataset, exp_config, output_array)
     embedding_class.get_emb_per_graph()  # riempie node_emb_pergraph
     embedding_class.separate_embedding_by_classes()
+    data = Data2Plot(embedding_class.emb_perclass, dim=embedding_dimension)
 
     fig, axes = plt.subplots(2, 3, figsize=(20, 12))
-    scatter_node_emb(embedding_class.node_emb_perclass, exp_config, ax=axes[0][0], show=False, close=True, sequential_colors=True)
-    plot_graph_emb_1D(embedding_class.node_emb_perclass, exp_config, ax=axes[0][1], show=False, close=True, sequential_colors=True)
-    axes[0][2].hist(np.array(output_per_epoch[i]).flatten(), bins=50);
+    if embedding_dimension == 1:
+        data.plot(datatype='node_embedding', type='scatter', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
+        data.plot(datatype='graph_embedding', type='histogram', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
+        data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
+    else:
+        data.plot(datatype='node_embedding', type='plot', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
+        data.plot(datatype='graph_embedding', type='plot', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
+        data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
+    #scatter_node_emb(embedding_class.emb_perclass, ax=axes[0][0], show=False, close=False, sequential_colors=True)
+    #plot_graph_emb_1D(embedding_class.emb_perclass, ax=axes[0][1], show=False, close=False, sequential_colors=True)
+    #axes[0][2].hist(np.array(output_array).flatten(), bins=50);
     axes[1][0].plot(loss_list)
     axes[1][0].plot(i, loss_list[i], 'ro')
     axes[1][1].plot(accuracy_list)
@@ -570,7 +593,7 @@ def experiment_node_emb_cm(config_file, methods, ripetiz=30):
             emb_perclass1 = [n for n in node_emb_pergraphclass if n.graph_label == 1]
 
             str_filename = f"node_embeddings_{method}_{i}.png"
-            plot_node_emb_1D_perclass(emb_perclass0, emb_perclass1, trainer.last_accuracy, str_filename)
+            plot_node_emb_1D(emb_perclass0, emb_perclass1, trainer.last_accuracy, str_filename)
 
             str_filename = f"scatter_embeddings_degree_{method}_{i}.png"
             scatter_node_emb(emb_perclass0, emb_perclass1, trainer.last_accuracy, str_filename)

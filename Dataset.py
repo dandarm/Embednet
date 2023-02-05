@@ -13,23 +13,24 @@ class SingleGraph():
         self.nx_graph = nx_graph
         self.graph_label = graph_label
         self.node_labels = node_labels
+# TODO: sarebbe il caso di mettere la classe embedding dentro al dataset
 
 class GeneralDataset:
     def __init__(self, dataset_list, labels, **kwarg):
         self.dataset_list = dataset_list
         self.labels = labels
-        self.original_class = kwarg.get('original_class')
-        self.node_label = kwarg.get('node_label')
+        self.original_node_class = kwarg.get('original_node_class')
+        self.actual_node_class = kwarg.get('actual_node_class')
         self.exponent = kwarg.get('exponent')
-        self.dataset_scalar_label = kwarg.get('dataset_scalar_label')
+        self.scalar_label = kwarg.get('scalar_label')
 
         #calcola il max degree
         #[dataset_list]
 
 class Dataset(GeneralDataset):
 
-    def __init__(self, percentage_train, batch_size, device, config_class, dataset_list, labels, original_class, exponent, node_label, dataset_scalar_label):
-        super().__init__(dataset_list, labels, original_class=original_class, exponent=exponent, node_label=node_label, dataset_scalar_label=dataset_scalar_label)
+    def __init__(self, percentage_train, batch_size, device, config_class, dataset_list, labels, original_node_class, exponent, actual_node_class, scalar_label):
+        super().__init__(dataset_list, labels, original_node_class=original_node_class, exponent=exponent, actual_node_class=actual_node_class, scalar_label=scalar_label)
         #self.dataset_list = dataset_list  # rename in dataset_list
         self.dataset_pyg = None
         #self.labels = labels
@@ -163,9 +164,6 @@ class Dataset(GeneralDataset):
         durata = time() - starttime
         print(f"Tempo impiegato: {durata}")
 
-        print(self.node_label)
-        print(self.dataset_scalar_label)
-
         # shuffle before train test split
         if shuffle:
             x = list(enumerate(self.dataset_pyg))
@@ -177,20 +175,17 @@ class Dataset(GeneralDataset):
             self.dataset_list = [self.dataset_list[i] for i in lista_indici]
             # e cambio l'ordine anche alle orginal class nel caso regression con discrete distrib
             #if self.config['training']['mode'] == 'mode3' and not self.config['graph_dataset']['continuous_p']:
-            if self.original_class is not None:
-                self.original_class = [self.original_class[i] for i in lista_indici]
+            if self.original_node_class is not None:
+                self.original_node_class = [self.original_node_class[i] for i in lista_indici]
             # ho aggiunto le exponent e quindi devo cambiare l'ordine anche a loro...
             if self.exponent is not None:
                 self.exponent = [self.exponent[i] for i in lista_indici]
-            if self.dataset_scalar_label is not None:
-                self.dataset_scalar_label = [self.dataset_scalar_label[i] for i in lista_indici]
+            if self.scalar_label is not None:
+                self.scalar_label = [self.scalar_label[i] for i in lista_indici]
 
             # NON STAVO CAMBIANDO ANCHE LE NODE LABEL.... :'(
-            self.node_label =
+            self.actual_node_class = [self.actual_node_class[i] for i in lista_indici]
 
-        print("ciao")
-        print(self.node_label)
-        print(self.dataset_scalar_label)
 
         self.train_dataset = self.dataset_pyg[:self.tt_split]
         self.test_dataset = self.dataset_pyg[self.tt_split:]

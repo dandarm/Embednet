@@ -37,6 +37,7 @@ class Trainer():
         self.model_checkpoint = None
         self.best_model = None
         self.config_class = config_class
+        self.config_class.valid_conf()
         self.conf = self.config_class.conf
 
         self.percentage_train = self.conf['training']['percentage_train']
@@ -116,6 +117,7 @@ class Trainer():
         self.reinit_conf(config_c)
     def reinit_conf(self, config_class):
         self.config_class = config_class
+        self.config_class.valid_conf()
         self.conf = self.config_class.conf
 
         self.lr = self.conf['training']['learning_rate']
@@ -147,7 +149,7 @@ class Trainer():
 
         # alcuni controlli
         # print(self.gg.node_label)
-        # print(self.gg.dataset_scalar_label)
+        # print(self.gg.scalar_label)
 
     def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
         print("Loading Dataset...")
@@ -474,7 +476,7 @@ class Trainer():
                     #if verbose > 0:
                     print("Early stopping!!!")
                     break
-            if verbose > 0: print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\t FINE TRAINING')
+            if verbose > 0: print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\tBest test loss: {best_loss} FINE TRAINING')
         print(f"test accuracy finale: {test_acc}")
         writer.flush()
         #writer_variance.flush()

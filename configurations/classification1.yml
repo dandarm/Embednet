@@ -4,10 +4,10 @@ graph_dataset:
     confmodel: False
     continuous_p: False
     random_node_feat: False
-    list_p: [0.05, 0.1] #, 0.3, 0.4, 0.5, 0.6]
+    list_p: [0.05, 0.2] #, 0.3, 0.4, 0.5, 0.6]
     range_p: [0.05, 0.6]
-    Num_nodes: 13   #300
-    Num_grafi_per_tipo: 15  #500
+    Num_nodes: 300
+    Num_grafi_per_tipo: 200
     Num_grafi_totali: 1000
     list_degree: [10, 20, 30]
     
@@ -16,7 +16,7 @@ training:
     #mode1 = 'classification', CrossEntropyLoss, '1-hot', 'n_class'
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
-    mode: 'mode1'  #mode2
+    mode: 'mode2'
     learning_rate: 0.01
     epochs: 2000
     batch_size: 700
@@ -30,14 +30,14 @@ training:
 model:
     last_layer_dense: True
     GCNneurons_per_layer: [1, 16, 16, 1]
-    neurons_last_linear: [8, 8, 2]  # 1 nodo finale
+    neurons_last_linear: [8, 8, 1]  # 1 nodo finale
     freezeGCNlayers: True
     autoencoder: False
     put_batchnorm: False
     final_pool_aggregator: True
     put_dropout: False
     node_features_dim: 1
-    init_weights: 'eye'  #'xavier_normal'
+    init_weights: 'xavier_normal'
     
 logging:
     train_step_print: 100

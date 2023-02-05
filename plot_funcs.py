@@ -1,33 +1,170 @@
 import os
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
 from plt_parameters import get_colors_to_cycle_rainbow8, get_colors_to_cycle_rainbowN, get_colors_to_cycle_sequential
 from matplotlib.lines import Line2D
 from config_valid import TrainingMode
-
+import umap
 from matplotlib import ticker
 formatter = ticker.ScalarFormatter(useMathText=True)
 formatter.set_scientific(True)
 formatter.set_powerlimits((-1,1))
 
-# region plots
-def plot_metrics(embeddings, num_emb_neurons, training_mode):
-    embeddings.get_metrics(num_emb_neurons, training_mode)
-    if num_emb_neurons == 1:
-        # embeddings_per_cluster solo per distribuzione discreta
-        graph_emb_perclass = embeddings.get_all_graph_emb_per_class()
-        labels = embeddings.get_all_scalar_labels_per_class()
-        plot_dim1(graph_emb_perclass, want_kde=False, labels=labels)
-        node_emb_perclass = embeddings.get_all_node_emb_per_class()
-        plot_dim1(node_emb_perclass, want_kde=False, labels=labels)
-        if training_mode == TrainingMode.mode3:
-            plot_correlation_error(embeddings)
-    else:
-        embeddings.calc_distances()
-        plot_dimN(embeddings, 300)
+class Data2Plot():
+    """
+    Serve per generare una generica classe di dati da plottare, andando a specificare
+    di volta in volta quali data plottare in questa classe, invece della funzione di plot
+    Gerarchia:
+        - oggetto contenente i dati
+        - classi diverse di training
+        - graph_embedding o final output: un qualsiasi dato che descrive il grafo per intero
+        - node embedding: un array per ogni grafo che descrive i nodi
+    """
+    def __init__(self, input_obj, dim):
+        self.input_obj = input_obj
+        self.array2plot = []
+        self.class_labels = []
+        self.dim = dim
+        self.allgraph_class_labels = [[emb.scalar_label for emb in emb_per_graph] for emb_per_graph in self.input_obj]
+        self.allnode_labels = [[emb.actual_node_class for emb in emb_per_graph] for emb_per_graph in self.input_obj]
+        #self.set_data()
 
-def plot_dim1(embeddings_per_class, bins=10, want_kde=True, density=True, nomefile=None, labels=None, title=None):
+    def set_data(self, type=None):
+        self.array2plot = []
+        self.class_labels = []
+        if type is None:
+            raise Exception("Must set a data type")
+
+        if type == 'graph_embedding':
+            for classe in self.input_obj:
+                self.class_labels.append(classe[0].scalar_label)
+                arr = []
+                for graph in classe:
+                    arr.append(graph.graph_embedding)
+                self.array2plot.append(arr)
+
+        elif type == 'node_embedding':
+            for classe in self.input_obj:
+                self.class_labels.append(classe[0].scalar_label)
+                arr = []
+                for graph in classe:
+                    arr.append(graph.node_embedding_array)
+                self.array2plot.append(arr)
+
+        elif type == 'final_output':
+            for classe in self.input_obj:
+                self.class_labels.append(classe[0].scalar_label)
+                arr = []
+                for graph in classe:
+                    arr.append(graph.output)
+                self.array2plot.append(arr)
+
+        self.array2plot = np.squeeze(np.array(self.array2plot))
+
+    def get_color(self, i, sequential_colors=False):
+        if sequential_colors:
+            color = get_colors_to_cycle_sequential(len(self.input_obj))[i]
+        else:
+            color = get_colors_to_cycle_rainbow8()[i % 8]
+        return color
+    def get_alpha_value(self, type):
+        num_tot = 0
+        if type == 'node_embedding':
+            num_tot = len(self.input_obj) * len(self.input_obj[0]) * len(self.input_obj[0][0].node_embedding_array)
+        elif type == 'graph_embedding' or type == 'final_output':
+            num_tot = len(self.input_obj) * len(self.input_obj[0])
+        alpha_value = min(1, 3000 / num_tot)
+        return alpha_value
+    def plot(self, datatype = 'node_embedding', type='histogram', ax=None, filename=None, sequential_colors=False, log=False, title=None):
+        self.set_data(datatype)
+        if self.dim > 2:
+            array2plotflattened = self.array2plot.reshape(-1, self.array2plot.shape[-1])
+            emb_data = self.calc_umap(array2plotflattened)
+            if datatype == 'node_embedding':
+                labels_ripetute_pergraph = np.array(self.allnode_labels).flatten()
+            elif datatype == 'graph_embedding' or datatype == 'final_output':
+                labels_ripetute_pergraph = np.array(self.allgraph_class_labels).flatten()
+            cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", get_colors_to_cycle_rainbow8())
+            #cmap = matplotlib.colors.ListedColormap(get_colors_to_cycle_sequential(len(self.input_obj)), name='from_list', N=None)
+            ax.scatter(emb_data[:, 0], emb_data[:, 1], c=labels_ripetute_pergraph, cmap=cmap) #'gist_rainbow');
+
+        else:
+            alpha_value = self.get_alpha_value(datatype)
+            if ax is None:
+                fig, ax = plt.subplots(figsize=(12, 6))
+            custom_lines = []
+            for i, classe in enumerate(self.array2plot):
+                color = self.get_color(i, sequential_colors)
+                custom_lines.append(Line2D([0], [0], color=color, lw=3))
+                if type == 'histogram':
+                    #counts = np.unique(classe, return_counts=True)
+                    #if log:
+                    #    ax.loglog(*counts, c=color, alpha=alpha_value, label=self.class_labels[i], linewidth=3)
+                    #else:
+                    #    ax.plot(*counts, c=color, alpha=alpha_value, label=self.class_labels[i], linewidth=3)
+                    new_bins = np.histogram(np.hstack(self.array2plot), bins=30)[1]
+                    h, e = np.histogram(classe, bins=new_bins)#, density=density)
+                    ax.bar(e[:-1], h, width=np.diff(e), ec='k', align='edge', label=self.class_labels[i], color=color, alpha=0.7)
+                    #ax.hist(classe.flatten(), color=color, label=self.class_labels[i], bins=30)
+                elif type == 'plot':
+                    ax.plot(*classe.T, c=color, alpha=alpha_value, label=self.class_labels[i], marker='.', linestyle='None')
+                elif type == 'scatter':
+                    if log:
+                        ax.plot(np.log10(np.array(self.allgraph_class_labels)), np.log10(classe + 1), marker='.', linestyle='None', color=color, alpha=alpha_value)
+                    else:
+                        ax.plot(self.allnode_labels[i], classe, marker='.', linestyle='None', color=color, alpha=alpha_value)
+
+            ax.legend(custom_lines, [f"class {e}" for e in self.class_labels])
+        if title:
+            ax.set_title(title)
+        if filename:
+            plt.savefig(filename, bbox_inches='tight')
+
+    def calc_umap(self, data):
+        embedding = umap.UMAP().fit_transform(data)
+        return embedding
+
+
+# region plots
+def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list=None, sequential_colors=False):
+    #embedding_class.get_metrics(num_emb_neurons, training_mode) #TODO rimettere
+    data = Data2Plot(embedding_class.emb_perclass, dim=num_emb_neurons)
+    if num_emb_neurons == 1:
+        print("Plotting 1D embeddings...")
+        fig, axes = plt.subplots(1, 3, figsize=(30, 7))
+        # embeddings_per_cluster solo per distribuzione discreta
+        # graph_emb_perclass = embedding_class.get_all_graph_emb_per_class()
+        # labels = embedding_class.get_unique_class_labels()
+        # plot_dim1(graph_emb_perclass, want_kde=False, labels=labels, title="Graph Embedding")
+        # node_emb_perclass = embedding_class.get_all_node_emb_per_class()
+        # plot_dim1(node_emb_perclass, want_kde=False, labels=labels, title="Node Embedding")
+        # plot_node_emb_1D(embedding_class.emb_perclass)
+        # scatter_node_emb(embedding_class.emb_perclass, sequential_colors=False, filename=None)
+        data.plot(datatype='node_embedding', type='scatter', ax=axes[0], sequential_colors=sequential_colors, title="Node Embedding")
+        data.plot(datatype='graph_embedding', type='histogram', ax=axes[1], sequential_colors=sequential_colors, title="Graph Embedding")
+        data.plot(datatype='final_output', type='plot', ax=axes[2], sequential_colors=sequential_colors, title="Final Output")
+        if training_mode == TrainingMode.mode3:
+            plot_correlation_error(embedding_class)
+    else:
+        print("Plotting 2D or n>=2 embeddings...")
+        fig, axes = plt.subplots(1, 3, figsize=(30, 7))
+        #plot_dimN(embedding_class, 300)
+        #plot_node_emb_nD(embedding_class.emb_perclass, ax=ax1)
+        #plot_graph_emb_nD(embedding_class.emb_perclass, ax=ax2)
+        data.plot(datatype='node_embedding', type='plot', ax=axes[0], sequential_colors=sequential_colors, title="Node Embedding")
+        data.plot(datatype='graph_embedding', type='plot', ax=axes[1], sequential_colors=sequential_colors, title="Graph Embedding")
+        data.plot(datatype='final_output', type='plot', ax=axes[2], sequential_colors=sequential_colors, title="Final Output")
+
+
+    if test_loss_list:
+        plt.plot(test_loss_list)
+
+    plt.show()
+
+
+def plot_dim1(embeddings_per_class, bins=30, want_kde=True, density=True, nomefile=None, labels=None, title=None, sequential_colors=False):
     #plt.figure(figsize=(18, 6))  # , dpi=60)
     # trova lo stesso binning
     new_bins = np.histogram(np.hstack(embeddings_per_class), bins=bins)[1]
@@ -37,7 +174,9 @@ def plot_dim1(embeddings_per_class, bins=10, want_kde=True, density=True, nomefi
         x = np.linspace(e.min(), e.max())
         if labels:
             lab = labels[i]
-            color = get_colors_to_cycle_sequential(len(embeddings_per_class))[i]
+            color = get_colors_to_cycle_rainbow8()[i % 8]
+            if sequential_colors:
+                color = get_colors_to_cycle_sequential(len(embeddings_per_class))[i]
             plt.bar(e[:-1], h, width=np.diff(e), ec='k', align='edge', label=f"{lab}", color=color,alpha=0.7)
         else:
             plt.bar(e[:-1], h, width=np.diff(e), ec='k', align='edge', alpha=0.7)
@@ -81,33 +220,26 @@ def plot_dimN(embeddings, bins):
 
 
 
-
-
 def plot_graph_emb_1D(emb_by_class, str_filename=None, show=True, ax=None, close=False, sequential_colors=False):
     if ax is None:
         fig, ax = plt.subplots(figsize=(12, 6))
-    # plt.scatter(graph_embeddings.embeddings_array[:,0], graph_embeddings.embeddings_array[:,1], s=0.1, marker='.')
-    exps = [] # config_c.conf['graph_dataset']['list_exponents']
+
+    scalar_label = []
 
     for i, emb_class in enumerate(emb_by_class):
         hist = []
-        exps.append(emb_class[0].exponent)
+        scalar_label.append(emb_class[0].scalar_label)
         for emb_pergraph in emb_class:
             hist.append(emb_pergraph.graph_embedding)
-    #for emb_pergraph in emb_perclass1:
-    #    redhist.append(emb_pergraph.graph_embeddings_array)
         hist = np.array(hist).flatten()
-        #redhist = np.array(redhist).flatten()
         if sequential_colors:
             color = get_colors_to_cycle_sequential(len(emb_by_class))[i]
-            ax.hist(hist, bins=30, label=f"exp {exps[i]}", color=color);
+            ax.hist(hist, bins=30, label=f"exp {scalar_label[i]}", color=color);
         else:
-            ax.hist(hist, bins=30, label=f"exp {exps[i]}")
-
-        #ax.hist(redhist, bins=30, color='red');
+            ax.hist(hist, bins=30, label=f"exp {scalar_label[i]}")
 
     ax.set_title(f'Graph Embedding')
-    ax.legend(loc=1, prop={'size': 6})  #custom_lines, [f"exp {e}" for e in exps])
+    ax.legend(loc=1, prop={'size': 8})  #custom_lines, [f"exp {e}" for e in exps])
     if str_filename:
         plt.savefig(str_filename)
     if show:
@@ -116,26 +248,29 @@ def plot_graph_emb_1D(emb_by_class, str_filename=None, show=True, ax=None, close
         plt.close()
 
 
-def plot_graph_emb_3D(embeddings, config_c, filename=None, show=True, close=False, sequential_colors=False):
-    fig = plt.figure(figsize=(20, 6))
-    ax = fig.add_subplot(projection='3d')
+def plot_graph_emb_nD(emb_by_class, filename=None, ax=None, show=True, close=False, sequential_colors=False, d=2):
+    if ax is None:
+        fig = plt.figure(figsize=(12, 6))
+        if d == 2:
+            ax = fig.add_subplot()#projection='3d')
+        elif d == 3:
+            ax = fig.add_subplot(projection='3d')
     #num_nodi_totali = len(emb_by_class) * len(emb_by_class[0]) * len(emb_by_class[0][0].node_embedding_array)
     #alpha_value = min(1, 3000/num_nodi_totali)
-    #labels = [] #config_c.conf['graph_dataset']['list_exponents']
+    labels = [] #config_c.conf['graph_dataset']['list_exponents']
     #custom_lines = []
-    graph_emb_perclass = embeddings.get_all_graph_emb_per_class()
+    #graph_emb_perclass = embeddings.get_all_graph_emb_per_class()
     # if graph_emb_perclass.ndim == 2:  # non è suddiviso per classe e quindi non plot color
     #     a, b, c = embedding.T
     #     ax.scatter(a, b, c)
     # graph_emb_perclass.ndim == 3:  # ho le classi
-    for i, emb_class in enumerate(graph_emb_perclass):
+    for i, emb_class in enumerate(emb_by_class):
         sc = []
-        #labels.append(emb_class[0].graph_label)
-        for graph_emb in emb_class:
-            sc.append(graph_emb)
-        sc = np.array(sc).flatten()
-        a, b, c = sc.T
-        ax.scatter(a,b,c, bins=30, label=f"{graph_emb.graph_label}")  # alpha=alpha_value,
+        labels.append(emb_class[0].scalar_label)
+        for emb_pergraph in emb_class:
+            sc.append(emb_pergraph.graph_embedding)
+        sc = np.array(sc)#.flatten()
+        ax.plot(*sc.T, label=f"{emb_class[0].scalar_label}", marker='.', linestyle='None')  # alpha=alpha_value,
 
         #color = get_colors_to_cycle_rainbow8()[i % 8]
         #if sequential_colors:
@@ -185,7 +320,7 @@ def scatter_node_emb(emb_by_class, filename=None, show=True, epoch=None, ax=None
     """
     num_nodi_totali = len(emb_by_class[0]) * 2 * len(emb_by_class[0][0].node_embedding_array)
     alpha_value = min(1, 3000 / num_nodi_totali)
-    exps = [] #config_c.conf['graph_dataset']['list_exponents']
+    exps = []
     custom_lines = []
     if ax is None:
         fig, ax = plt.subplots(figsize=(12, 6))
@@ -194,13 +329,14 @@ def scatter_node_emb(emb_by_class, filename=None, show=True, epoch=None, ax=None
         if sequential_colors:
             color = get_colors_to_cycle_sequential(len(emb_by_class))[i]
         custom_lines.append(Line2D([0], [0], color=color, lw=3))
-        exps.append(emb_class[0].exponent)
+        lab = emb_class[0].scalar_label
+        exps.append(lab)
         for emb_pergraph in emb_class:
             if log:
-                ax.plot(np.log10(np.array(emb_pergraph.node_label)), np.log10(emb_pergraph.node_embedding_array + 1), marker='.', linestyle='None', color=color, alpha=alpha_value)
+                ax.plot(np.log10(np.array(emb_pergraph.actual_node_class)), np.log10(emb_pergraph.node_embedding_array + 1), marker='.', linestyle='None', color=color, alpha=alpha_value)
                 #ax.yaxis.set_major_formatter(formatter)
             else:
-                ax.plot(emb_pergraph.node_label, emb_pergraph.node_embedding_array, marker='.', linestyle='None', color=color, alpha=alpha_value)
+                ax.plot(emb_pergraph.actual_node_class, emb_pergraph.node_embedding_array, marker='.', linestyle='None', color=color, alpha=alpha_value)
 
     if ylim:
         ax.set_ylim(ylim)
@@ -218,7 +354,7 @@ def scatter_node_emb(emb_by_class, filename=None, show=True, epoch=None, ax=None
         ax.set_title(titolo)
     else:
         plt.setp(ax.get_yticklabels(), visible=False)
-    ax.legend(custom_lines, [f"exp {round(e,2)}" for e in exps], loc=1, prop={'size': 6})
+    ax.legend(custom_lines, [f"Label {e}" for e in exps], loc=1, prop={'size': 7})
     if filename:
         plt.savefig(filename, bbox_inches='tight', dpi=200)
     if show:
@@ -227,34 +363,40 @@ def scatter_node_emb(emb_by_class, filename=None, show=True, epoch=None, ax=None
         plt.close()
 
 
-def plot_node_emb_1D_perclass(emb_by_class, filename=None, show=True, sequential_colors=False):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 6))
+def plot_node_emb_1D(emb_by_class, filename=None, show=True, sequential_colors=False, log=False):
     num_nodi_totali = len(emb_by_class) * len(emb_by_class[0]) * len(emb_by_class[0][0].node_embedding_array)
     alpha_value = min(1, 3000/num_nodi_totali)
-    exps = [] #config_c.conf['graph_dataset']['list_exponents']
-    custom_lines = []
 
+    scalar_label = []
+    custom_lines = []
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 6))
     for i, emb_class in enumerate(emb_by_class):
         color = get_colors_to_cycle_rainbow8()[i % 8]
         if sequential_colors:
             color = get_colors_to_cycle_sequential(len(emb_by_class))[i]
         custom_lines.append(Line2D([0], [0], color=color, lw=3))
-        exps.append(emb_class[0].exponent)
+        scalar_label.append(emb_class[0].scalar_label)
         for emb_pergraph in emb_class:
+            counts = np.unique(emb_pergraph.node_embedding_array, return_counts=True)
             nodeemb_sorted = sorted(emb_pergraph.node_embedding_array, reverse=True)
-            degree_sorted = sorted(emb_pergraph.node_label, reverse=True)
-            ax1.plot(nodeemb_sorted, '.', c=color, alpha=alpha_value, label=emb_pergraph.exponent)
-            ax2.plot(degree_sorted, '.',  c=color, alpha=alpha_value, label=emb_pergraph.exponent)
+            if log:
+                ax1.loglog(*counts, c=color, alpha=alpha_value, label=emb_pergraph.scalar_label, linewidth=3)
+                ax2.loglog(nodeemb_sorted, '.', c=color, alpha=alpha_value, label=emb_pergraph.scalar_label)
+            else:
+                ax1.plot(*counts, c=color, alpha=alpha_value, label=emb_pergraph.scalar_label, linewidth=3)
+                ax2.plot(nodeemb_sorted, '.', c=color, alpha=alpha_value, label=emb_pergraph.scalar_label)
+
             # plt.ylim(ymax = max(nodeemb_sorted), ymin = 1)
 
-    ax1.set_title(f'Node Embedding')
+    ax1.set_title(f'Node Embedding distribution')
+    ax1.set_xlabel('Node Emb. values', fontsize=16);
+    ax1.set_ylabel('Number of nodes', fontsize=16);
+    ax1.legend(custom_lines, [f"class {e}" for e in scalar_label])
 
-    ax1.set_xlabel('idx Node Emb.', fontsize=16);
-    ax1.set_ylabel('Value Node Emb.', fontsize=16);
+    ax2.set_title(f'Ordered Node Embedding')
     ax2.set_xlabel('idx node', fontsize=16);
-    ax2.set_ylabel('Node degree', fontsize=16);
-    ax1.legend(custom_lines, [f"exp {e}" for e in exps])
-    ax2.legend(custom_lines, [f"exp {e}" for e in exps])
+    ax2.set_ylabel('Value Node Emb.', fontsize=16);
+    ax2.legend(custom_lines, [f"class {e}" for e in scalar_label])
     # plt.yscale('log')
     if filename:
         plt.savefig(filename, bbox_inches='tight')
@@ -263,39 +405,30 @@ def plot_node_emb_1D_perclass(emb_by_class, filename=None, show=True, sequential
     else:
         plt.close()
 
-def plot_hist_node_emb_1d(emb_by_class, filename=None, show=True, sequential_colors=False):
-    pass
 
-
-def plot_node_emb_nD_perclass(emb_by_class, filename=None, show=True, close=False, sequential_colors=False):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 6))
+def plot_node_emb_nD(emb_by_class, filename=None, show=True, close=False, ax=None, sequential_colors=False):
     num_nodi_totali = len(emb_by_class) * len(emb_by_class[0]) * len(emb_by_class[0][0].node_embedding_array)
     alpha_value = min(1, 3000/num_nodi_totali)
-    exps = [] #config_c.conf['graph_dataset']['list_exponents']
-    custom_lines = []
 
+    scalar_label = []
+    custom_lines = []
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 6))
     for i, emb_class in enumerate(emb_by_class):
+        # quì con [::-1] ho invertito l'ordine delle classi per un plot più chiaro
         color = get_colors_to_cycle_rainbow8()[i % 8]
         if sequential_colors:
             color = get_colors_to_cycle_sequential(len(emb_by_class))[i]
         custom_lines.append(Line2D([0], [0], color=color, lw=3))
-        exps.append(emb_class[0].exponent)
+        scalar_label.append(emb_class[0].scalar_label)
         for emb_pergraph in emb_class:
-            #nodeemb_sorted = sorted(emb_pergraph.node_embedding_array, key=lambda x: np.linalg.norm(x), reverse=True)
-            degree_sorted = sorted(emb_pergraph.node_label, reverse=True)
-            a, b = emb_pergraph.node_embedding_array.T
-            ax1.scatter(a,b, marker='.', color=color, alpha=alpha_value, label=emb_pergraph.exponent)
-            ax2.plot(degree_sorted, '.',  color=color, alpha=alpha_value, label=emb_pergraph.exponent)
+            ax.plot(*emb_pergraph.node_embedding_array.T, marker='.', color=color, alpha=alpha_value, label=emb_pergraph.scalar_label, linestyle='None')
             # plt.ylim(ymax = max(nodeemb_sorted), ymin = 1)
 
-    ax1.set_title(f'Node Embedding')
-
-    #ax1.set_xlabel('idx Node Emb.', fontsize=16);
-    #ax1.set_ylabel('Value Node Emb.', fontsize=16);
-    ax2.set_xlabel('idx node', fontsize=16);
-    ax2.set_ylabel('Node degree', fontsize=16);
-    ax1.legend(custom_lines, [f"exp {e}" for e in exps])
-    ax2.legend(custom_lines, [f"exp {e}" for e in exps])
+    ax.set_title(f'Node Embedding')
+    ax.set_xlabel('dim 1', fontsize=16);
+    ax.set_ylabel('dim 2', fontsize=16);
+    ax.legend(custom_lines, [f"exp {e}" for e in scalar_label])
     # plt.yscale('log')
     if filename:
         plt.savefig(filename, bbox_inches='tight')
@@ -341,37 +474,45 @@ def plot_node_emb_3D(embeddings, config_c, filename=None, show=True, close=False
         plt.close()
 
 
-def plot_data_degree_sequence(config_c, emb_by_class, sequential_colors=False):
-    custom_lines = []
+def plot_data_degree_sequence(emb_by_class, sequential_colors=False, log=False):
     num_nodi_totali = len(emb_by_class) * len(emb_by_class[0]) * len(emb_by_class[0][0].node_embedding_array)
     alpha_value = min(1, 3000 / num_nodi_totali)
 
-    plt.figure(figsize=(12, 6))
-    exps = [] # config_c.conf['graph_dataset']['list_exponents']
-
+    scalar_label = []
+    custom_lines = []
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 6))
     for i, emb_class in enumerate(emb_by_class):
         color = get_colors_to_cycle_rainbow8()[i % 8]
         if sequential_colors:
             color = get_colors_to_cycle_sequential(len(emb_by_class))[i]
         custom_lines.append(Line2D([0], [0], color=color, lw=3))
-        exps.append(emb_class[0].exponent)
-        #print(emb_class[0].exponent)
+        scalar_label.append(emb_class[0].scalar_label)
         for emb_pergraph in emb_class:
-            counts = np.unique(emb_pergraph.node_label, return_counts=True)
-            if sequential_colors:
-                plt.loglog(*counts, c=color, alpha=alpha_value, label=emb_pergraph.exponent, linewidth=3)
+            counts = np.unique(emb_pergraph.actual_node_class, return_counts=True)
+            degree_sorted = sorted(emb_pergraph.actual_node_class, reverse=True)
+            #if sequential_colors:
+            if log:
+                ax1.loglog(*counts, c=color, alpha=alpha_value, label=emb_pergraph.scalar_label, linewidth=3)
+                ax2.loglog(degree_sorted, '.', c=color, alpha=alpha_value, label=emb_pergraph.scalar_label)
             else:
-                plt.loglog(*counts, c=color, alpha=alpha_value, label=emb_pergraph.exponent)
-
-    # for emb_pergraph in emb_perclass1:
-    #     counts = np.unique(emb_pergraph.node_label, return_counts=True)
-    #     plt.loglog(*counts, c='red', alpha=alpha_value, label=exps[emb_pergraph.graph_label])
+                ax1.plot(*counts, c=color, alpha=alpha_value, label=emb_pergraph.scalar_label, linewidth=3)
+                ax2.plot(degree_sorted, '.', c=color, alpha=alpha_value, label=emb_pergraph.scalar_label)
+            #else:
+            #    if log:
+            #        ax1.loglog(*counts, c=color, alpha=alpha_value, label=emb_pergraph.scalar_label)
+            #    else:
+            #        ax1.plot(*counts, c=color, alpha=alpha_value, label=emb_pergraph.scalar_label)
 
     # plt.legend(loc="upper left")
-    plt.title(f'Node degree distribution')
-    plt.xlabel('Degrees', fontsize=16);
-    plt.ylabel('Number of nodes', fontsize=16);
-    plt.legend(custom_lines, [f"exp {e}" for e in exps])
+    ax1.set_title(f'Node degree distribution')
+    ax1.set_xlabel('Degrees', fontsize=16);
+    ax1.set_ylabel('Number of nodes', fontsize=16);
+    ax1.legend(custom_lines, [f"Label {e}" for e in scalar_label])
+
+    ax2.set_title(f'Ordered node degree values')
+    ax2.set_xlabel('idx node', fontsize=16);
+    ax2.set_ylabel('Node degree', fontsize=16);
+    ax2.legend(custom_lines, [f"class {e}" for e in scalar_label])
     # plt.gca().legend(('y0','y1'))
     plt.show()
 

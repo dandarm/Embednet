@@ -4,7 +4,7 @@ graph_dataset:
     confmodel: False
     continuous_p: False
     random_node_feat: False
-    list_p: [0.05, 0.2]
+    list_p: [0.05, 0.3]
     range_p: [0.05, 0.6]
     Num_nodes: 200
     Num_grafi_per_tipo: 100
@@ -17,9 +17,9 @@ training:
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
-    learning_rate: 0.05
-    epochs: 800
-    batch_size: 300
+    learning_rate: 0.002
+    epochs: 10000
+    batch_size: 700
     percentage_train: 0.7
     earlystop_patience: 1000
     epochs_model_checkpoint: [-1]

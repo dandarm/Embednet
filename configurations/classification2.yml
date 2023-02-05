@@ -17,7 +17,7 @@ training:
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
-    learning_rate: 0.05
+    learning_rate: 0.02
     epochs: 1500
     batch_size: 300
     percentage_train: 0.7
@@ -30,7 +30,7 @@ training:
 model:
     last_layer_dense: True
     GCNneurons_per_layer: [1, 16, 16, 6]
-    neurons_last_linear: [24, 24, 6]
+    neurons_last_linear: [10, 10, 6]
     freezeGCNlayers: False
     autoencoder: False
     put_batchnorm: True

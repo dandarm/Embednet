@@ -5,13 +5,23 @@ from numpy.linalg import norm
 import networkx as nx
 
 from config_valid import Config, TrainingMode
+#from graph_generation import GraphType
 from scipy.stats import kendalltau
 
 class Embedding():
-    def __init__(self, graph_embedding_array, node_embedding_array, dataset, config_c=None):
+    def __init__(self, graph_embedding_array, node_embedding_array, dataset, config_c=None, output_array=None):
         self.graph_embedding_array = graph_embedding_array
         self.node_embedding_array = node_embedding_array
-        self.dataset = dataset
+        self.output_array = output_array
+
+        #dataset = dataset
+        # tolgo il dataset dalla classe embedding
+        self.training_labels = dataset.labels  # sono le label dettate dal training mode ad uso della training loss
+        self.exponents = dataset.exponent
+        self.original_node_class = dataset.original_node_class
+        self.actual_node_class = dataset.actual_node_class
+        self.scalar_class = dataset.scalar_label
+
         self.config_class = config_c
 
         self.emb_pergraph = []
@@ -24,10 +34,6 @@ class Embedding():
         self.dataset_nx = dataset.dataset_list
         self.numgrafi = len(self.dataset_nx)
         self.coppie = None
-        self.training_labels = dataset.labels  # sono le label dettate dal training mode ad uso della training loss
-        self.original_class = dataset.original_class
-        self.scalar_class = dataset.dataset_scalar_label
-
         self.coppie_labels = None
         self.cos_distances = []
         self.distances = []
@@ -57,47 +63,47 @@ class Embedding():
 
         Num_nodi = self.config_class.conf['graph_dataset']['Num_nodes']
         if isinstance(Num_nodi, list):
-            Num_nodi = Num_nodi[0]
+            if self.config_class.conf['graph_dataset']['sbm']:
+                Num_nodi = sum(Num_nodi)
+            else:
+                Num_nodi = Num_nodi[0]
         total_num_grafi = len(self.dataset_nx)
         r = 0
         for i in range(total_num_grafi):
-            label = self.dataset.labels[i]
+            label = self.training_labels[i]
 
             exp = None
-            if self.dataset.exponent is not None:
-                exp = self.dataset.exponent[i][0]
+            if self.exponents is not None:
+                exp = self.exponents[i][0]
 
-            node_label = None
-            if self.dataset.node_label is not None:
-                node_label = self.dataset.node_label[r:r + Num_nodi]
+            actual_node_label = None
+            if self.actual_node_class is not None:
+                actual_node_label = self.actual_node_class[i]   # [r:r + Num_nodi]
+
+            original_nodel_label = None
+            if self.original_node_class is not None:
+                original_nodel_label = self.original_node_class[i]
 
             node_label_and_id = None
-            if self.original_class is not None:
-                node_label_and_id = self.original_class[i]
+            #if self.original_node_class is not None:
+            #    node_label_and_id = self.original_node_class[i]
 
             scalar_label = None
-            if self.dataset.dataset_scalar_label:
-                scalar_label = self.dataset.dataset_scalar_label[i]
+            if self.scalar_class:
+                scalar_label = self.scalar_class[i]
 
             graph_emb = self.graph_embedding_array[i]
             node_emb = self.node_embedding_array[r:r + Num_nodi]
+            graph_output = self.output_array[i]
 
             # poiché nel training prepare ho shufflato coerentemente sia dataset_pyg che original_class che labels,
             # anche embeddings_array che arriva dal dataloader con shuffle=false ha il loro stesso ordine
-            toappend = Embedding_per_graph(graph_emb, node_emb, [], label, exp, node_label_and_id, node_label, scalar_label)
+            toappend = Embedding_per_graph(graph_emb, node_emb, [], label, exp,
+                                           node_label_and_id, actual_node_label, original_nodel_label, scalar_label,
+                                           graph_output)
             self.emb_pergraph.append(toappend)
             r += Num_nodi
 
-    # def get_graph_emb_per_class(self):
-    #     """
-    #     Suddivide i graph embedding per ciascuna classe
-    #     :return:
-    #     """
-    #     distinct_labels = np.unique(self.dataset.dataset_scalar_label)
-    #     for l in distinct_labels:
-    #         mask_int = [i for i, e in enumerate(self.dataset.dataset_scalar_label) if e == l]
-    #         class_emb = self.graph_embedding_array[mask_int].flatten()
-    #         self.graph_emb_perclass.append(class_emb)
     def separate_embedding_by_classes(self):
         # devo gestire il caso in cui i target non siano scalari
         distinct_graph_labels = np.unique([n.graph_label for n in self.emb_pergraph], axis=0)
@@ -110,7 +116,9 @@ class Embedding():
         return graph_emb_perclass
 
     def get_all_scalar_labels_per_class(self):
-        #labels_ripetute_pergraph = [[emb.scalar_label for emb in emb_per_graph] for emb_per_graph in self.emb_perclass]
+        labels_ripetute_pergraph = [[emb.scalar_label for emb in emb_per_graph] for emb_per_graph in self.emb_perclass]
+        return np.array(labels_ripetute_pergraph).flatten()
+    def get_unique_class_labels(self):
         labels = [emb_per_graph[0].scalar_label for emb_per_graph in self.emb_perclass]
         return labels
 
@@ -129,7 +137,7 @@ class Embedding():
         for i, emb in enumerate(self.emb_pergraph):
             #print(f"emb len: {len(emb)}")
             #print(f"015: {emb_i[0:3]}")
-            class_i = np.array(self.original_class[i])  # TODO: correggere perché ora original class contiene anche il modo ID
+            class_i = np.array(self.original_node_class[i])  # TODO: correggere perché ora original class contiene anche il modo ID
             #print(f"len class_i: {len(class_i)}")
             corr = np.corrcoef(emb, class_i)[0, 1]
             correlations.append(corr)
@@ -137,8 +145,8 @@ class Embedding():
         return sum(correlations) / len(correlations)
 
     def calc_max_degree(self):
-        if self.original_class is not None:
-            for s in self.original_class:
+        if self.original_node_class is not None:
+            for s in self.original_node_class:
                 # la original class quì sarebbe la distribuzione del grado
                 if isinstance(s, list):
                     self.max_degree.append(max(s))
@@ -156,11 +164,11 @@ class Embedding():
         #self.coppie = np.array([self.embeddings_array[c,:] for c in coppie_numeric])
         self.coppie = self.graph_embedding_array[coppie_numeric] # è equivalente alla riga precedente: numpy integer mask, prende la shape della mask
         self.coppie_labels = [(self.training_labels[c[0]], self.training_labels[c[1]]) for c in coppie_numeric]
-        if self.original_class: # TODO: correggere perché ora original class contiene anche il modo ID
-            self.coppie_orig_class = [(self.original_class[c[0]], self.original_class[c[1]]) for c in coppie_numeric]
+        if self.original_node_class: # TODO: correggere perché ora original class contiene anche il modo ID
+            self.coppie_orig_class = [(self.original_node_class[c[0]], self.original_node_class[c[1]]) for c in coppie_numeric]
             assert len(self.coppie_orig_class) == (NN * (NN-1))/2
 
-    def calc_distances(self):
+    def calc_distances(self, num_emb_neurons):
         self.calc_coppie()
         i = 0
         for a,b in self.coppie:
@@ -169,7 +177,7 @@ class Embedding():
             label_a = self.coppie_labels[i][0]
             label_b = self.coppie_labels[i][1]
             self.cos_distances.append((cos_dist, (label_a, label_b)))
-            if self.original_class:  # TODO: correggere perché ora original class contiene anche il modo ID
+            if self.original_node_class:  # TODO: correggere perché ora original class contiene anche il modo ID
                 orig_class_a = self.coppie_orig_class[i][0]
                 orig_class_b = self.coppie_orig_class[i][1]
                 self.distances.append((dist, (label_a, label_b), (orig_class_a, orig_class_b)))
@@ -197,43 +205,51 @@ class Embedding():
             assert len(self.inter_dists) == (NN/2)**2
         else:
             ### ORA NEL CASO DELLA CLASSIFICATION
+            if num_emb_neurons == 2:
+                ## DISTANZE COSENO
+                #self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
+                self.cos_intra_dists = [d[0] for d in self.cos_distances if (d[1][0] == d[1][1]).all()]
+                #self.cos_inter_dists = [d[0] for d in self.cos_distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
 
-            ## DISTANZE COSENO
-            #self.cos_intra_dists = [d[0] for d in self.cos_distances if d[1] == (label_1,label_1) or d[1] == (label_2,label_2)]
-            self.cos_intra_dists = [d[0] for d in self.cos_distances if (d[1][0] == d[1][1]).all()]
-            #self.cos_inter_dists = [d[0] for d in self.cos_distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)]
+                #guarda tutti i possibili accoppiamenti
+                #NN = len(set(tuple(e) for e in self.embedding_labels))
+                #possibili_coppie_labels = set(list(itertools.combinations(range(NN), 2)))
+                #n_classi = len(self.config['graph_dataset']['list_p'])
+                #onehot_matrix = np.eye(n_classi)  ##   NN == n_classi?!
 
-            #guarda tutti i possibili accoppiamenti
-            #NN = len(set(tuple(e) for e in self.embedding_labels))
-            #possibili_coppie_labels = set(list(itertools.combinations(range(NN), 2)))
-            #n_classi = len(self.config['graph_dataset']['list_p'])
-            #onehot_matrix = np.eye(n_classi)  ##   NN == n_classi?!
+                # queste sono tutte le possibili sequenze di coppienumeric con 2classi!!!
+                #possibili_coppie_labels = list(itertools.combinations(np.eye(2), 2))
 
-            # queste sono tutte le possibili sequenze di coppienumeric con 2classi!!!
-            #possibili_coppie_labels = list(itertools.combinations(np.eye(2), 2))
+                # for label_1, label_2 in possibili_coppie_labels:
+                #     #print(label_1, label_2)
+                #     #print(self.cos_distances[0][1])
+                #     r = [d[0] for d in self.cos_distances if d[1] == (label_2, label_1) or d[1] == (label_1, label_2)]
+                #     #print(r)
+                #     self.cos_inter_dists.append(r)
+                ### sembrava troppo difficile fare così?
+                self.cos_inter_dists = [d[0] for d in self.cos_distances if (d[1][0] != d[1][1]).all()]
+                # non ricordo perché facevo nel modo precedente
 
-            # for label_1, label_2 in possibili_coppie_labels:
-            #     #print(label_1, label_2)
-            #     #print(self.cos_distances[0][1])
-            #     r = [d[0] for d in self.cos_distances if d[1] == (label_2, label_1) or d[1] == (label_1, label_2)]
-            #     #print(r)
-            #     self.cos_inter_dists.append(r)
-            ### sembrava troppo difficile fare così?
-            self.cos_inter_dists = [d[0] for d in self.cos_distances if (d[1][0] != d[1][1]).all()]
-            # non ricordo perché facevo nel modo precedente
+                ## DISTANZE EUCLIDEE
+                self.intra_dists = [d[0] for d in self.distances if (d[1][0] == d[1][1]).all()]
+                self.inter_dists = [d[0] for d in self.distances if (d[1][0] != d[1][1]).all()]
+                #for label_1, label_2 in possibili_coppie_labels:
+                #    self.inter_dists.append( [d[0] for d in self.distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)] )
+            else:
+                self.inter_dists = None
+                self.intra_dists = None
 
-            ## DISTANZE EUCLIDEE
-            self.intra_dists = [d[0] for d in self.distances if (d[1][0] == d[1][1]).all()]
-            self.inter_dists = [d[0] for d in self.distances if (d[1][0] != d[1][1]).all()]
-            #for label_1, label_2 in possibili_coppie_labels:
-            #    self.inter_dists.append( [d[0] for d in self.distances if d[1] == (label_2,label_1) or d[1] == (label_1,label_2)] )
+            # calculate average of each euclidean distribution
+            mean_intra = np.mean(self.intra_dists)
+            mean_inter = np.mean(self.inter_dists)
+            self.difference_of_means = mean_inter - mean_intra
+            if self.inter_dists is not None and self.intra_dists is not None:
+                print("calcolo l'overlap")
+                #self.overlap = self.calc_overlap(self.inter_dists, self.intra_dists)
 
-        # calculate average of each euclidean distribution
-        mean_intra = np.mean(self.intra_dists)
-        mean_inter = np.mean(self.inter_dists)
-        self.difference_of_means = mean_inter - mean_intra
 
-    # region intra e inter distances many classes
+
+# region intra e inter distances many classes
     def calc_coppie_intracluster(self, graph_emb_cluster):
         NN = graph_emb_cluster.shape[0]
         coppie_numeric = list(itertools.combinations(range(NN), 2))
@@ -270,9 +286,11 @@ class Embedding():
         intra_dists_perclass = []
         for i in range(len(graphemb_perclass)):
             intra_dists_perclass.append(self.calc_coppie_intracluster(graphemb_perclass[i]))
-        single_labels = self.get_all_scalar_labels_per_class()
+        single_labels = self.get_unique_class_labels()
 
         return inter_dists_perclass, intra_dists_perclass, coppie_labels_class, single_labels
+
+# endregion
     def intorno(self, p_teorica, p_attuali, soglia):
         mask = []
         for p in p_attuali:
@@ -281,6 +299,15 @@ class Embedding():
             else:
                 mask.append(False)
         return mask
+
+    def calc_overlap(self, inter_dists, intra_dists):
+        massimo = max(inter_dists)
+        bins = np.linspace(0, massimo, 200)
+        v1, b = np.histogram(inter_dists, bins=bins)
+        v2, b = np.histogram(intra_dists, bins=bins)
+        overlap_product = (v1 * v2).sum()
+        norm = (v1 * v1 + v2 * v2).sum()
+        return overlap_product / norm
 
     def calc_graph_emb_correlation(self):
         # solo nel caso della dimensione di embedding = 1
@@ -302,7 +329,7 @@ class Embedding():
                 self.graph_correlation_per_class.append(correlaz)
         else:
             for p in self.probabilities_ER:
-                mask_int = np.argwhere(np.array(self.dataset.dataset_scalar_label) == p).flatten()
+                mask_int = np.argwhere(np.array(self.scalar_class) == p).flatten()
                 emb = self.graph_embedding_array[mask_int].flatten()
                 correlaz = np.corrcoef(emb, actual_p[mask_int])[0, 1]
                 self.graph_correlation_per_class.append(correlaz)
@@ -315,11 +342,14 @@ class Embedding():
             self.calc_graph_emb_correlation()  # calcola self.graph_correlation_per_class o self.total_graph_correlation
             self.calc_regression_error()
         else:
-            self.calc_distances()  # calcola self.difference_of_means
+            self.calc_distances(num_emb_neurons)  # calcola self.difference_of_means
 
 
 class Embedding_per_graph():
-    def __init__(self, graph_embedding, node_embedding_array, node_embeddings_array_id, graph_label, exponent, node_label_and_id=None, node_label=None, scalar_label=None):
+    def __init__(self, graph_embedding, node_embedding_array, node_embeddings_array_id,
+                 graph_label, exponent, node_label_and_id=None,
+                 actual_node_class=None, original_node_class=None, scalar_label=None,
+                 graph_output=None):
         self.graph_embedding = graph_embedding
         self.node_embedding_array = node_embedding_array
         self.node_embeddings_array_id = node_embeddings_array_id
@@ -329,11 +359,14 @@ class Embedding_per_graph():
         self.node_label_and_id = node_label_and_id
         self.correlation_with_degree = None
         self.kendall_with_degree = None
+        self.output = graph_output
 
-        if node_label is not None:
-            self.node_label = node_label
+        if original_node_class is not None:
+            self.original_node_class = original_node_class
+        if actual_node_class is not None:
+            self.actual_node_class = actual_node_class
         elif node_label_and_id is not None:
-            self.node_label = [n[1] for n in list(node_label_and_id)]  # contiene anche i node ID
+            self.actual_node_class = [n[1] for n in list(node_label_and_id)]  # contiene anche i node ID
 
         self.align_embedding_id_with_degree_sequence_id()
 

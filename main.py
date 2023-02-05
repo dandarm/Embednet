@@ -62,8 +62,22 @@ def diversi_init_weights_diversi_dataset():
     df = xp.gc.config_dataframe
     df.to_pickle(outfile)
 
-if __name__ == "__main__":
+def studioERp():
+    config_file = "configurations/ER_embed_perturb.yml"
+    diz_trials = {'graph_dataset.list_p': [[0.05, 0.3], [0.01, 0.3], [0.15, 0.3], [0.2, 0.3], [0.25, 0.3]]}
+    # 'model.init_weights': ['orthogonal']*5 + ['eye']*5}
 
+    xp = Experiments(config_file, diz_trials, rootsave)
+    xp.GS_same_weight_inits_different_datasets()
+
+def simple():
+    config_file = "configurations/1layer_freezed.yml"
+    xp = Experiments(config_file, diz_trials=None, rootsave=rootsave)
+    xp.just_train(parallel=True)
+    embedding_class = xp.embedding()
+
+if __name__ == "__main__":
+    simple()
 
     #studio_embedding()
     #config_file = "configurations/classification_cm.yml"
@@ -71,7 +85,8 @@ if __name__ == "__main__":
 
     #studio_init_weights()
     #many_classes()
-    diversi_init_weights_diversi_dataset()
+    #diversi_init_weights_diversi_dataset()
+    #studioERp()
 
 
 

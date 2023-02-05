@@ -15,7 +15,7 @@ class Embedding():
         self.numgrafi = len(self.dataset_nx)
         self.coppie = None
         self.embedding_labels = dataset.labels
-        self.original_class = dataset.original_class
+        self.original_class = dataset.original_node_class
 
         self.scalar_class = dataset.exponent
         self.node_emb_pergraph = []
@@ -269,8 +269,8 @@ class NodeEmbedding(Embedding):
                 exp = self.dataset.exponent[i][0]
 
             node_label = None
-            if self.dataset.node_label is not None:
-                node_label = self.dataset.node_label[r:r + Num_nodi]
+            if self.dataset.actual_node_class is not None:
+                node_label = self.dataset.actual_node_class[r:r + Num_nodi]
 
             node_label_and_id = self.original_class[i]
 
@@ -304,7 +304,7 @@ class NodeEmbedding(Embedding):
             if graph_embedding is not None:
                 g_emb = graph_embedding[i]
             label = self.dataset.labels[i]
-            node_label = self.dataset.node_label[j:j + Num_nodi]
+            node_label = self.dataset.actual_node_class[j:j + Num_nodi]
             toappend = Embedding_per_graph(g_emb, self.embeddings_array[j:j + Num_nodi], [], label, None, None, node_label=node_label)
             self.node_emb_pergraph.append(toappend)
             j += Num_nodi

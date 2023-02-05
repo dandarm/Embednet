@@ -42,16 +42,7 @@ class Config():
             self.config_file = basic_config_file_path
             self.load_conf()
 
-        neurons_per_layer = self.conf['model']['GCNneurons_per_layer']
-        if self.conf['model']['last_layer_dense']:
-            self.lastneuron = self.conf['model']['neurons_last_linear'][-1]
-        else:
-            self.lastneuron = neurons_per_layer[-1]
         self.valid_conf()
-        self.modo = self.get_mode()
-        self.init_weights_mode = self.get_init_weights_mode()
-
-
         #self.reload_conf()
 
     @classmethod
@@ -77,27 +68,35 @@ class Config():
         return eval(f"Inits.{init_weights_mode}")
 
     def valid_conf(self):
-        modo = self.get_mode()
-        modo_str = self.conf['training']['mode']
+        self.modo = self.get_mode()
+        neurons_per_layer = self.conf['model']['GCNneurons_per_layer']
+        if self.conf['model']['last_layer_dense']:
+            self.lastneuron = self.conf['model']['neurons_last_linear'][-1]
+        else:
+            self.lastneuron = neurons_per_layer[-1]
+
+        self.init_weights_mode = self.get_init_weights_mode()
+        #modo_str = self.conf['training']['mode']
 
         # verifico che l'ultimo neurone sia consistente col training mode
         if self.lastneuron == 1:
-            assert self.lastneuron == modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
+            assert self.lastneuron == self.modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
         else:
-            assert modo['last_neuron'] == 'n_class', 'Ultimi neuroni > 1 ma training mode diverso'
-            assert self.lastneuron == self.num_classes(), 'Ultimi neuroni diversi dal numero di classi '
+            assert self.modo['last_neuron'] == 'n_class', 'Ultimi neuroni > 1 ma training mode diverso'
+            assert self.lastneuron == self.num_classes(), f'Ultimi neuroni ({self.lastneuron}) diversi dal numero di classi ({self.num_classes()}) '
 
         #last_layer_dense = self.config['model']['last_layer_dense']
 
         # verifico il caso in cui ho solo due classi
         n_class = len(self.conf['graph_dataset']['list_p'])
-        if modo['labels'] == Labels.zero_one:
+        if self.modo['labels'] == Labels.zero_one:
             assert n_class == 2, 'Num classi in list_p non consistente con training mode'
 
         # verifico che in graph_dataset ci sia un solo True
         bool_arr = [self.conf['graph_dataset']['ERmodel'],
                     self.conf['graph_dataset']['regular'],
-                    self.conf['graph_dataset']['confmodel']]
+                    self.conf['graph_dataset']['confmodel'],
+                    self.conf['graph_dataset'].get('sbm', False)]
         assert self.only1(bool_arr), "Errore nel config file: scegliere un solo tipo di grafi"
 
         # verifico nel cm multiclass che il numero di numnodes sia uguale al numero di esponenti
@@ -122,10 +121,14 @@ class Config():
         return s1 + s2
 
     def num_classes(self):
-        if self.conf['graph_dataset']['ERmodel']:
+        if self.conf['graph_dataset']['ERmodel'] \
+                or self.conf['graph_dataset']['sbm'] \
+                or self.conf['graph_dataset']['regular']:
             return len(self.conf['graph_dataset']['list_p'])
+
         elif self.conf['graph_dataset']['confmodel']:
             return len(self.conf['graph_dataset']['list_exponents'])
+
 
     def get_config_dataframe(self):
         if self.conf:

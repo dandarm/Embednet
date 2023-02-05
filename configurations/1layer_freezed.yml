@@ -1,0 +1,48 @@
+graph_dataset:
+    ERmodel: True
+    regular: False
+    confmodel: False
+    sbm: False
+    continuous_p: False
+    random_node_feat: False
+    list_p: [0.3, 0.2, 0.1, 0.05, 0.01]
+    range_p: [0.01, 0.5]
+    community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]]]
+    Num_nodes: 200 #, 200, 200, 200, 200, 200, 200]
+    Num_grafi_per_tipo: 200
+    Num_grafi_totali: 1000
+    list_degree: [4, 50]
+    list_exponents: [-1.9, -2.0, -2.2, -2.5, -2.7, -2.9, -3.3, -3.7, -4.1, -4.5]
+    
+    
+training:
+    #mode1 = 'classification', CrossEntropyLoss, '1-hot', 'n_class'
+    #mode2 = 'classification', BCELoss, '{0,1}', 1
+    #mode3 = 'regression', MSELoss, 'p', 1}
+    mode: 'mode1'
+    learning_rate: 0.01
+    epochs: 2500
+    batch_size: 700
+    percentage_train: 0.7
+    earlystop_patience: 1000
+    epochs_model_checkpoint: [-1]
+    save_best_model: False
+    every_epoch_embedding: True
+    shuffle_dataset: True
+    
+model:
+    last_layer_dense: True
+    GCNneurons_per_layer: [1, 32, 32, 2]
+    neurons_last_linear: [10, 10, 5]
+    freezeGCNlayers: False
+    autoencoder: False
+    put_batchnorm: True
+    final_pool_aggregator: True
+    put_dropout: False
+    node_features_dim: 1
+    init_weights: 'eye' #'xavier_normal'
+    
+logging:
+    train_step_print: 1000
+    
+device: 'gpu'
