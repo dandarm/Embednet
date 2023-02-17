@@ -2,46 +2,36 @@ digraph {
 	graph [label=GCN labelloc=t]
 	"inp_ x.1" [shape=ellipse]
 	"inp_ edge_index.1" [shape=ellipse]
-	". 790" [label="convs.0 (GCNConv)" shape=box]
-	"inp_ x.1" -> ". 790"
-	"inp_ edge_index.1" -> ". 790"
-	". 791" [label="leakys.0 (LeakyReLU)" shape=box]
-	". 790" -> ". 791"
-	". 792" [label="convs.1 (GCNConv)" shape=box]
-	". 791" -> ". 792"
-	"inp_ edge_index.1" -> ". 792"
-	". 793" [label="leakys.1 (LeakyReLU)" shape=box]
-	". 792" -> ". 793"
-	". 794" [label="convs.2 (GCNConv)" shape=box]
-	". 793" -> ". 794"
-	"inp_ edge_index.1" -> ". 794"
-	". 795" [label="leakys.2 (LeakyReLU)" shape=box]
-	". 794" -> ". 795"
-	". 796" [label="mean_pool (MeanAggregation)" shape=box]
+	". 756" [label="convs.0 (GCNConv)" shape=box]
+	"inp_ x.1" -> ". 756"
+	"inp_ edge_index.1" -> ". 756"
+	". 757" [label="leakys.0 (LeakyReLU)" shape=box]
+	". 756" -> ". 757"
+	". 758" [label="convs.1 (GCNConv)" shape=box]
+	". 757" -> ". 758"
+	"inp_ edge_index.1" -> ". 758"
+	". 759" [label="leakys.1 (LeakyReLU)" shape=box]
+	". 758" -> ". 759"
+	". 760" [label="convs.2 (GCNConv)" shape=box]
+	". 759" -> ". 760"
+	"inp_ edge_index.1" -> ". 760"
+	". 761" [label="leakys.2 (LeakyReLU)" shape=box]
+	". 760" -> ". 761"
+	". 762" [label="mean_pool (MeanAggregation)" shape=box]
 	"index.19" [label=new_zeros shape=box style=rounded]
-	". 795" -> "index.19"
-	"index.19" -> ". 796"
-	". 795" -> ". 796"
-	". 797" [label="linears.0 (Linear)" shape=box]
-	". 796" -> ". 797"
-	". 798" [label="last_relu (LeakyReLU)" shape=box]
-	". 797" -> ". 798"
-	". 799" [label="linears.1 (Linear)" shape=box]
-	". 798" -> ". 799"
-	". 800" [label="last_relu (LeakyReLU)" shape=box]
-	". 799" -> ". 800"
-	". 801" [label="linears.2 (Linear)" shape=box]
-	". 800" -> ". 801"
-	". 802" [label="last_relu (LeakyReLU)" shape=box]
-	". 801" -> ". 802"
-	". 803" [label="linears.3 (Linear)" shape=box]
-	". 802" -> ". 803"
-	". 804" [label="last_relu (LeakyReLU)" shape=box]
-	". 803" -> ". 804"
-	". 805" [label="linears.4 (Linear)" shape=box]
-	". 804" -> ". 805"
-	". 806" [label="last_relu (LeakyReLU)" shape=box]
-	". 805" -> ". 806"
+	". 761" -> "index.19"
+	"index.19" -> ". 762"
+	". 761" -> ". 762"
+	". 763" [label="batchnorms.0 (BatchNorm1d)" shape=box]
+	". 762" -> ". 763"
+	". 764" [label="linears.0 (Linear)" shape=box]
+	". 763" -> ". 764"
+	". 765" [label="last_relu (LeakyReLU)" shape=box]
+	". 764" -> ". 765"
+	". 766" [label="linears.1 (Linear)" shape=box]
+	". 765" -> ". 766"
+	". 767" [label="last_relu (LeakyReLU)" shape=box]
+	". 766" -> ". 767"
 	out_0 [shape=ellipse]
-	". 806" -> out_0
+	". 767" -> out_0
 }

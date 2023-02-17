@@ -7,12 +7,14 @@ import networkx as nx
 from config_valid import Config, TrainingMode
 #from graph_generation import GraphType
 from scipy.stats import kendalltau
+import skdim
 
 class Embedding():
-    def __init__(self, graph_embedding_array, node_embedding_array, dataset, config_c=None, output_array=None):
+    def __init__(self, graph_embedding_array, node_embedding_array, dataset, config_c=None, output_array=None, model_params=None):
         self.graph_embedding_array = graph_embedding_array
         self.node_embedding_array = node_embedding_array
         self.output_array = output_array
+        self.model_params = model_params
 
         #dataset = dataset
         # tolgo il dataset dalla classe embedding
@@ -30,6 +32,10 @@ class Embedding():
         self.graph_correlation_per_class = None
         self.total_graph_correlation = None
         self.regression_error = None
+        self.node_emb_dims = None
+        self.graph_emb_dims = None
+        self.total_node_emb_dim = None
+        self.total_graph_emb_dim = None
 
         self.dataset_nx = dataset.dataset_list
         self.numgrafi = len(self.dataset_nx)
@@ -52,7 +58,7 @@ class Embedding():
         self.continuous_p = self.config_class.conf['graph_dataset']['continuous_p']
 
 
-
+# region handle embeddings
     def get_emb_per_graph(self):
         """
         Suddivide i node embeddings per ciascun grafo, e riempie in self.node_emb_pergraph
@@ -126,7 +132,7 @@ class Embedding():
         node_emb_perclass = [[emb.node_embedding_array.squeeze() for emb in emb_per_graph] for emb_per_graph in self.emb_perclass]
         return node_emb_perclass
 
-
+# endregion
 
     def get_average_corr_nodeemb(self):
         #print(self.node_emb_pergraph[0:5][0:5][0])
@@ -314,7 +320,7 @@ class Embedding():
         num_nodes = self.config_class.conf['graph_dataset']['Num_nodes']
 
         #if self.config_class.conf['graph_dataset']['confmodel']:  # self.original_class ha un'array (degree sequence) per ciascun grafo
-        #    #self.original_class # TODO: correggere perché ora original class contiene anche il modo ID
+        #    #self.original_class #
         #    correlazioni = np.corrcoef(self.graph_embedding_array.flatten(), self.original_class)[0, 1]
         self.graph_correlation_per_class = []
         actual_p = np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() / (num_nodes - 1) for t in self.dataset_nx])
@@ -337,12 +343,43 @@ class Embedding():
     def calc_regression_error(self):
         self.regression_error = np.sqrt(np.sum((self.graph_embedding_array.flatten() - self.training_labels) ** 2)) / len(self.graph_embedding_array)
 
+    def calc_instrinsic_dimension(self, num_emb_neurons, calc_perclass=False):
+        metodo = skdim.id.TwoNN()
+        # metodo = skdim.id.DANCo() troppo tempo
+        # metodo = skdim.id.ESS() troppo tempo
+        # metodo = skdim.id.FisherS()
+        # metodo = skdim.id.CorrInt() quasi 10 minuti per 20 punti
+        # metodo = skdim.id.lPCA()
+
+        node_emb_dims = []
+        graph_emb_dims = []
+        if calc_perclass:
+            num_classi = len(np.unique([n.graph_label for n in self.emb_pergraph], axis=0))
+            node_emb_perclass_pergraph = np.array(self.get_all_node_emb_per_class())
+            node_emb_perclass = node_emb_perclass_pergraph.reshape(num_classi, -1, num_emb_neurons)
+
+            for n in node_emb_perclass:
+                dim = metodo.fit(n).dimension_
+                node_emb_dims.append(dim)
+
+            graph_emb_perclass = np.array(self.get_all_graph_emb_per_class())
+            for n in graph_emb_perclass:
+                dim = metodo.fit(n).dimension_
+                graph_emb_dims.append(dim)
+
+        total_graph_emb_dim = metodo.fit(self.graph_embedding_array).dimension_
+        total_node_emb_dim = metodo.fit(self.node_embedding_array).dimension_
+
+        return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_graph_emb_dim
+
     def get_metrics(self, num_emb_neurons, training_mode):
-        if num_emb_neurons == 1 and training_mode == TrainingMode.mode3:
+        if num_emb_neurons == 1:
             self.calc_graph_emb_correlation()  # calcola self.graph_correlation_per_class o self.total_graph_correlation
-            self.calc_regression_error()
+            if training_mode == TrainingMode.mode3:
+                self.calc_regression_error()
         else:
-            self.calc_distances(num_emb_neurons)  # calcola self.difference_of_means
+            #self.calc_distances(num_emb_neurons)  # calcola self.difference_of_means
+            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_graph_emb_dim = self.calc_instrinsic_dimension(num_emb_neurons)
 
 
 class Embedding_per_graph():

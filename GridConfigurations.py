@@ -63,6 +63,10 @@ class GridConfigurations():
                 errors += 1
                 #print(f"Errore {repr(e)}, tolgo la riga {i}\n")
                 righe_da_togliere.append(i)
+            except :
+                errors +=1
+                print("Controllare errori non di assert")
+                righe_da_togliere.append(i)
 
         df_cum.drop(index=righe_da_togliere, inplace=True)  # ricordare che è meglio non cambiare la lunghezza dell'array dentro al ciclo for
         print(f"{errors} configurazioni saltate su {num_trials}, farò {num_trials - errors} training")

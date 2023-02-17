@@ -54,21 +54,21 @@ class GCN(torch.nn.Module):
             self.mean_pool = MeanAggregation()
 
         if self.last_linear:
-            if self.put_dropout:
-                self.dropouts.append(torch.nn.Dropout(p=0.5))
             if self.put_batchnorm:
                 self.batchnorms.append(BatchNorm1d(self.GCNneurons_per_layer[-1]))
+            if self.put_dropout:
+                self.dropouts.append(torch.nn.Dropout(p=0.5))
             #il primo è uguale all'ultimo dei GCN layer
             self.linears.append(Linear(self.GCNneurons_per_layer[-1], self.neurons_last_linear[0]))
-            if self.put_batchnorm:
-                self.batchnorms.append(BatchNorm1d(self.neurons_last_linear[0]))
             for j in range(0, len(self.neurons_last_linear) - 1):
-                lin = Linear(self.neurons_last_linear[j], self.neurons_last_linear[j + 1])
-                self.linears.append(lin)
+                if self.put_batchnorm:
+                    self.batchnorms.append(BatchNorm1d(self.neurons_last_linear[j]))
                 if self.put_dropout:
                     self.dropouts.append(torch.nn.Dropout(p=0.5))
-                if self.put_batchnorm:
-                    self.batchnorms.append(BatchNorm1d(self.neurons_last_linear[j + 1]))
+                lin = Linear(self.neurons_last_linear[j], self.neurons_last_linear[j + 1])
+                self.linears.append(lin)
+
+
             self.last_relu = LeakyReLU(0.03)
 
         if self.freezeGCNlayers:
@@ -93,15 +93,14 @@ class GCN(torch.nn.Module):
         return x
 
     def n_layers_linear(self, x):
-        if self.put_batchnorm:
-            x = self.batchnorms[0](x)
+
         for i, layer in enumerate(self.linears):
+            if self.put_batchnorm and i < (len(self.batchnorms) - 1):
+                x = self.batchnorms[i](x)
             if self.put_dropout:
                 x = self.dropouts[i](x)
             x = layer(x)
             x = self.last_relu(x)
-            if self.put_batchnorm:  # and i < (len(self.batchnorms) - 1):
-                x = self.batchnorms[i+1](x)
 
         return x
 
@@ -178,6 +177,24 @@ def view_parameters(model, nomefile=None, verbose=False):
     if verbose:
         for name, param in model.named_parameters():
             print(name, f"freezed? {not param.requires_grad}")
+
+def get_parameters(model_layers):
+    layers = []
+    for lin in model_layers: #xp.trainer.model.linears:
+        pars = []
+        for par in lin.parameters():
+            par = par.detach().cpu().numpy()
+            # print(par.flatten().shape)
+            pars.extend(par.flatten())
+        #print(len(pars))
+        layers.append(pars)
+    return layers
+
+def get_param_labels(model_layers):
+    labels = []
+    for i, lin in enumerate(model_layers):  # xp.trainer.model.linears:
+        labels.append(f"{lin.__class__.__name__}_{i}")
+    return labels
 
 def new_parameters(model, method=Inits.xavier_uniform, const_value=1.0):
     new_par = []

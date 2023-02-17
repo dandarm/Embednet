@@ -4,14 +4,10 @@ import numpy as np
 from sklearn.preprocessing import OneHotEncoder
 from multiprocessing import Pool
 
-from config_valid import Labels, TrainingMode
+from config_valid import Labels, TrainingMode, GraphType
 from Dataset import Dataset, GeneralDataset
 
-class GraphType(Enum):
-    ER = 1
-    Regular = 2
-    CM = 3
-    SBM = 4
+
 
 class GenerateGraph():
     def __init__(self, config_class):
@@ -32,18 +28,8 @@ class GenerateGraph():
         self.scalar_label = []
         self.node_label = []
 
-        self.type = None
-        if self.conf['graph_dataset']['ERmodel']:
-            self.type = GraphType.ER
+        self.graphtype = config_class.graphtype
 
-        elif self.conf['graph_dataset']['regular']:
-            self.type = GraphType.Regular
-
-        elif self.conf['graph_dataset']['confmodel']:
-            self.type = GraphType.CM
-
-        elif self.conf['graph_dataset']['sbm']:
-            self.type = GraphType.SBM
 
     # def make_dataset(self):
     #     switcher = {
@@ -69,22 +55,22 @@ class GenerateGraph():
     def initialize_dataset(self, parallel=True):
         print('Generating dataset...')
         modo = self.config_class.modo
-        if self.type == GraphType.ER:
+        if self.graphtype == GraphType.ER:
             if modo == TrainingMode.mode1 or modo == TrainingMode.mode2:
                 self.dataset_nclass_ER()
             if modo == TrainingMode.mode3:
                 self.dataset_regression_ER()
 
-        elif self.type == GraphType.Regular:
+        elif self.graphtype == GraphType.Regular:
             self.dataset_regular(parallel=parallel)
 
-        elif self.type == GraphType.CM:
+        elif self.graphtype == GraphType.CM:
             if modo == TrainingMode.mode1 or modo == TrainingMode.mode2:
                 self.dataset_classification_CM(parallel=parallel)
             if modo == TrainingMode.mode3:
                 self.dataset_regression_CM(parallel=parallel)
 
-        elif self.type == GraphType.SBM:
+        elif self.graphtype == GraphType.SBM:
             if modo == TrainingMode.mode1 or modo == TrainingMode.mode2:
                 self.dataset_nclass_SBM(parallel=parallel)
 

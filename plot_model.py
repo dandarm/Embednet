@@ -23,7 +23,7 @@ def make_graph(mod, classes_to_visit=None, classes_found=None, dot=None, prefix=
     toshow = []
     # list(traced_model.graph.nodes())[0]
     self_input = next(gr.inputs())
-    self_type = self_input.type().str().split('.')[-1]
+    self_type = self_input.graphtype().str().split('.')[-1]
     preds[self_input] = (set(), set()) # inps, ops
 
     if dot is None:
@@ -80,12 +80,12 @@ def make_graph(mod, classes_to_visit=None, classes_found=None, dot=None, prefix=
         only_first_ops = {'aten::expand_as'}
         rel_inp_end = 1 if n.kind() in only_first_ops else None
 
-        relevant_inputs = [i for i in list(n.inputs())[:rel_inp_end] if is_relevant_type(i.type())]
-        relevant_outputs = [o for o in n.outputs() if is_relevant_type(o.type())]
+        relevant_inputs = [i for i in list(n.inputs())[:rel_inp_end] if is_relevant_type(i.graphtype())]
+        relevant_outputs = [o for o in n.outputs() if is_relevant_type(o.graphtype())]
         if n.kind() == 'prim::CallMethod':
             fq_submodule_name = '.'.join \
-                ([nc for nc in list(n.inputs())[0].type().str().split('.') if not nc.startswith('__')])
-            submodule_type = list(n.inputs())[0].type().str().split('.')[-1]
+                ([nc for nc in list(n.inputs())[0].graphtype().str().split('.') if not nc.startswith('__')])
+            submodule_type = list(n.inputs())[0].graphtype().str().split('.')[-1]
             submodule_name = find_name(list(n.inputs())[0], self_input)
             name = prefix +'. ' +n.output().debugName()
             label = prefix + submodule_name +' (' + submodule_type + ')'
@@ -118,7 +118,7 @@ def make_graph(mod, classes_to_visit=None, classes_found=None, dot=None, prefix=
                 for o in n.outputs():
                     preds[o] = {name}, set()
         elif n.kind() == 'prim::CallFunction':
-            funcname = list(n.inputs())[0].type().__repr__().split('.')[-1]
+            funcname = list(n.inputs())[0].graphtype().__repr__().split('.')[-1]
             name = prefix +'. ' +n.output().debugName()
             label = funcname
             dot.node(name, label=label, shape='box')

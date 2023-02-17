@@ -1,6 +1,7 @@
 import os
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.transforms import Bbox
 import numpy as np
 from scipy import stats
 from plt_parameters import get_colors_to_cycle_rainbow8, get_colors_to_cycle_rainbowN, get_colors_to_cycle_sequential
@@ -8,10 +9,12 @@ from matplotlib.lines import Line2D
 from config_valid import TrainingMode
 import umap
 from matplotlib import ticker
+from utils import array_wo_outliers
 formatter = ticker.ScalarFormatter(useMathText=True)
 formatter.set_scientific(True)
 formatter.set_powerlimits((-1,1))
 
+sc1 = None
 class Data2Plot():
     """
     Serve per generare una generica classe di dati da plottare, andando a specificare
@@ -77,7 +80,9 @@ class Data2Plot():
             num_tot = len(self.input_obj) * len(self.input_obj[0])
         alpha_value = min(1, 3000 / num_tot)
         return alpha_value
-    def plot(self, datatype = 'node_embedding', type='histogram', ax=None, filename=None, sequential_colors=False, log=False, title=None):
+    def plot(self, datatype = 'node_embedding', type='histogram',
+             ax=None, filename=None, ylim=None, xlim=None,
+             sequential_colors=False, log=False, title=None):
         self.set_data(datatype)
         if self.dim > 2:
             array2plotflattened = self.array2plot.reshape(-1, self.array2plot.shape[-1])
@@ -121,6 +126,34 @@ class Data2Plot():
             ax.set_title(title)
         if filename:
             plt.savefig(filename, bbox_inches='tight')
+        if ylim:
+            ax.set_ylim(ylim)
+        if xlim:
+            ax.set_xlim(xlim)
+
+    @classmethod
+    def static_plot_for_animation(cls, array2plot, class_labels, datatype='node_embedding', type='histogram',
+             filename=None, ylim=None, xlim=None,
+             sequential_colors=False, log=False, title=None):
+
+        #sc1.set_data(x, y)
+        custom_lines = []
+        if datatype == 'node_embedding':
+            num_tot = len(array2plot) * len(array2plot[0]) * len(array2plot[0][0])
+        elif datatype == 'graph_embedding' or datatype == 'final_output':
+            num_tot = len(array2plot) * len(array2plot[0])
+        alpha_value = min(1, 3000 / num_tot)
+
+        for i, classe in enumerate(array2plot):
+            if sequential_colors:
+                color = get_colors_to_cycle_sequential(len(array2plot))[i]
+            else:
+                color = get_colors_to_cycle_rainbow8()[i % 8]
+            custom_lines.append(Line2D([0], [0], color=color, lw=3))
+            sc1.set_data(*classe.T)#, color=color, alpha=alpha_value, label=class_labels[i], marker='.', linestyle='None')
+            sc1.set_color(color)
+        #   sc1.set_data(x, y*i)
+        return sc1
 
     def calc_umap(self, data):
         embedding = umap.UMAP().fit_transform(data)
@@ -128,8 +161,7 @@ class Data2Plot():
 
 
 # region plots
-def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list=None, sequential_colors=False):
-    #embedding_class.get_metrics(num_emb_neurons, training_mode) #TODO rimettere
+def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list=None, sequential_colors=False, log=False):
     data = Data2Plot(embedding_class.emb_perclass, dim=num_emb_neurons)
     if num_emb_neurons == 1:
         print("Plotting 1D embeddings...")
@@ -635,32 +667,52 @@ def plot_onlyloss_ripetizioni_stesso_trial_superimposed(xp, dot_key, ylim=None, 
     df = xp.gc.config_dataframe
     multicolumns = tuple(dot_key.split('.'))
     if lista_keys is None:
-        distinte = list(set(xp.diz_trials[dot_key]))
+        try:
+            distinte = list(set(xp.diz_trials[dot_key]))
+        except TypeError:
+            distinte = list(set(map(tuple, xp.diz_trials[dot_key])))
     else:
         distinte = lista_keys
     tot = len(distinte)
     custom_lines = []
+    absmin = 100
+    absmax = -1
     k = 0
+    fig, (ax1,ax2) = plt.subplots(2, 1, figsize=(20, 12))
     for var in distinte:
         colore = get_colors_to_cycle_rainbowN(tot)[k]
         custom_lines.append(Line2D([0], [0], color=colore, lw=3))
+        if isinstance(var, tuple):
+            xp.gc.list2tuples(df)
         m1 = df[multicolumns] == var
         if m1.sum() > 0:
             res = df[m1]
             for i, (j, row) in enumerate(res.iterrows()):
-                plt.plot(row[('risultati', 'test_loss')], color=colore, alpha=0.5) #, label=var)
+                testloss = row[('risultati', 'test_loss')]
+                acc = row[('risultati', 'test_accuracy')]
+                loss_list_min, loss_list_max = min(array_wo_outliers(testloss)), max(array_wo_outliers(testloss))
+                absmin = min(absmin, loss_list_min)
+                absmax = max(absmax, loss_list_max)
+                ax1.plot(testloss, color=colore, alpha=0.5) #, label=var)
+                ax2.plot(acc, color=colore, alpha=0.5)
         else:
-            plt.plot(0, color=colore)
+            ax1.plot(0, color=colore)
         k += 1
 
 
-    plt.ylabel('Test Loss')
-    plt.xlim(0, 500)
+    ax1.set_ylabel('Test Loss')
+    #plt.xlim(0, 500)
     if ylim:
-        plt.ylim(ylim)
+        ax1.set_ylim(ylim)
+    else:
+        ax1.set_ylim(absmin, absmax)
+    ax2.set_ylim(0,1)
     if xlim:
-        plt.xlim(xlim)
-    plt.legend(custom_lines, distinte)
+        ax1.set_xlim(0, xlim)
+        ax2.set_xlim(0, xlim)
+    ax1.legend(custom_lines, distinte)
+    ax2.legend(custom_lines, distinte)
+
     if filename:
         filenamesave = xp.rootsave / filename
         plt.savefig(filenamesave)
@@ -686,5 +738,55 @@ def plot_onlyloss_ripetizioni_stesso_trial_superimposed(xp, dot_key, ylim=None, 
 #         # plt.show()
 #         if close:
 #             plt.close()
+
+
+
+def plot_weights_multiple_hist(layers, labels, ax1, absmin, absmax, sequential_colors=False, subplot=236):
+    assert len(layers) == len(labels), f"ci sono {len(layers)} layers e {len(labels)} labels"
+    #absmin, absmax = np.min([np.min(par) for par in layers]), np.max([np.max(par) for par in layers])
+    bins = np.linspace(absmin, absmax, 40)
+    alphavalue = 0.7
+    #fig, ax1 = plt.subplots()
+    fig = plt.gcf()
+    #ax1.set(xlim=(0, 10), ylim=(0, 25))
+
+    # primo grafico con l'asse che ho passato da fuori
+    i = 0
+    axes = [ax1]
+    custom_lines = []
+    color = get_colors_to_cycle_rainbow8()[i % 8]
+    if sequential_colors:
+        color = get_colors_to_cycle_sequential(len(layers))[i]
+    custom_lines.append(Line2D([0], [0], color=color, lw=3))
+    ax1.hist(layers[0], bins, density=True, label=labels[i], stacked=True, alpha=alphavalue, color=color)
+    ax1.set_ylim(0,3)
+    for i, lay in enumerate(layers[1:]):
+        asse = fig.add_subplot(subplot, sharex=ax1, sharey=ax1, label=f"ax{i+1}")
+        axes.append(asse)
+        color = get_colors_to_cycle_rainbow8()[i+1 % 8]
+        if sequential_colors:
+            color = get_colors_to_cycle_sequential(len(layers))[i+1]
+        asse.hist(lay, bins, density=True, label=labels[i+1], stacked=True, alpha=alphavalue, color=color)
+        asse.set_ylim(0,3)
+        custom_lines.append(Line2D([0], [0], color=color, lw=3))
+
+    ax1.legend(custom_lines, [f"{e}" for e in labels], loc='upper right')
+
+
+    xshift=0.02; yshift=0.02
+    for i, ax in enumerate(axes[::-1]):
+        ax.patch.set_visible(False)
+        pos = ax.get_position()
+        newpos = Bbox.from_bounds(pos.x0+i*xshift, pos.y0+i*yshift, pos.width, pos.height)
+        ax.set_position(newpos)
+        for sp in ["top", "right"]:
+            ax.spines[sp].set_visible(False)
+
+        if i > 0:
+            ax.spines["left"].set_visible(False)
+            ax.tick_params(labelleft=False, left=False, labelbottom=False)
+
+    #fig.savefig("trial01.pdf", transparent=True)
+    #plt.show()
 
 # endregion

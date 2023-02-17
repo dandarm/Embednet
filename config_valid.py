@@ -2,6 +2,7 @@ import yaml
 from enum import Enum
 import torch
 from pandas import json_normalize
+import numpy as np
 
 basic_config_file_path = "configs.yml"
 
@@ -14,6 +15,12 @@ class TrainingMode():
     mode1 = {'type': 'classification', 'criterion': torch.nn.CrossEntropyLoss(), 'labels': Labels.onehot, 'last_neuron': 'n_class'}
     mode2 = {'type': 'classification', 'criterion': torch.nn.BCEWithLogitsLoss(), 'labels': Labels.zero_one, 'last_neuron': 1}
     mode3 = {'type': 'regression', 'criterion': torch.nn.MSELoss(), 'labels': Labels.prob, 'last_neuron': 1}
+
+class GraphType(Enum):
+    ER = 1
+    Regular = 2
+    CM = 3
+    SBM = 4
 
 class Inits():  # TODO: capire perché se estendo da Enum succede un CASINO! non vanno più bene le uguaglianze
     normal = 'normal'
@@ -42,6 +49,9 @@ class Config():
             self.config_file = basic_config_file_path
             self.load_conf()
 
+        self.modo = None
+        self.graphtype = None
+        self.unique_train_name = "Noname"
         self.valid_conf()
         #self.reload_conf()
 
@@ -69,6 +79,7 @@ class Config():
 
     def valid_conf(self):
         self.modo = self.get_mode()
+
         neurons_per_layer = self.conf['model']['GCNneurons_per_layer']
         if self.conf['model']['last_layer_dense']:
             self.lastneuron = self.conf['model']['neurons_last_linear'][-1]
@@ -76,7 +87,6 @@ class Config():
             self.lastneuron = neurons_per_layer[-1]
 
         self.init_weights_mode = self.get_init_weights_mode()
-        #modo_str = self.conf['training']['mode']
 
         # verifico che l'ultimo neurone sia consistente col training mode
         if self.lastneuron == 1:
@@ -92,18 +102,45 @@ class Config():
         if self.modo['labels'] == Labels.zero_one:
             assert n_class == 2, 'Num classi in list_p non consistente con training mode'
 
+        # verifico che Num nodes sia consistente col training mode:
+        # nel caso di power law CM voglio poter settare num nodes diverso per ogni classe
+        if isinstance(self.conf['graph_dataset']['Num_nodes'], list):
+            assert self.graphtype == GraphType.CM
+        if isinstance(self.conf['graph_dataset']['Num_nodes'], int):
+            assert self.graphtype != GraphType.CM
+
+        # verifico che nel caso dello SBM la list_p sia una matrice
+        if self.graphtype == GraphType.SBM:
+            assert np.array(self.conf['graph_dataset']['list_p']).ndim == 2, "Lo Stochastic Block Model richiede una matrice di probabilità"
+        else:
+            assert np.array(self.conf['graph_dataset']['list_p']).ndim == 1, "probabilità inserite come matrice ma non stiamo nel SBM"
+
         # verifico che in graph_dataset ci sia un solo True
-        bool_arr = [self.conf['graph_dataset']['ERmodel'],
-                    self.conf['graph_dataset']['regular'],
-                    self.conf['graph_dataset']['confmodel'],
-                    self.conf['graph_dataset'].get('sbm', False)]
-        assert self.only1(bool_arr), "Errore nel config file: scegliere un solo tipo di grafi"
+        assert self.only1_graphtype(), "Errore nel config file: scegliere un solo tipo di grafi"
+
+        # assegno il tipo di grafo
+        self.set_graphtype()
 
         # verifico nel cm multiclass che il numero di numnodes sia uguale al numero di esponenti
         if self.conf['graph_dataset']['confmodel']:
             assert len(self.conf['graph_dataset']['Num_nodes']) == len(self.conf['graph_dataset']['list_exponents'])
 
-    def only1(self, bool_array):
+        self.unique_train_name = self.create_unique_train_name()
+    def set_graphtype(self):
+        if self.conf['graph_dataset']['ERmodel']:
+            self.graphtype = GraphType.ER
+        elif self.conf['graph_dataset']['regular']:
+            self.graphtype = GraphType.Regular
+        elif self.conf['graph_dataset']['confmodel']:
+            self.graphtype = GraphType.CM
+        elif self.conf['graph_dataset']['sbm']:
+            self.graphtype = GraphType.SBM
+
+    def only1_graphtype(self):
+        bool_array = [self.conf['graph_dataset']['ERmodel'],
+                    self.conf['graph_dataset']['regular'],
+                    self.conf['graph_dataset']['confmodel'],
+                    self.conf['graph_dataset'].get('sbm', False)]
         # check if bool_array contains one and only one True
         true_found = False
         for v in bool_array:
@@ -113,12 +150,34 @@ class Config():
                 return False  # "Too Many Trues"
         return true_found
 
-    def layer_neuron_string(self):
+    def create_layer_neuron_string(self):
         gcnneurons = self.conf['model']['GCNneurons_per_layer']
         linears = self.conf['model']['neurons_last_linear']
         s1 = str(gcnneurons).replace(', ', '-').strip('[').strip(']')
         s2 = str(linears).replace(', ', '-').strip('[').strip(']')
-        return s1 + s2
+        return '§' + s1 + '+' + s2 + '§'
+
+    def create_unique_train_name(self):
+        numnodi = self.conf['graph_dataset']['Num_nodes']
+        if isinstance(numnodi, list):
+            numnodi = numnodi[0]
+        numgrafi = self.conf['graph_dataset']['Num_grafi_per_tipo'] * 2
+        percentuale_train = self.conf['training']['percentage_train']
+        modo = self.conf['training']['mode']
+        freezed = self.conf['model']['freezeGCNlayers']
+        if self.graphtype == GraphType.CM:
+            data_label = self.conf['graph_dataset']['list_exponents']
+            if isinstance(data_label, list):
+                data_label = f"{len(data_label)}exps"
+        else:
+            data_label = self.conf['graph_dataset']['list_p']
+
+        layer_neuron_string = self.create_layer_neuron_string()
+        lr = self.conf['training']['learning_rate']
+        init_weights = self.conf['model']['init_weights']
+        nome = f"{self.graphtype}_{data_label}_nodi{numnodi}_grafi{numgrafi}_{modo}_layers{layer_neuron_string}_initw{init_weights}_lr{lr}_freezed{freezed}"
+        nome = nome.replace(', ', '_')
+        return nome
 
     def num_classes(self):
         if self.conf['graph_dataset']['ERmodel'] \

@@ -21,10 +21,10 @@ training:
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
     learning_rate: 0.01
-    epochs: 2500
+    epochs: 5000
     batch_size: 700
-    percentage_train: 0.7
-    earlystop_patience: 1000
+    percentage_train: 0.5
+    earlystop_patience: 500
     epochs_model_checkpoint: [-1]
     save_best_model: False
     every_epoch_embedding: True
@@ -34,7 +34,7 @@ model:
     last_layer_dense: True
     GCNneurons_per_layer: [1, 32, 32, 2]
     neurons_last_linear: [10, 10, 5]
-    freezeGCNlayers: False
+    freezeGCNlayers: True
     autoencoder: False
     put_batchnorm: True
     final_pool_aggregator: True

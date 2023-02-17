@@ -23,7 +23,7 @@ from TorchPCA import PCA
 
 from utils_tf import add_histogram
 from config_valid import TrainingMode
-from models import GCN, view_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
+from models import GCN, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
 from Dataset import Dataset, GeneralDataset
 from graph_generation import GenerateGraph
 from plot_model import plot_model
@@ -33,36 +33,34 @@ from plot_model import plot_model
 class Trainer():
 
     def __init__(self, config_class, verbose=False):
+        self.config_class = config_class
+        self.config_class.valid_conf()
+        self.conf = None
         self.model = None
         self.model_checkpoint = None
         self.best_model = None
-        self.config_class = config_class
-        self.config_class.valid_conf()
-        self.conf = self.config_class.conf
 
-        self.percentage_train = self.conf['training']['percentage_train']
-        self.lr = self.conf['training']['learning_rate']
-        self.epochs = self.conf['training']['epochs']
-        self.batch_size = self.conf['training']['batch_size']
-        self.last_layer_neurons = self.config_class.get_mode()['last_neuron']
+        self.percentage_train = None
+        self.lr = None
+        self.epochs = None
+        self.batch_size = None
+        self.last_layer_neurons = None
+        self.unique_train_name = None
         #self.mode = self.conf['training']['mode']    # 'classification'  or 'regression'  or 'unsupervised'
-        self.epochs_checkpoint = self.conf['training'].get('epochs_model_checkpoint')
+        self.epochs_checkpoint = None
         #self.every_epoch_embedding = self.conf['training'].get('every_epoch_embedding')
-        self.shuffle_dataset = self.conf['training']['shuffle_dataset']
-        self.save_best_model = self.conf['training']['save_best_model']
+        self.shuffle_dataset = None
+        self.save_best_model = None
 
-        if self.conf['device'] == 'gpu':
-            self.device = torch.device('cuda')
-        else:
-            self.device = "cpu"
+        self.device = None
 
-        self.criterion = self.config_class.get_mode()['criterion']
+        self.criterion = None
         # if criterion == 'MSELoss':
         #     self.criterion = torch.nn.MSELoss()
         # elif criterion == 'CrossEntropy':
         #     self.criterion = torch.nn.CrossEntropyLoss()
-        if verbose:
-            print(self.criterion)
+        #if verbose:
+        #    print(self.criterion)
 
         self.softmax = Softmax(dim=1)
 
@@ -79,6 +77,11 @@ class Trainer():
         self.graph_embedding_per_epoch = []
         self.node_embedding_per_epoch = []
         self.output_per_epoch = []
+        self.model_LINEAR_pars_per_epoch = []
+        self.model_GCONV_pars_per_epoch = []
+
+        self.reinit_conf(config_class)
+
 
     def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False):
         """
@@ -120,12 +123,19 @@ class Trainer():
         self.config_class.valid_conf()
         self.conf = self.config_class.conf
 
+        self.percentage_train = self.conf['training']['percentage_train']
         self.lr = self.conf['training']['learning_rate']
         self.epochs = self.conf['training']['epochs']
         self.batch_size = self.conf['training']['batch_size']
-
         self.last_layer_neurons = self.config_class.get_mode()['last_neuron']
         #self.mode = self.conf['training']['mode']  # 'classification'  or 'regression'  or 'unsupervised'
+        self.unique_train_name = self.config_class.unique_train_name
+
+        self.epochs_checkpoint = self.conf['training'].get('epochs_model_checkpoint')
+        self.shuffle_dataset = self.conf['training']['shuffle_dataset']
+        self.save_best_model = self.conf['training']['save_best_model']
+
+        self.criterion = self.config_class.get_mode()['criterion']
 
         if self.conf['device'] == 'gpu':
             self.device = torch.device('cuda')
@@ -364,6 +374,8 @@ class Trainer():
         self.graph_embedding_per_epoch = []
         self.node_embedding_per_epoch = []
         self.output_per_epoch = []
+        self.model_LINEAR_pars_per_epoch = []
+        self.model_GCONV_pars_per_epoch = []
 
         test_loss, var_exp, graph_embeddings_array, node_embeddings_array = self.test(self.dataset.test_loader)
         all_data_loader = DataLoader(self.dataset.dataset_pyg, batch_size=self.dataset.bs, shuffle=False)
@@ -391,9 +403,7 @@ class Trainer():
             return
 
         nowstr = datetime.datetime.now().strftime("%d%b_%H-%M-%S")
-        neurons_str = self.config_class.layer_neuron_string()
-        expstr = f"lr-{self.lr}_epochs{self.epochs}_bs{self.batch_size}_neurons-{neurons_str}"
-        LOG_DIR = f"runs/{expstr}_{nowstr}"
+        LOG_DIR = f"runs/{self.unique_train_name}__{nowstr}"
         if verbose > 0: print(LOG_DIR)
         writer = SummaryWriter(LOG_DIR)
         writerX = WriterX(LOG_DIR)
@@ -436,6 +446,9 @@ class Trainer():
                     self.node_embedding_per_epoch.append(node_embeddings_array)
                     # prendo anche l'output nel caso in cui abbiamo il layer denso finale
                     self.output_per_epoch.append(final_output)
+                    # prendo pure i weights del modello
+                    self.model_LINEAR_pars_per_epoch.append(get_parameters(self.model.linears))
+                    self.model_GCONV_pars_per_epoch.append(get_parameters(self.model.convs))
 
                 #expvar = self.myExplained_variance.compute()
                 # add explained variance to tensorboard
