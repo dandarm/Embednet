@@ -28,9 +28,10 @@ class Embedding():
 
         self.emb_pergraph = []
         self.emb_perclass = []
-        self.correlation_with_degree_sequence = None
         self.graph_correlation_per_class = None
         self.total_graph_correlation = None
+        self.node_correlation_per_class = None
+        self.total_node_correlation = None
         self.regression_error = None
         self.node_emb_dims = None
         self.graph_emb_dims = None
@@ -323,7 +324,8 @@ class Embedding():
         #    #self.original_class #
         #    correlazioni = np.corrcoef(self.graph_embedding_array.flatten(), self.original_class)[0, 1]
         self.graph_correlation_per_class = []
-        actual_p = np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() / (num_nodes - 1) for t in self.dataset_nx])
+        #print((self.scalar_class))
+        actual_p = np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() / (200 - 1) for t in self.dataset_nx]) # num_nodes
 
         if self.continuous_p:
             self.total_graph_correlation = np.corrcoef(self.graph_embedding_array.flatten(), self.training_labels)[0,1]
@@ -335,10 +337,34 @@ class Embedding():
                 self.graph_correlation_per_class.append(correlaz)
         else:
             for p in self.probabilities_ER:
+                # TODO: metodo elegante che dovrei usare a monte quando separo i graph embedding per classe
                 mask_int = np.argwhere(np.array(self.scalar_class) == p).flatten()
                 emb = self.graph_embedding_array[mask_int].flatten()
                 correlaz = np.corrcoef(emb, actual_p[mask_int])[0, 1]
                 self.graph_correlation_per_class.append(correlaz)
+
+        self.total_graph_correlation = np.mean(self.graph_correlation_per_class)
+
+    def calc_node_emb_correlation(self):
+        avg_corr_classes = []
+        avg_tau_classes = []
+        for class_emb in self.emb_perclass:
+            corrs = []
+            kendall_tau = []
+            for emb_pergraph in class_emb:
+                emb_pergraph.get_correlation_with_degree_sequence()
+                emb_pergraph.get_kendall_with_degree_sequence()
+                corrs.append(emb_pergraph.correlation_with_degree)
+                kendall_tau.append(emb_pergraph.kendall_with_degree)
+            avg_corr_class0 = sum(corrs) / len(class_emb)
+            avg_corr_classes.append(avg_corr_class0)
+            avg_tau = sum(kendall_tau) / len(class_emb)
+            avg_tau_classes.append(avg_tau)
+
+        self.node_correlation_per_class = avg_corr_classes
+        self.total_node_correlation = np.mean(avg_corr_classes)
+
+        return avg_corr_classes, avg_tau_classes
 
     def calc_regression_error(self):
         self.regression_error = np.sqrt(np.sum((self.graph_embedding_array.flatten() - self.training_labels) ** 2)) / len(self.graph_embedding_array)
@@ -375,6 +401,7 @@ class Embedding():
     def get_metrics(self, num_emb_neurons, training_mode):
         if num_emb_neurons == 1:
             self.calc_graph_emb_correlation()  # calcola self.graph_correlation_per_class o self.total_graph_correlation
+            self.calc_node_emb_correlation()
             if training_mode == TrainingMode.mode3:
                 self.calc_regression_error()
         else:
@@ -414,11 +441,11 @@ class Embedding_per_graph():
 
     def get_correlation_with_degree_sequence(self):
         node_emb_array = np.array(self.node_embedding_array).flatten()
-        self.correlation_with_degree = np.corrcoef(node_emb_array, self.node_label)[0, 1]  # TODO: node_label flatten!!!
+        self.correlation_with_degree = np.corrcoef(node_emb_array, self.actual_node_class)[0, 1]  # TODO: node_label flatten!!!
 
     def get_kendall_with_degree_sequence(self):
         node_emb_array = np.array(self.node_embedding_array).flatten()
-        self.kendall_with_degree, p_value = kendalltau(node_emb_array, self.node_label) # TODO: node_label flatten!!!
+        self.kendall_with_degree, p_value = kendalltau(node_emb_array, self.actual_node_class)  # TODO: node_label flatten!!!
 
 
 

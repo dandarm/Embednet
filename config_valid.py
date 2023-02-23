@@ -51,7 +51,10 @@ class Config():
 
         self.modo = None
         self.graphtype = None
+        self.num_classes = 0
         self.unique_train_name = "Noname"
+        self.longstring_graphtype = "Nographtype"
+        self.long_string_experiment = "Nostring"
         self.valid_conf()
         #self.reload_conf()
 
@@ -79,6 +82,11 @@ class Config():
 
     def valid_conf(self):
         self.modo = self.get_mode()
+        # assegno il tipo di grafo
+        self.set_graphtype()
+
+        # verifico che in graph_dataset ci sia un solo True
+        assert self.only1_graphtype(), "Errore nel config file: scegliere un solo tipo di grafi"
 
         neurons_per_layer = self.conf['model']['GCNneurons_per_layer']
         if self.conf['model']['last_layer_dense']:
@@ -89,11 +97,12 @@ class Config():
         self.init_weights_mode = self.get_init_weights_mode()
 
         # verifico che l'ultimo neurone sia consistente col training mode
+        self.get_num_classes()
         if self.lastneuron == 1:
             assert self.lastneuron == self.modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
         else:
             assert self.modo['last_neuron'] == 'n_class', 'Ultimi neuroni > 1 ma training mode diverso'
-            assert self.lastneuron == self.num_classes(), f'Ultimi neuroni ({self.lastneuron}) diversi dal numero di classi ({self.num_classes()}) '
+            assert self.lastneuron == self.num_classes, f'Ultimi neuroni ({self.lastneuron}) diversi dal numero di classi ({self.num_classes}) '
 
         #last_layer_dense = self.config['model']['last_layer_dense']
 
@@ -103,38 +112,43 @@ class Config():
             assert n_class == 2, 'Num classi in list_p non consistente con training mode'
 
         # verifico che Num nodes sia consistente col training mode:
-        # nel caso di power law CM voglio poter settare num nodes diverso per ogni classe
+        # nel caso di power law CM E SBM(!) -> voglio poter settare num nodes diverso per ogni classe  (per ogni comunità)
         if isinstance(self.conf['graph_dataset']['Num_nodes'], list):
-            assert self.graphtype == GraphType.CM
+            assert self.graphtype == GraphType.CM or self.graphtype == GraphType.SBM
         if isinstance(self.conf['graph_dataset']['Num_nodes'], int):
             assert self.graphtype != GraphType.CM
 
-        # verifico che nel caso dello SBM la list_p sia una matrice
+        # verifico che nel caso dello SBM la Num_Nodes sia una matrice
         if self.graphtype == GraphType.SBM:
-            assert np.array(self.conf['graph_dataset']['list_p']).ndim == 2, "Lo Stochastic Block Model richiede una matrice di probabilità"
-        else:
-            assert np.array(self.conf['graph_dataset']['list_p']).ndim == 1, "probabilità inserite come matrice ma non stiamo nel SBM"
+            assert isinstance(self.conf['graph_dataset']['Num_nodes'], list), "Lo Stochastic Block Model richiede una lista per Num nodes"
+        #else:
+        #    assert np.array(self.conf['graph_dataset']['list_p']).ndim == 1, "probabilità inserite come matrice ma non stiamo nel SBM"
 
-        # verifico che in graph_dataset ci sia un solo True
-        assert self.only1_graphtype(), "Errore nel config file: scegliere un solo tipo di grafi"
 
-        # assegno il tipo di grafo
-        self.set_graphtype()
+
 
         # verifico nel cm multiclass che il numero di numnodes sia uguale al numero di esponenti
-        if self.conf['graph_dataset']['confmodel']:
+        if self.graphtype == GraphType.CM:
             assert len(self.conf['graph_dataset']['Num_nodes']) == len(self.conf['graph_dataset']['list_exponents'])
+        # verifico che le BMS il numero di num nodes sia uguale al numero di comunità
+        if self.graphtype == GraphType.SBM:
+            assert len(self.conf['graph_dataset']['Num_nodes']) == np.array(self.conf['graph_dataset']['community_probs']).shape[1]
 
-        self.unique_train_name = self.create_unique_train_name()
+        self.unique_train_name, self.long_string_experiment = self.create_unique_train_name()
+        #print(f"Training with {self.num_classes} classes")
     def set_graphtype(self):
         if self.conf['graph_dataset']['ERmodel']:
             self.graphtype = GraphType.ER
+            self.longstring_graphtype = "Erdos-Renyi"
         elif self.conf['graph_dataset']['regular']:
             self.graphtype = GraphType.Regular
+            self.longstring_graphtype = "Grafo Regolare"
         elif self.conf['graph_dataset']['confmodel']:
             self.graphtype = GraphType.CM
+            self.longstring_graphtype = "Configuration Model"
         elif self.conf['graph_dataset']['sbm']:
             self.graphtype = GraphType.SBM
+            self.longstring_graphtype = "Stochastic Block Model"
 
     def only1_graphtype(self):
         bool_array = [self.conf['graph_dataset']['ERmodel'],
@@ -155,13 +169,17 @@ class Config():
         linears = self.conf['model']['neurons_last_linear']
         s1 = str(gcnneurons).replace(', ', '-').strip('[').strip(']')
         s2 = str(linears).replace(', ', '-').strip('[').strip(']')
-        return '§' + s1 + '+' + s2 + '§'
+        if self.conf['model']['last_layer_dense']:
+            res = '§' + s1 + '+' + s2 + '§'
+        else:
+            res = '§' + s1 + '§'
+        return res
 
     def create_unique_train_name(self):
         numnodi = self.conf['graph_dataset']['Num_nodes']
         if isinstance(numnodi, list):
             numnodi = numnodi[0]
-        numgrafi = self.conf['graph_dataset']['Num_grafi_per_tipo'] * 2
+        numgrafi = self.conf['graph_dataset']['Num_grafi_per_tipo']
         percentuale_train = self.conf['training']['percentage_train']
         modo = self.conf['training']['mode']
         freezed = self.conf['model']['freezeGCNlayers']
@@ -169,24 +187,34 @@ class Config():
             data_label = self.conf['graph_dataset']['list_exponents']
             if isinstance(data_label, list):
                 data_label = f"{len(data_label)}exps"
-        else:
+        elif self.graphtype == GraphType.ER:
             data_label = self.conf['graph_dataset']['list_p']
+        elif self.graphtype == GraphType.SBM:
+            data_label = self.conf['graph_dataset']['community_probs']
 
         layer_neuron_string = self.create_layer_neuron_string()
         lr = self.conf['training']['learning_rate']
         init_weights = self.conf['model']['init_weights']
-        nome = f"{self.graphtype}_{data_label}_nodi{numnodi}_grafi{numgrafi}_{modo}_layers{layer_neuron_string}_initw{init_weights}_lr{lr}_freezed{freezed}"
+        #nome = f"{self.graphtype}_{data_label}_nodi{numnodi}_grafiXtipo{numgrafi}_{modo}_layers{layer_neuron_string}_initw-{init_weights}_lr{lr}_freezed{freezed}"
+        nome = f"{self.graphtype}_Classi{self.num_classes}_nodi{numnodi}_grafiXtipo{numgrafi}_{modo}_layers{layer_neuron_string}_initw-{init_weights}_lr{lr}_GCNfreezed{freezed}"
         nome = nome.replace(', ', '_')
-        return nome
 
-    def num_classes(self):
+        # creo stringa lunga
+        long_string = f"{self.longstring_graphtype} - {numnodi} nodi - {numgrafi} grafi per classe \n {layer_neuron_string} - {init_weights} - lr:{lr} - GCNfreezed:{freezed}"
+        return nome, long_string
+
+
+    def get_num_classes(self):
         if self.conf['graph_dataset']['ERmodel'] \
-                or self.conf['graph_dataset']['sbm'] \
                 or self.conf['graph_dataset']['regular']:
-            return len(self.conf['graph_dataset']['list_p'])
-
+            self.num_classes = len(self.conf['graph_dataset']['list_p'])
         elif self.conf['graph_dataset']['confmodel']:
-            return len(self.conf['graph_dataset']['list_exponents'])
+            self.num_classes = len(self.conf['graph_dataset']['list_exponents'])
+        elif self.conf['graph_dataset']['sbm']:
+            self.num_classes = len(self.conf['graph_dataset']['community_probs'])
+        #print(f"Abbiamo {self.num_classes} classi.")
+        #print(self.conf['graph_dataset'])
+        return self.num_classes
 
 
     def get_config_dataframe(self):

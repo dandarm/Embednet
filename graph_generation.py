@@ -1,4 +1,5 @@
 from enum import Enum
+from functools import partial
 import networkx as nx
 import numpy as np
 from sklearn.preprocessing import OneHotEncoder
@@ -14,6 +15,7 @@ class GenerateGraph():
         self.config_class = config_class
         self.conf = self.config_class.conf
         self.N = self.conf['graph_dataset']['Num_nodes']
+        print(f"Num nodi conf: {self.N}")
         if isinstance(self.N, list):
             self.numnodes_islist = True
         self.list_p = self.conf['graph_dataset']['list_p']
@@ -166,15 +168,24 @@ class GenerateGraph():
         #degree = [d for v, d in gr0.degree()]
         return gr0, gr0.degree()  # !!! quì ora voglio portarmi appresso anche il node ID
 
-    def build_sbm(self, Num_nodes, community_probs, N_graphs, parallel=True):
+    def build_sbm(self, Num_nodes, community_probs, N_graphs, parallel=False):
+        parallel = False
+        actual_degrees = []
         if parallel:
             with Pool(processes=32) as pool:
-                input_list = zip([Num_nodes] * N_graphs, community_probs * N_graphs)
-                grafi = pool.map(nx.stochastic_block_model, input_list)
+                input_list = []
+                for i in range(N_graphs):
+                    input_list.append({"sizes": Num_nodes, "p": community_probs})
+                #print(input_list[0])
+                #nx.stochastic_block_model(**input_list[0])
+                mapfunc = partial(nx.stochastic_block_model, input_list)
+                grafi = pool.imap(nx.stochastic_block_model, input_list)
+                #grafi = pool.starmap(nx.stochastic_block_model, list(input_list.items()))
+            actual_degrees = [sbmg.degree() for sbmg in grafi]
         else:
             grafi = []
-            actual_degrees = []
             for i in range(N_graphs):
+                #print(community_probs)
                 sbmg = nx.stochastic_block_model(Num_nodes, community_probs)
                 grafi.append(sbmg)
                 actual_degrees.append(sbmg.degree())
@@ -224,7 +235,8 @@ class GenerateGraph():
         original_class = [[i] for i in self.target_labels]
         self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.target_labels),
                                       original_node_class=self.node_label,
-                                      actual_node_class=self.dataset_degree_seq, scalar_label=self.scalar_label)
+                                      actual_node_class=self.dataset_degree_seq,
+                                      scalar_label=self.scalar_label)
 
     def dataset_regression_ER(self):
         Num_nodes = self.conf['graph_dataset']['Num_nodes']
@@ -251,7 +263,9 @@ class GenerateGraph():
                 self.scalar_label = self.scalar_label + [p] * Num_grafi_per_tipo
                 self.node_label.append([p]*Num_grafi_per_tipo*Num_nodes)
 
-        self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.target_labels), scalar_label=self.scalar_label, node_label=self.node_label)
+        self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.target_labels),
+                                      scalar_label=self.scalar_label,
+                                      node_label=self.node_label)
 
 
     def dataset_regular(self, parallel=True):
@@ -292,6 +306,7 @@ class GenerateGraph():
             grafi, actual_degrees = self.create_confmodel(num_nodes, self.Num_grafi_per_tipo, exponent=exp, parallel=parallel)
             self.dataset_grafi_nx = self.dataset_grafi_nx + grafi
             self.target_labels = self.target_labels + [encoded[i]] * len(grafi)
+            self.node_label.extend([[exp] * num_nodes] * self.Num_grafi_per_tipo)
             # prima di aggiungere tolgo l'id dei nodi da questo array, per ora non mi serve
             # type nx.classes.reportviews.DegreeView
             only_degrees = [list(dict(dw).values()) for dw in actual_degrees]
@@ -299,6 +314,7 @@ class GenerateGraph():
             self.scalar_label = self.scalar_label + [exp] * len(grafi)
 
         self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.target_labels),
+                                      original_node_class=self.node_label,
                                       actual_node_class=self.dataset_degree_seq,
                                       scalar_label=self.scalar_label,
                                       exponent=list(zip(self.scalar_label, self.target_labels)))
@@ -347,7 +363,7 @@ class GenerateGraph():
 
         label_kind = self.config_class.modo['labels']
         if label_kind == Labels.onehot:
-            labels = np.eye(len(self.list_p))
+            labels = np.eye(self.config_class.num_classes)
         elif label_kind == Labels.zero_one:
             labels = [0,1]
         elif label_kind == Labels.prob:
@@ -356,13 +372,15 @@ class GenerateGraph():
             labels = None
 
         for i, matrix_p in enumerate(self.community_probs):
+            # al momento Num_nodes è una lista di due, una per comunnità, per ogni classe sono previste due e solo due comunità
             #community_probs = self.make_planted_matrix(communities)
-            #print(community_probs)
             grafi, actual_degrees = self.build_sbm(self.N, matrix_p, self.Num_grafi_per_tipo, parallel)
+            #print(f"actual_degrees shape : {np.array(actual_degrees).shape}")
             self.dataset_grafi_nx = self.dataset_grafi_nx + grafi
             self.target_labels = self.target_labels + [labels[i]] * len(grafi)
             self.scalar_label = self.scalar_label + [matrix_p] * self.Num_grafi_per_tipo
-            self.node_label.extend([[matrix_p] * self.N[i]] * self.Num_grafi_per_tipo)
+            self.node_label.extend([[matrix_p] * self.N[0]] * self.Num_grafi_per_tipo)  # aggiungo per la prima comunità
+            self.node_label.extend([[matrix_p] * self.N[1]] * self.Num_grafi_per_tipo)  # per la seconda
             # actual degrees: tolgo l'id...l'ho fatto in mille modi diversi :(
             only_degrees = [list(dict(dw).values()) for dw in actual_degrees]
             self.dataset_degree_seq.extend(only_degrees)

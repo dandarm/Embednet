@@ -225,8 +225,8 @@ class Trainer():
             target = data.y
             target = self.correct_shape(data.y)
             #target = data.y.unsqueeze(1).float()  # TODO: modificato
-            #print(f'target corrected {target}')
-            #print(f'out: {out}')
+            #print(f'target shape {target.shape}')
+            #print(f'out: shape {out.shape}')
             loss = self.criterion(out, target)  # Compute the loss.
             running_loss += loss.item()
             #print(f"out and target shape")
@@ -447,7 +447,8 @@ class Trainer():
                     # prendo anche l'output nel caso in cui abbiamo il layer denso finale
                     self.output_per_epoch.append(final_output)
                     # prendo pure i weights del modello
-                    self.model_LINEAR_pars_per_epoch.append(get_parameters(self.model.linears))
+                    if self.conf['model']['last_layer_dense']:
+                        self.model_LINEAR_pars_per_epoch.append(get_parameters(self.model.linears))
                     self.model_GCONV_pars_per_epoch.append(get_parameters(self.model.convs))
 
                 #expvar = self.myExplained_variance.compute()

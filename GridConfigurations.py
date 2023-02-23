@@ -60,16 +60,20 @@ class GridConfigurations():
                 config_class = Config.fromdict(config_is_back)  # faccio la validazione della config
                 self.configs.append(config_class)
             except AssertionError as e:
+                #raise e
                 errors += 1
                 #print(f"Errore {repr(e)}, tolgo la riga {i}\n")
                 righe_da_togliere.append(i)
-            except :
+            except Exception as e:
+                #raise e
                 errors +=1
                 print("Controllare errori non di assert")
                 righe_da_togliere.append(i)
 
         df_cum.drop(index=righe_da_togliere, inplace=True)  # ricordare che è meglio non cambiare la lunghezza dell'array dentro al ciclo for
-        print(f"{errors} configurazioni saltate su {num_trials}, farò {num_trials - errors} training")
+        print(f"{errors} configurazioni saltate su {num_trials}, farò i seguenti {num_trials - errors} training:")
+        for c in self.configs:
+            print(f'{c.unique_train_name}')
         # posso tornare a un indice sequenziale, anzi devo perché per riempire il df coi risultati non so quali sono gli indici di riga, ma riempio sequenzialmente ciclando sulle configs
         df_cum = df_cum.reset_index().drop(columns=['index'])
         self.config_dataframe = df_cum

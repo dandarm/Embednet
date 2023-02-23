@@ -19,7 +19,7 @@ from train import Trainer
 from train_autoencoder import Trainer_Autoencoder
 from embedding import Embedding
 import plot_funcs
-from plot_funcs import scatter_node_emb, plot_graph_emb_1D, plot_node_emb_1D, save_ffmpeg, Data2Plot, plot_weights_multiple_hist
+from plot_funcs import scatter_node_emb, plot_graph_emb_1D, plot_node_emb_1D, save_ffmpeg, Data2Plot, plot_weights_multiple_hist, plot_metrics
 from plt_parameters import get_colors_to_cycle_rainbow8, get_colors_to_cycle_rainbowN, get_colors_to_cycle_sequential
 from config_valid import Config
 from GridConfigurations import GridConfigurations
@@ -48,9 +48,12 @@ node_intrinsic_dimensions_perclass = []
 graph_intrinsic_dimensions_perclass = []
 node_intrinsic_dimensions_total = []
 graph_intrinsic_dimensions_total = []
+graph_correlation = []
+node_correlation = []
 
-num_classes = None
+#num_classes = None
 data4video = []
+long_string_experiment = "Nostring"
 
 def all_seeds():
     os.environ['PYTHONHASHSEED'] = str(0)
@@ -92,7 +95,22 @@ class Experiments():
         #self.graph_embedding_per_epoch = []
         #self.node_embedding_per_epoch = []
 
-    def GS_simple_experiments(self):
+    def GS_simple_experiments(self, list_points=100, parallel_take_result=True):
+        global graph_embedding_per_epoch
+        global node_embedding_per_epoch
+        global output_per_epoch
+        global dataset
+        global exp_config
+        global embedding_dimension
+        global trainmode
+
+        global data4video
+        global node_intrinsic_dimensions_perclass
+        global graph_intrinsic_dimensions_perclass
+        #global node_intrinsic_dimensions_total
+        #global graph_intrinsic_dimensions_total
+        #global graph_correlation
+        #global node_correlation
 
         k = 0
         for c in self.gc.configs:
@@ -102,7 +120,36 @@ class Experiments():
             self.just_train()
             embedding_class = self.embedding()
 
-            #fill_df_with_results(self.gc.config_dataframe, k, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+            embedding_dimension = self.trainer.model.convs[-1].out_channels
+            trainmode = self.trainer.config_class.modo
+            dataset = self.trainer.dataset
+            exp_config = self.trainer.config_class
+
+            if self.config_class.conf['training']['every_epoch_embedding']:
+                graph_embedding_per_epoch = self.trainer.graph_embedding_per_epoch
+                node_embedding_per_epoch = self.trainer.node_embedding_per_epoch
+                output_per_epoch = self.trainer.output_per_epoch
+                # scrivo la lista delle epoche sulla quale esegui i calcoli
+                end = np.log10(self.trainer.last_epoch)
+                list_points = min(list_points, self.trainer.last_epoch)
+                logarray = np.round(np.logspace(1., end, num=list_points)).astype(int)
+                lista = np.unique(np.concatenate((np.arange(0, 10), logarray)))[:-1]
+#               if num_emb_neurons == 1:
+#                   avg_corr_classes, avg_tau_classes = self.get_corrs_per_epoch(parallel=parallel_take_result)
+#                   avg_corr_classes = np.array(avg_corr_classes).T
+#                   avg_tau_classes = np.array(avg_tau_classes).T
+                with Pool(processes=30) as pool:
+                     d4v_e_ids_e_corrs = pool.map(take_results_each_epoch, lista)
+                     self.divide_lists_results_for_epochlist(d4v_e_ids_e_corrs, lista)  # riempie le variaibli globali...un giorno riuscirò a togliere il metodo static
+
+                #fill_df_with_results(self.gc.config_dataframe, k, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+
+
+            plot_metrics(embedding_class, embedding_dimension, trainmode, self.trainer.test_loss_list, self.trainer.accuracy_list,
+                         node_intrinsic_dimensions_total, graph_intrinsic_dimensions_total,
+                         node_correlation, graph_correlation,
+                         sequential_colors=False, log=False)
+
             k += 1
 
     def stesso_init_diversi_dataset(self):
@@ -181,7 +228,7 @@ class Experiments():
                             dataset = self.trainer.dataset
                             loss_list = self.trainer.test_loss_list
                             exp_config = c
-                        avg_corr_classes, avg_tau_classes = self.get_corrs_training(parallel=parallel_take_result)
+                        avg_corr_classes, avg_tau_classes = self.get_corrs_per_epoch(parallel=parallel_take_result)
                         avg_corr_classes = np.array(avg_corr_classes).T
                         avg_tau_classes = np.array(avg_tau_classes).T
 
@@ -248,7 +295,7 @@ class Experiments():
                         dataset = self.trainer.dataset
                         loss_list = self.trainer.test_loss_list
                         exp_config = c
-                    avg_corr_classes, avg_tau_classes = self.get_corrs_training(parallel=parallel_take_result)
+                    avg_corr_classes, avg_tau_classes = self.get_corrs_per_epoch(parallel=parallel_take_result)
                     avg_corr_classes = np.array(avg_corr_classes).T
                     avg_tau_classes = np.array(avg_tau_classes).T
 
@@ -296,7 +343,7 @@ class Experiments():
                 loss_list = self.trainer.test_loss_list
                 exp_config = c
 
-            avg_corr_classes, avg_tau_classes = self.get_corrs_training(parallel=parallel_take_result)
+            avg_corr_classes, avg_tau_classes = self.get_corrs_per_epoch(parallel=parallel_take_result)
             avg_corr_classes = np.array(avg_corr_classes).T
             avg_tau_classes = np.array(avg_tau_classes).T
 
@@ -359,30 +406,35 @@ class Experiments():
         return embedding_class
 
     def take_corr(self, epoca):
+        """
+        Al momento calcola solo le correlazioni per il node embedding
+        :param epoca:
+        :return:
+        """
         graph_embeddings_array = self.trainer.graph_embedding_per_epoch[epoca]
         node_embeddings_array = self.trainer.node_embedding_per_epoch[epoca]
-        node_embedding_class = self.elaborate_embedding(graph_embeddings_array, node_embeddings_array, [])
-        # node_emb_pergraph, node_embedding_class = elaborate_embedding_pergraph(c, graph_embeddings_array, node_embeddings_array, [], t)
-        # embs_by_class = separate_embedding_by_classes(node_emb_pergraph)
+        embedding_class = self.elaborate_embedding(graph_embeddings_array, node_embeddings_array, [])
 
-        avg_corr_classes = []
-        avg_tau_classes = []
-        for classe in node_embedding_class.emb_perclass:
-            corrs = []
-            kendall_tau = []
-            for e in classe:
-                e.get_correlation_with_degree_sequence()
-                e.get_kendall_with_degree_sequence()
-                corrs.append(e.correlation_with_degree)
-                kendall_tau.append(e.kendall_with_degree)
-            avg_corr_class0 = sum(corrs) / len(classe)
-            avg_corr_classes.append(avg_corr_class0)
-            avg_tau = sum(kendall_tau) / len(classe)
-            avg_tau_classes.append(avg_tau)
+        # TODO: cancellare questo commento, non serve più
+        # avg_corr_classes = []
+        # avg_tau_classes = []
+        # for classe in embedding_class.emb_perclass:
+        #     corrs = []
+        #     kendall_tau = []
+        #     for e in classe:
+        #         e.get_correlation_with_degree_sequence()
+        #         e.get_kendall_with_degree_sequence()
+        #         corrs.append(e.correlation_with_degree)
+        #         kendall_tau.append(e.kendall_with_degree)
+        #     avg_corr_class0 = sum(corrs) / len(classe)
+        #     avg_corr_classes.append(avg_corr_class0)
+        #     avg_tau = sum(kendall_tau) / len(classe)
+        #     avg_tau_classes.append(avg_tau)
+        avg_corr_classes, avg_tau_classes = embedding_class.calc_node_emb_correlation()
 
         return avg_corr_classes, avg_tau_classes
 
-    def get_corrs_training(self, parallel=True):
+    def get_corrs_per_epoch(self, parallel=True):
         print(self.trainer.last_epoch)
         if parallel:
             with Pool(processes=32) as pool:
@@ -400,7 +452,7 @@ class Experiments():
         return avg_corr_classes, avg_tau_classes
 
 
-    # region save video or gif
+#region save video or gif
 
     def save_many_images_embedding(self, trainer, config_c, node_embeddings_array_id=[0]):
         for i in range(trainer.epochs):
@@ -409,7 +461,6 @@ class Experiments():
             emb_perclass0, emb_perclass1 = self.elaborate_embeddings(config_c, graph_embeddings_array, trainer.model, node_embeddings_array, node_embeddings_array_id, trainer.test_loss_list, trainer)
             scatter_node_emb(emb_perclass0, emb_perclass1, trainer.accuracy_list[i], f"scatter_epoch{i}", show=False, close=True)
             # plot_graph_emb_1D(emb_perclass0, emb_perclass1, trainer.last_accuracy)
-
 
     def parallel_save_many_images_embedding(self, lista):
         with Pool(processes=12) as pool:
@@ -423,7 +474,7 @@ class Experiments():
 
     def parallel_prepare_data4video_each_epoch(self, lista):
         with Pool(processes=30) as pool:
-            res = pool.map(prepare_data4video_each_epoch, lista)
+            res = pool.map(take_results_each_epoch, lista)
         return res
 
     def make_video(self, skip=1, fromfiles=True, isgif=False, both=True, custom_list=False, seq_colors=False):
@@ -442,6 +493,9 @@ class Experiments():
         global graph_intrinsic_dimensions_perclass
         global node_intrinsic_dimensions_total
         global graph_intrinsic_dimensions_total
+        global graph_correlation
+        global node_correlation
+        global long_string_experiment
 
         if both:
             isgif = True
@@ -450,7 +504,7 @@ class Experiments():
 
         if custom_list:
             end = np.log10(self.trainer.last_epoch)
-            logarray = np.round(np.logspace(1., end, num=100)).astype(int)
+            logarray = np.round(np.logspace(1., end, num=200)).astype(int)
             lista = np.unique(np.concatenate((np.arange(0, 10), logarray)))[:-1]
         else:
             lista = range(0, self.trainer.last_epoch, skip)
@@ -468,9 +522,10 @@ class Experiments():
         # calcolo i massimi e minimi di tutti i model pars
         absmin = []
         absmax = []
-        for layers in model_linear_pars_per_epoch:
-            absmin.append(np.min([np.min(par) for par in layers]))
-            absmax.append(np.max([np.max(par) for par in layers]))
+        if len(model_linear_pars_per_epoch) > 0:
+            for layers in model_linear_pars_per_epoch:
+                absmin.append(np.min([np.min(par) for par in layers]))
+                absmax.append(np.max([np.max(par) for par in layers]))
         for layers in model_gconv_pars_per_epoch:
             absmin.append(np.min([np.min(par) for par in layers]))
             absmax.append(np.max([np.max(par) for par in layers]))
@@ -481,8 +536,9 @@ class Experiments():
         graph_embedding_per_epoch_ = np.array(graph_embedding_per_epoch)#.squeeze()
         output_per_epoch_ = np.array(output_per_epoch)#.squeeze()
 
-        print(node_embedding_per_epoch_.shape)
+        #print(node_embedding_per_epoch_.shape)
         if embedding_dimension > 1:
+            bounds_for_plot = []
             bounds_for_plot.append(axis_bounds(node_embedding_per_epoch_))
             bounds_for_plot.append(axis_bounds(graph_embedding_per_epoch_))
             bounds_for_plot.append(axis_bounds(output_per_epoch_))
@@ -491,34 +547,20 @@ class Experiments():
 
 
         #with Manager() as manager:
+        # data4video = manager.list([None]*self.trainer.last_epoch)
+        # intrinsic_dimensions = manager.list([None]*self.trainer.last_epoch)
         print(f"Preparing data for make video...")
         start = time.time()
-        #data4video = manager.list([None]*self.trainer.last_epoch)
-        #intrinsic_dimensions = manager.list([None]*self.trainer.last_epoch)
-        d4v_e_ids = self.parallel_prepare_data4video_each_epoch(lista)
-        d4v = np.array([d for d,_,_,_,_ in d4v_e_ids])
-        id_node_emb = np.array([node for _,node,_,_,_ in d4v_e_ids])
-        id_graph_emb = np.array([graph for _, _, graph, _, _ in d4v_e_ids])
-        id_tot_node_emb = np.array([totnode for _,_,_,totnode,_ in d4v_e_ids])
-        id_tot_graph_emb = np.array([totgraph for _, _, _, _, totgraph in d4v_e_ids])
-
-        data4video = [None]*self.trainer.last_epoch
-        node_intrinsic_dimensions_perclass = [[None]*num_classes] * self.trainer.last_epoch
-        graph_intrinsic_dimensions_perclass = [[None]*num_classes] * self.trainer.last_epoch
-        node_intrinsic_dimensions_total = [None] * self.trainer.last_epoch
-        graph_intrinsic_dimensions_total = [None] * self.trainer.last_epoch
-        print(f"{len(id_node_emb)} è la len di id_node_emb")
-        for i,l in enumerate(lista):
-            data4video[l] = d4v[i]
-            node_intrinsic_dimensions_perclass[l] = id_node_emb[i]
-            graph_intrinsic_dimensions_perclass[l] = id_graph_emb[i]
-            node_intrinsic_dimensions_total[l] = id_tot_node_emb[i]
-            graph_intrinsic_dimensions_total[l] = id_tot_graph_emb[i]
-
+        d4v_e_ids_e_corrs = self.parallel_prepare_data4video_each_epoch(lista)
+        self.divide_lists_results_for_epochlist(d4v_e_ids_e_corrs, lista)
         end = time.time()
         print(f"({round(end - start, 2)} s.)  ...data ready: make video...", end='')
-        start = time.time()
 
+
+        nomefile = self.trainer.unique_train_name
+        long_string_experiment = self.trainer.config_class.long_string_experiment
+        print(nomefile, long_string_experiment)
+        start = time.time()
         if fromfiles:
             self.parallel_save_many_images_embedding(lista)
             files = [f"scatter_epoch{i}.png" for i in lista]
@@ -527,8 +569,7 @@ class Experiments():
         end = time.time()
         print(f"({round(end - start, 2)} s.)")
 
-        nomefile = self.trainer.unique_train_name
-        print(nomefile)
+
 
         if isgif:
             if fromfiles:
@@ -559,7 +600,38 @@ class Experiments():
         return nomefile
 
         # endregion
-def prepare_data4video_each_epoch(i):
+
+    def divide_lists_results_for_epochlist(self, d4v_e_ids_e_corrs, lista):
+        global data4video, node_intrinsic_dimensions_perclass, graph_intrinsic_dimensions_perclass, node_intrinsic_dimensions_total, graph_intrinsic_dimensions_total, node_correlation, graph_correlation
+        d4v = np.array([d for d, _, _, _, _, _, _ in d4v_e_ids_e_corrs])
+        id_node_emb = np.array([node for _, node, _, _, _, _, _ in d4v_e_ids_e_corrs])
+        id_graph_emb = np.array([graph for _, _, graph, _, _, _, _ in d4v_e_ids_e_corrs])
+        id_tot_node_emb = np.array([totnode for _, _, _, totnode, _, _, _ in d4v_e_ids_e_corrs])
+        id_tot_graph_emb = np.array([totgraph for _, _, _, _, totgraph, _, _ in d4v_e_ids_e_corrs])
+        node_emb_corr = np.array([nodecorr for _, _, _, _, _, nodecorr, _ in d4v_e_ids_e_corrs])
+        graph_emb_corr = np.array([graphcorr for _, _, _, _, _, _, graphcorr in d4v_e_ids_e_corrs])
+        data4video = [None] * self.trainer.last_epoch
+        node_intrinsic_dimensions_perclass = [[None] * self.trainer.config_class.num_classes] * self.trainer.last_epoch
+        graph_intrinsic_dimensions_perclass = [[None] * self.trainer.config_class.num_classes] * self.trainer.last_epoch
+        node_intrinsic_dimensions_total = [None] * self.trainer.last_epoch
+        graph_intrinsic_dimensions_total = [None] * self.trainer.last_epoch
+        node_correlation = [None] * self.trainer.last_epoch
+        graph_correlation = [None] * self.trainer.last_epoch
+        # print(f"{len(id_node_emb)} è la len di id_node_emb")
+        for i, l in enumerate(lista):
+            #print(f"i{i}_l{l}")
+            data4video[l] = d4v[i]
+            node_intrinsic_dimensions_perclass[l] = id_node_emb[i]
+            graph_intrinsic_dimensions_perclass[l] = id_graph_emb[i]
+            node_intrinsic_dimensions_total[l] = id_tot_node_emb[i]
+            graph_intrinsic_dimensions_total[l] = id_tot_graph_emb[i]
+            node_correlation[l] = node_emb_corr[i]
+            graph_correlation[l] = graph_emb_corr[i]
+
+
+#end region
+
+def take_results_each_epoch(i):
     graph_embeddings_array = graph_embedding_per_epoch[i]
     node_embeddings_array = node_embedding_per_epoch[i]
     output_array = output_per_epoch[i]
@@ -570,16 +642,26 @@ def prepare_data4video_each_epoch(i):
     embedding_class.get_metrics(embedding_dimension, trainmode)
 
     #intrinsic_dimensions[i] = embedding_class.graph_emb_dims
-    data = Data2Plot(embedding_class.emb_perclass, dim=embedding_dimension)
+    data = Data2Plot(embedding_class.emb_perclass, dim=embedding_dimension, config_class=exp_config)
     #data4video[i] = data
-    #return data, embedding_class.graph_emb_dims
+
+    # Intrinsic Dimension calculation
     node_emb_dims = embedding_class.node_emb_dims
     graph_emb_dims = embedding_class.graph_emb_dims
     total_node_emb_dim = embedding_class.total_node_emb_dim
     total_graph_emb_dim = embedding_class.total_graph_emb_dim
-    return data, node_emb_dims, graph_emb_dims, total_node_emb_dim, total_graph_emb_dim
+
+    #correlations
+    node_emb_corr = embedding_class.total_node_correlation  # node_correlation_per_class
+    graph_emb_corr = embedding_class.total_graph_correlation  # graph_correlation_per_class
+    return data, node_emb_dims, graph_emb_dims, total_node_emb_dim, total_graph_emb_dim, node_emb_corr, graph_emb_corr
 
 def parallel_take_corr(epoca):  # TODO: correggere errore quando chiama Embedding: 'Embedding' object has no attribute 'node_emb_perclass'
+    """
+    funzione copia di take_corr ma statica per poterla rendere parallela
+    :param epoca:
+    :return:
+    """
     graph_embeddings_array = graph_embedding_per_epoch[epoca]
     node_embeddings_array = node_embedding_per_epoch[epoca]
     embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, dataset, exp_config)
@@ -605,6 +687,7 @@ def parallel_take_corr(epoca):  # TODO: correggere errore quando chiama Embeddin
 
     return avg_corr_classes, avg_tau_classes
 
+
 def mylambda_save(i):
     fig = mylambda_figure(i)
     plt.savefig(f"scatter_epoch{i}")
@@ -622,9 +705,12 @@ def mylambda_memory(i):
     return bio
 def mylambda_figure(i):
     data = data4video[i]
-    model_linear_pars = model_linear_pars_per_epoch[i]
     model_gcn_pars = model_gconv_pars_per_epoch[i]
-    model_pars = model_gcn_pars + model_linear_pars
+    if len(model_linear_pars_per_epoch) > 0:
+        model_linear_pars = model_linear_pars_per_epoch[i]
+        model_pars = model_gcn_pars + model_linear_pars
+    else:
+        model_pars = model_gcn_pars
 
     fig, axes = plt.subplots(2, 3, figsize=(20, 12))
     if embedding_dimension == 1:
@@ -669,15 +755,22 @@ def mylambda_figure(i):
     # plot misure (correlazione, dimensionalità intrinseca, overlap degli embedding...)
     #custom_cycler = cycler(color=get_colors_to_cycle_sequential(len(graph_intrinsic_dimensions_perclass[0])))
     #axes[1][1].set_prop_cycle(custom_cycler)
-    axes[1][1].plot(node_intrinsic_dimensions_total[:i], linestyle='None', marker='.', color='red', label='node id') #
-    axes[1][1].plot(graph_intrinsic_dimensions_total[:i], linestyle='None', marker='.', color='blue', label='graph id')
-    axes[1][1].set_xlim(0, len(graph_intrinsic_dimensions_total))
-    axes[1][1].set_ylim(0, 3)
-    axes[1][1].set_title(f"Intrinsic Dimensionality")
+    if embedding_dimension > 1:   # plot intrinsic dimensionality
+        axes[1][1].plot(node_intrinsic_dimensions_total[:i], linestyle='None', marker='.', color='red', label='node id')
+        axes[1][1].plot(graph_intrinsic_dimensions_total[:i], linestyle='None', marker='.', color='blue', label='graph id')
+        axes[1][1].set_xlim(0, len(graph_intrinsic_dimensions_total))
+        axes[1][1].set_ylim(0, 3.0)
+        axes[1][1].set_title(f"Intrinsic Dimensionality")
+    else:  # allora plot correlations
+        axes[1][1].plot(node_correlation[:i], linestyle='None', marker='.', color='red', label='Node Correlation')
+        axes[1][1].plot(graph_correlation[:i], linestyle='None', marker='.', color='blue', label='Graph Correlation')
+        axes[1][1].set_xlim(0, len(graph_correlation))
+        axes[1][1].set_title(f"Embedding corr - degree sequence")
+        axes[1][1].set_ylim(-1.0, 1.0)
     axes[1][1].legend()
 
     plot_weights_multiple_hist(model_pars, param_labels, axes[1][2], absmin, absmax, sequential_colors=True)
-    fig.suptitle(f"Network dynamics")
+    fig.suptitle(f"{long_string_experiment}")
     return fig
 
 def axis_bounds(embedding):
@@ -702,7 +795,7 @@ def my_animated_figure(i):
     embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, dataset, exp_config, output_array)
     embedding_class.get_emb_per_graph()  # riempie node_emb_pergraph
     embedding_class.separate_embedding_by_classes()
-    data = Data2Plot(embedding_class.emb_perclass, dim=embedding_dimension)
+    data = Data2Plot(embedding_class.emb_perclass, dim=embedding_dimension, config_class=None)
     data.set_data('node_embedding')
     Data2Plot.static_plot_for_animation(data.array2plot, data.class_labels)
 

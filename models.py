@@ -35,6 +35,8 @@ class GCN(torch.nn.Module):
         self.leakys = torch.nn.ModuleList()
         if self.last_linear:
             self.linears = torch.nn.ModuleList()
+        else:
+            self.linears = []
         if self.put_dropout:
             self.dropouts = torch.nn.ModuleList()
         #self.pools = torch.nn.ModuleList()

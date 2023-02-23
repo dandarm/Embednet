@@ -11,6 +11,7 @@ from train import Trainer, GeneralDataset
 from embedding import Embedding
 from experiments import experiment_node_embedding, experiment_node_emb_cm
 from experiments import Experiments
+from graph_generation import GenerateGraph
 from config_valid import Config, TrainingMode
 
 import torch
@@ -76,8 +77,16 @@ def simple():
     xp.just_train(parallel=True)
     embedding_class = xp.embedding()
 
+def simple_grid_search():
+    config_file = "configurations/Final1.yml"
+    #c = Config(config_file)
+    xp = Experiments(config_file, diz_trials=None, rootsave=rootsave)  # , config_class=c)
+    xp.trainer.gg = GenerateGraph(xp.trainer.config_class)
+    xp.trainer.gg.initialize_dataset(parallel=True)
+
+
 if __name__ == "__main__":
-    simple()
+    #simple()
 
     #studio_embedding()
     #config_file = "configurations/classification_cm.yml"
@@ -87,6 +96,7 @@ if __name__ == "__main__":
     #many_classes()
     #diversi_init_weights_diversi_dataset()
     #studioERp()
+    simple_grid_search()
 
 
 

@@ -7,7 +7,7 @@ graph_dataset:
     random_node_feat: False
     list_p: [0.3, 0.2, 0.1, 0.05, 0.01]
     range_p: [0.01, 0.5]
-    community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]]]
+    community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]], [[0.4, 0.01], [0.01, 0.1]]]
     Num_nodes: 450 #, 200, 200, 200, 200, 200, 200]
     Num_grafi_per_tipo: 40
     Num_grafi_totali: 1000
@@ -21,7 +21,7 @@ training:
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
     learning_rate: 0.01
-    epochs: 100
+    epochs: 3000
     batch_size: 700
     percentage_train: 0.5
     earlystop_patience: 500
