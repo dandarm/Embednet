@@ -1,8 +1,11 @@
 import itertools
+from scipy import stats
+import yaml
+import ctypes
 import numpy as np
 import matplotlib.pyplot as plt
-
-from multiprocessing import Pool
+import multiprocessing as mp
+from multiprocessing import Pool, SimpleQueue
 import time
 from tqdm import tqdm
 from pathlib import Path
@@ -17,13 +20,17 @@ from config_valid import Config, TrainingMode
 import torch
 from torch_geometric.loader import DataLoader
 device = torch.device('cuda')
+from motif_count import init_worker, get_valid_p, build_permutation_complete_graph
 
-from scipy import stats
+import asyncio
 
-import yaml
+import networkx.algorithms.isomorphism as iso
+
+
 
 rootsave = Path("output_plots/")
 
+# region exps
 def studio_init(config_file):
     methods = [Inits.xavier_uniform, Inits.kaiming_uniform, Inits.uniform, 'esn']
     experiment_node_emb_cm(config_file, methods, ripetiz=30)
@@ -84,6 +91,47 @@ def simple_grid_search():
     xp.trainer.gg = GenerateGraph(xp.trainer.config_class)
     xp.trainer.gg.initialize_dataset(parallel=True)
 
+# endregion
+
+
+def shared_array(shape):
+    """
+    Form a shared memory numpy array.
+    http://stackoverflow.com/questions/5549190/is-shared-readonly-data-copied-to-different-processes-for-python-multiprocessing
+    """
+    shared_array_base = mp.Array(ctypes.c_double, shape[0] * shape[1])
+    shared_array = np.ctypeslib.as_array(shared_array_base.get_obj())
+    shared_array = shared_array.reshape(*shape)
+    return shared_array
+
+n = 4
+permutations = build_permutation_complete_graph(n)
+valid_permutations = shared_array((1, len(permutations)))
+def count_non_iso_motif_up_to_n(n):
+    shared_queue = SimpleQueue()
+
+    with Pool(processes=16, initializer=init_worker, initargs=(shared_queue,)) as pool:
+        # issue tasks into the process pool
+        _ = pool.map_async(get_valid_p, permutations)
+        # read results from the queue as they become available
+        for p in permutations:
+            print(p)
+            result = shared_queue.get()
+            print(f'Got {result}', flush=True)
+
+    #print("\nStampa delle permutazioni uniche")
+    # for r in result:
+    #    print(r)
+
+    pool = Pool(16)
+    results = []
+    for perm in permutations:
+        result = pool.apply_async(get_valid_p, args=(g, perm))
+        results.append(result.get())
+
+    pool.close()
+    pool.join()
+
 
 if __name__ == "__main__":
     #simple()
@@ -96,7 +144,10 @@ if __name__ == "__main__":
     #many_classes()
     #diversi_init_weights_diversi_dataset()
     #studioERp()
-    simple_grid_search()
+
+    #simple_grid_search()
+
+    count_non_iso_motif_up_to_n(4)
 
 
 

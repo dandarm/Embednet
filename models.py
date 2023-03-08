@@ -130,9 +130,9 @@ class GCN(torch.nn.Module):
 
 # endregion
 
+
+
 # region imposta i pesi della rete
-
-
 
 
 import matplotlib.pyplot as plt
@@ -333,6 +333,19 @@ class VariationalLinearEncoder(torch.nn.Module):
 
 def GAEGCNEncoder(neurons_per_layer, node_features=1, num_classes=2, autoencoder=True, put_batchnorm=True):
     model = GAE(GCN(neurons_per_layer, node_features, num_classes, autoencoder, put_batchnorm))
+    return model
+
+class GCNEncoder(torch.nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(GCNEncoder, self).__init__()
+        self.conv1 = GCNConv(in_channels, 2 * out_channels, cached=True) # cached only for transductive learning
+        self.conv2 = GCNConv(2 * out_channels, out_channels, cached=True) # cached only for transductive learning
+
+    def forward(self, x, edge_index):
+        x = self.conv1(x, edge_index).relu()
+        return self.conv2(x, edge_index)
+def simpleautoencoder(num_features, out_channels):
+    model = GAE(GCNEncoder(num_features, out_channels))
     return model
 
 # endregion

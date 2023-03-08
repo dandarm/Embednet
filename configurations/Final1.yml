@@ -12,7 +12,7 @@ graph_dataset:
     Num_grafi_per_tipo: 40
     Num_grafi_totali: 1000
     list_degree: [4, 50]
-    list_exponents: [-1.9, -2.0, -2.2, -2.5, -2.7, -2.9, -3.3, -3.7, -4.1, -4.5]
+    list_exponents: [-2.0, -2.2, -2.5, -2.7, -2.9, -3.3, -3.7]
     
     
 training:
@@ -20,10 +20,10 @@ training:
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
-    learning_rate: 0.01
-    epochs: 3000
+    learning_rate: 0.001
+    epochs: 100
     batch_size: 700
-    percentage_train: 0.5
+    percentage_train: 0.7
     earlystop_patience: 500
     epochs_model_checkpoint: [-1]
     save_best_model: False

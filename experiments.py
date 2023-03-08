@@ -766,10 +766,10 @@ def mylambda_figure(i):
         axes[1][1].plot(graph_correlation[:i], linestyle='None', marker='.', color='blue', label='Graph Correlation')
         axes[1][1].set_xlim(0, len(graph_correlation))
         axes[1][1].set_title(f"Embedding corr - degree sequence")
-        axes[1][1].set_ylim(-1.0, 1.0)
+        #axes[1][1].set_ylim(-1.0, 1.0)
     axes[1][1].legend()
 
-    plot_weights_multiple_hist(model_pars, param_labels, axes[1][2], absmin, absmax, sequential_colors=True)
+    plot_weights_multiple_hist(model_pars, param_labels, axes[1][2], absmin, absmax, sequential_colors=False)
     fig.suptitle(f"{long_string_experiment}")
     return fig
 
