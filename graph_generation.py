@@ -15,7 +15,7 @@ class GenerateGraph():
         self.config_class = config_class
         self.conf = self.config_class.conf
         self.N = self.conf['graph_dataset']['Num_nodes']
-        print(f"Num nodi conf: {self.N}")
+        #print(f"Num nodi conf: {self.N}")
         if isinstance(self.N, list):
             self.numnodes_islist = True
         self.list_p = self.conf['graph_dataset']['list_p']

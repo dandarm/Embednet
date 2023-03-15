@@ -5,7 +5,6 @@ import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils.convert import from_networkx
-import torch_geometric.transforms as T
 from multiprocessing import Pool
 
 class SingleGraph():
@@ -13,7 +12,7 @@ class SingleGraph():
         self.nx_graph = nx_graph
         self.graph_label = graph_label
         self.node_labels = node_labels
-# TODO: sarebbe il caso di mettere la classe embedding dentro al dataset
+# TODO: sarebbe il caso di mettere la classe embedding dentro al dataset?
 
 class GeneralDataset:
     def __init__(self, dataset_list, labels, **kwarg):
@@ -47,8 +46,7 @@ class Dataset(GeneralDataset):
         self.config_class = config_class
         self.config = config_class.conf
         self.last_neurons = self.config_class.lastneuron
-        self.transform4ae = T.RandomLinkSplit(num_val=0.0, num_test=0.0, is_undirected=True,
-                                              split_labels=True, add_negative_train_samples=False)
+
 
     @classmethod
     def from_super_instance(cls, percentage_train, batch_size, device, config_class, super_instance):
@@ -133,9 +131,9 @@ class Dataset(GeneralDataset):
         else:
             i = 0
             for g in tqdm(graph_list_nx, total=len(graph_list_nx)):
-                if self.config['model']['autoencoder']:
-                    pyg_graph = self.convert_G_autoencoder((g, i))
-                elif self.config['graph_dataset']['random_node_feat']:
+                #if self.config['model']['autoencoder']:
+                #    pyg_graph = self.convert_G_autoencoder((g, i))
+                if self.config['graph_dataset']['random_node_feat']:
                     pyg_graph = self.convert_G_random_feature((g, i))
                 else:
                     pyg_graph = self.convert_G((g, i))

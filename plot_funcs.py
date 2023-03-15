@@ -88,6 +88,8 @@ class Data2Plot():
              ax=None, filename=None, ylim=None, xlim=None,
              sequential_colors=False, log=False, title=None):
         self.set_data(datatype)
+        if (self.array2plot == None).all():
+            return
         if self.dim > 2:
             array2plotflattened = self.array2plot.reshape(-1, self.array2plot.shape[-1])
             emb_data = self.calc_umap(array2plotflattened)

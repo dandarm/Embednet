@@ -218,8 +218,6 @@ class Trainer():
     def test(self, loader):
         self.model.eval()
         running_loss = 0
-        graph_embeddings_array = []
-        node_embeddings_array = []
         for data in loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
             target = data.y
@@ -378,9 +376,12 @@ class Trainer():
         self.model_GCONV_pars_per_epoch = []
 
         test_loss, var_exp, graph_embeddings_array, node_embeddings_array = self.test(self.dataset.test_loader)
-        all_data_loader = DataLoader(self.dataset.dataset_pyg, batch_size=self.dataset.bs, shuffle=False)
+        if self.dataset.all_data_loader is None:
+            all_data_loader = DataLoader(self.dataset.dataset_pyg, batch_size=self.dataset.bs, shuffle=False)
+        else:
+            all_data_loader = self.dataset.all_data_loader
         alldata_loss, var_exp, all_graph_embeddings_array, all_node_embeddings_array = self.test(all_data_loader)
-        if self.config_class.modo != TrainingMode.mode3:
+        if self.config_class.modo != TrainingMode.mode3 and not self.config_class.conf['model']['autoencoder']:
             test_acc, test_f1score = self.accuracy(self.dataset.test_loader)
         else:
             test_acc = None
@@ -433,7 +434,7 @@ class Trainer():
             for epoch in tqdm(range(self.epochs), total=self.epochs):
                 train_loss = self.train()
                 test_loss, var_exp, graph_embeddings_array_test, node_embeddings_array_test = self.test(self.dataset.test_loader)
-                if self.config_class.modo != TrainingMode.mode3:
+                if self.config_class.modo != TrainingMode.mode3 and not self.config_class.conf['model']['autoencoder']:
                     test_acc, test_f1score = self.accuracy(self.dataset.test_loader)
                 else:
                     test_acc = 0
@@ -460,7 +461,7 @@ class Trainer():
                 writer.add_scalar("Test Loss", test_loss, epoch)
                 #for i, v in enumerate(test_f1score):
                 #    writer.add_scalar(f"Test F1 Score/{i}", v, epoch)
-                #writerX.add_scalars("Test F1 Score", {f"Class_{i}": v for i, v in enumerate(test_f1score)}, epoch)   TODO: rimettere!!!!!
+                #writerX.add_scalars("Test F1 Score", {f"Class_{i}": v for i, v in enumerate(test_f1score)}, epoch)   TODO: rimettere!
                 # writer.add_scalars(f'Loss', {'Train': train_loss, 'Test': test_loss}, epoch)
                 # writer.add_scalars(f'Accuracy', {'Train': train_acc, 'Test': test_acc}, epoch)
                 # print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')

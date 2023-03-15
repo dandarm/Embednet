@@ -330,7 +330,6 @@ class VariationalLinearEncoder(torch.nn.Module):
     def forward(self, x, edge_index):
         return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
 
-
 def GAEGCNEncoder(neurons_per_layer, node_features=1, num_classes=2, autoencoder=True, put_batchnorm=True):
     model = GAE(GCN(neurons_per_layer, node_features, num_classes, autoencoder, put_batchnorm))
     return model
@@ -338,8 +337,8 @@ def GAEGCNEncoder(neurons_per_layer, node_features=1, num_classes=2, autoencoder
 class GCNEncoder(torch.nn.Module):
     def __init__(self, in_channels, out_channels):
         super(GCNEncoder, self).__init__()
-        self.conv1 = GCNConv(in_channels, 2 * out_channels, cached=True) # cached only for transductive learning
-        self.conv2 = GCNConv(2 * out_channels, out_channels, cached=True) # cached only for transductive learning
+        self.conv1 = GCNConv(in_channels, 2 * out_channels, cached=True)  # cached only for transductive learning
+        self.conv2 = GCNConv(2 * out_channels, out_channels, cached=True)  # cached only for transductive learning
 
     def forward(self, x, edge_index):
         x = self.conv1(x, edge_index).relu()
@@ -347,5 +346,33 @@ class GCNEncoder(torch.nn.Module):
 def simpleautoencoder(num_features, out_channels):
     model = GAE(GCNEncoder(num_features, out_channels))
     return model
+
+
+class AutoencoderGCN(GCN):
+    def __init__(self, encoder, **kwargs):
+        super().__init__(**kwargs)
+        self.encoder = encoder
+        self.decoder = None
+        self.convs = encoder.convs
+        self.linears = encoder.linears
+        # self.__dict__.update(dic_attr)
+
+    def set_decoder(self, encoder):
+        self.decoder = GAE(encoder)
+
+    #def forward(self, x, edge_index, batch=None, graph_embedding=False, node_embedding=False):
+    #    return self.decoder(x, edge_index, batch, graph_embedding, node_embedding)
+    def encode(self, x, edge_index, batch, node_embedding=False, graph_embedding=False):
+        return self.decoder.encode(x, edge_index, batch, graph_embedding, node_embedding)
+    def test(self, z, pos_edge_label_index, neg_edge_label_index):
+        return self.decoder.test(z, pos_edge_label_index, neg_edge_label_index)
+
+    def recon_loss(self, z, pos_edge_label_index, neg_edge_index=None):
+        return self.decoder.recon_loss(z, pos_edge_label_index, neg_edge_index)
+
+    @classmethod
+    def from_parent_instance(cls, dic_attr, parent_instance):
+        #return cls(dic_attr, **parent_instance.__dict__)
+        return cls(encoder=parent_instance, config_class=parent_instance.config_class)
 
 # endregion

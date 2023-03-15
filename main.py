@@ -12,7 +12,6 @@ from pathlib import Path
 from config_valid import Inits
 from train import Trainer, GeneralDataset
 from embedding import Embedding
-from experiments import experiment_node_embedding, experiment_node_emb_cm
 from experiments import Experiments
 from graph_generation import GenerateGraph
 from config_valid import Config, TrainingMode
@@ -31,9 +30,6 @@ import networkx.algorithms.isomorphism as iso
 rootsave = Path("output_plots/")
 
 # region exps
-def studio_init(config_file):
-    methods = [Inits.xavier_uniform, Inits.kaiming_uniform, Inits.uniform, 'esn']
-    experiment_node_emb_cm(config_file, methods, ripetiz=30)
 
 def studio_init_weights():
     rootsave = Path("output_plots/")
@@ -132,6 +128,27 @@ def count_non_iso_motif_up_to_n(n):
     pool.close()
     pool.join()
 
+def autoencoder():
+    config_file = "configurations/Final1.yml"
+    num_nodi = 45
+    c = Config(config_file)
+    c.conf['training']['every_epoch_embedding'] = False
+    c.conf['graph_dataset']['list_exponents'] = [-1.9, -2.5]
+    c.conf['model']['autoencoder'] = True
+    diz_trials = {'graph_dataset.ERmodel': [False], 'graph_dataset.confmodel': [True], 'graph_dataset.sbm': [False],
+                  'graph_dataset.Num_nodes': [num_nodi, [num_nodi] * 7, [num_nodi] * 2],  # per lo SBM: num nodi * num comunità
+                  'model.GCNneurons_per_layer': [[1, 32, len(c.conf['graph_dataset']['list_exponents'])],
+                                                 [1, 32, len(c.conf['graph_dataset']['list_p'])],
+                                                 [1, 32, len(c.conf['graph_dataset']['community_probs'])],
+                                                 ],
+                  'model.init_weights': ['xavier_normal'],  # 'eye'],
+                  'model.freezeGCNlayers': [False],
+                  'model.last_layer_dense': [False],
+                  }
+
+    xp = Experiments(config_file, diz_trials=diz_trials, rootsave=rootsave, config_class=c)
+    xp.GS_simple_experiments()
+
 
 if __name__ == "__main__":
     #simple()
@@ -147,8 +164,9 @@ if __name__ == "__main__":
 
     #simple_grid_search()
 
-    count_non_iso_motif_up_to_n(4)
+    #count_non_iso_motif_up_to_n(4)
 
+    autoencoder()
 
 
 

@@ -81,7 +81,7 @@ class Experiments():
             self.config_class = Config(self.config_file)
 
         self.rootsave = rootsave
-        self.trainer = Trainer(self.config_class)
+        self.init_trainer()
         self.gc = None
         self.diz_trials = diz_trials
 
@@ -94,6 +94,13 @@ class Experiments():
         # risultati
         #self.graph_embedding_per_epoch = []
         #self.node_embedding_per_epoch = []
+
+    def init_trainer(self):
+        if self.config_class.conf['model']['autoencoder']:
+            print("Autoencoder model")
+            self.trainer = Trainer_Autoencoder(self.config_class)
+        else:
+            self.trainer = Trainer(self.config_class)
 
     def GS_simple_experiments(self, list_points=100, parallel_take_result=True):
         global graph_embedding_per_epoch
@@ -385,7 +392,6 @@ class Experiments():
 
 
     def just_train(self, parallel=True, verbose=False):
-        #self.trainer = Trainer(self.config_class)
         self.trainer.init_all(parallel=parallel, verbose=verbose)
         self.trainer.launch_training()
     def embedding(self):
@@ -800,24 +806,6 @@ def my_animated_figure(i):
     Data2Plot.static_plot_for_animation(data.array2plot, data.class_labels)
 
 
-def experiment_node_embedding(config_file):
-    config_class = Config(config_file)
-    trainer = Trainer(config_class)
-    trainer.init_all(config_file)
-    trainer.launch_training()
-    graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output = trainer.take_embedding_all_data(type_embedding='both')
-
-    for i in range(trainer.epochs):
-        graph_embeddings_array = trainer.graph_embedding_per_epoch[i]
-        node_embeddings_array = trainer.node_embedding_per_epoch[i]
-        embs_by_class, node_emb_pergraphclass  = Experiments.elaborate_embeddings(config_class, graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, trainer)
-        scatter_node_emb(embs_by_class, trainer.last_accuracy)
-        plot_graph_emb_1D(embs_by_class, trainer.last_accuracy)
-
-
-
-
-
 
 
 def fill_df_with_results(df, i, avg_corr_classes, avg_tau_classes, test_loss_list, accuracy_list, embedding_class):
@@ -849,6 +837,7 @@ def fill_embedding_df(df, trainer):
 
 def verify_two_same_trainings(config_file, tentativi):
     config_class = Config(config_file)
+
     trainer = Trainer(config_class)
 
     # inizializzo dei parametri
@@ -871,33 +860,6 @@ def verify_two_same_trainings(config_file, tentativi):
     return test_losses
 
 
-def experiment_node_emb_cm(config_file, methods, ripetiz=30):
-    config_c = Config(config_file)
-    trainer = Trainer(config_c)
-    model, trainer = trainer.init_all(verbose=False)
-    for method in methods:
-        for i in range(ripetiz):
-            model = trainer.init_GCN()
-            new_par = new_parameters(model, method=method)
-            model = trainer.init_GCN(new_par, init_weights_lin=None)
-            trainer.load_model(model)
-
-            trainer.launch_training(verbose=1)
-            graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output = trainer.take_embedding_all_data()
-
-            embeddings = Embedding(graph_embeddings_array, node_embeddings_array, trainer.dataset, config_c)
-            node_emb_pergraphclass = embeddings.get_emb_per_graph()
-            emb_perclass0 = [n for n in node_emb_pergraphclass if n.graph_label == 0]
-            emb_perclass1 = [n for n in node_emb_pergraphclass if n.graph_label == 1]
-
-            str_filename = f"node_embeddings_{method}_{i}.png"
-            plot_node_emb_1D(emb_perclass0, emb_perclass1, trainer.last_accuracy, str_filename)
-
-            str_filename = f"scatter_embeddings_degree_{method}_{i}.png"
-            scatter_node_emb(emb_perclass0, emb_perclass1, trainer.last_accuracy, str_filename)
-
-            str_filename = f"graph_embedding_{method}_{i}.png"
-            plot_graph_emb_1D(emb_perclass0, emb_perclass1, trainer.last_accuracy, str_filename)
 
 
 def autoencoder_embedding(config_class, dataset_grafi_nx, dataset_labels, list_p):
