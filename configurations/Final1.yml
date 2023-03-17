@@ -9,10 +9,10 @@ graph_dataset:
     range_p: [0.01, 0.5]
     community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]], [[0.4, 0.01], [0.01, 0.1]]]
     Num_nodes: 450 #, 200, 200, 200, 200, 200, 200]
-    Num_grafi_per_tipo: 40
+    Num_grafi_per_tipo: 300
     Num_grafi_totali: 1000
     list_degree: [4, 50]
-    list_exponents: [-2.0, -2.2, -2.5, -2.7, -2.9, -3.3, -3.7]
+    list_exponents: [-2.0, -2.2, -2.5, -2.7, -2.9, -3.3] #, -3.7]
     
     
 training:
@@ -21,18 +21,18 @@ training:
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
     learning_rate: 0.001
-    epochs: 100
+    epochs: 3000
     batch_size: 700
     percentage_train: 0.7
     earlystop_patience: 500
     epochs_model_checkpoint: [-1]
     save_best_model: False
-    every_epoch_embedding: True
+    every_epoch_embedding: False
     shuffle_dataset: True
     
 model:
     last_layer_dense: True
-    GCNneurons_per_layer: [1, 32, 2]
+    GCNneurons_per_layer: [1, 32, 16]
     neurons_last_linear: [16, 16, 5]
     freezeGCNlayers: False
     autoencoder: False

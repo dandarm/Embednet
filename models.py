@@ -109,7 +109,7 @@ class GCN(torch.nn.Module):
     def forward(self, x, edge_index, batch=None, graph_embedding=False, node_embedding=False):
         x = self.n_layers_gcn(x, edge_index)
 
-        if node_embedding or self.autoencoder:
+        if (node_embedding or self.autoencoder) and not graph_embedding:
             return x
 
         #print(f"before aggregator {x.shape}")

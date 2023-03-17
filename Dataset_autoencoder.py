@@ -32,6 +32,8 @@ class DatasetAutoencoder(Dataset):
         tipo = torch.float
         pyg_graph.y = torch.tensor(np.array([type_graph]), dtype=tipo)
 
+        # applico lo split sul singolo grafo, ottengo le edges per il training e per il test
+        # imposto 0 per la validation
         pyg_graph, val_data, test_data = self.transform4ae(pyg_graph)
 
         return pyg_graph, test_data
@@ -43,25 +45,21 @@ class DatasetAutoencoder(Dataset):
         total = len(graph_list_nx)
         i = 0
         for g in tqdm(graph_list_nx, total=total):
-            train_graph, test_graph = self.convert_G((g, i))
-            train_pyg.append(train_graph)
-            test_pyg.append(test_graph)
+            train_edges, test_edges = self.convert_G((g, i))
+            train_edges = train_edges.to(self.device)
+            test_edges = test_edges.to(self.device)
+            train_pyg.append(train_edges)
+            test_pyg.append(test_edges)
             #train_pos_edge_index.append(train_graph.train_pos_edge_index)
             i += 1
-
-        #pyg_graphs, val_data, test_data = self.transform4ae(dataset_pyg)
-        for train_graph in train_pyg:
-            #print(f"pyg_graph {type(train_graph)}")
-            train_graph = train_graph.to(self.device)
-        for pyg_test in test_pyg:
-            #print(f"test {type(pyg_test)}")
-            pyg_test = pyg_test.to(self.device)
 
         return train_pyg, test_pyg
 
 
     def prepare(self, shuffle=True, parallel=False):
         starttime = time()
+        # abbiamo una lista di grafi che contengono solo un subset di edges per training
+        # e una lista di grafi che contengono solo un subset di edges per il test
         self.dataset_pyg, test_pyg = self.nx2pyg(self.dataset_list, parallel)
         durata = time() - starttime
         print(f"Tempo impiegato: {durata}")

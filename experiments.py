@@ -152,7 +152,7 @@ class Experiments():
                 #fill_df_with_results(self.gc.config_dataframe, k, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
 
 
-            plot_metrics(embedding_class, embedding_dimension, trainmode, self.trainer.test_loss_list, self.trainer.accuracy_list,
+            plot_metrics(embedding_class, embedding_dimension, trainmode, self.trainer.test_loss_list, self.trainer.metric_list,
                          node_intrinsic_dimensions_total, graph_intrinsic_dimensions_total,
                          node_correlation, graph_correlation,
                          sequential_colors=False, log=False)
@@ -182,7 +182,7 @@ class Experiments():
             self.trainer.launch_training()
 
             embedding_class = self.embedding()
-            fill_df_with_results(self.gc.config_dataframe, i, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+            fill_df_with_results(self.gc.config_dataframe, i, None, None, self.trainer.test_loss_list, self.trainer.metric_list, embedding_class)
 
     def diversi_init_weights_stesso_dataset(self, parallel=True):  #, metodi, ripetizioni):
         self.GS_different_weight_inits( train_with_same_dataset=True, test_same_training=False, parallel_take_result=parallel)
@@ -227,7 +227,7 @@ class Experiments():
 
                     print("calcolo i risultati di interesse")
                     if c.conf['model']['freezeGCNlayers']:  # non ha senso guardare la correlazione iun funzione delle epoche di training
-                        fill_df_with_results(self.gc.config_dataframe, i, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+                        fill_df_with_results(self.gc.config_dataframe, i, None, None, self.trainer.test_loss_list, self.trainer.metric_list, embedding_class)
                     else:
                         if parallel_take_result:
                             graph_embedding_per_epoch = self.trainer.graph_embedding_per_epoch
@@ -239,7 +239,7 @@ class Experiments():
                         avg_corr_classes = np.array(avg_corr_classes).T
                         avg_tau_classes = np.array(avg_tau_classes).T
 
-                        fill_df_with_results(self.gc.config_dataframe, i, avg_corr_classes, avg_tau_classes, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+                        fill_df_with_results(self.gc.config_dataframe, i, avg_corr_classes, avg_tau_classes, self.trainer.test_loss_list, self.trainer.metric_list, embedding_class)
                     k += 1
 
     def GS_different_weight_inits(self, train_with_same_dataset=False, test_same_training=False, parallel_take_result=True):
@@ -294,7 +294,7 @@ class Experiments():
 
                 print("calcolo i risultati di interesse")
                 if c.conf['model']['freezeGCNlayers']:  # non ha senso guardare la correlazione iun funzione delle epoche di training
-                    fill_df_with_results(self.gc.config_dataframe, i, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+                    fill_df_with_results(self.gc.config_dataframe, i, None, None, self.trainer.test_loss_list, self.trainer.metric_list, embedding_class)
                 else:
                     if parallel_take_result:
                         graph_embedding_per_epoch = self.trainer.graph_embedding_per_epoch
@@ -306,7 +306,7 @@ class Experiments():
                     avg_corr_classes = np.array(avg_corr_classes).T
                     avg_tau_classes = np.array(avg_tau_classes).T
 
-                    fill_df_with_results(self.gc.config_dataframe, i, avg_corr_classes, avg_tau_classes, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+                    fill_df_with_results(self.gc.config_dataframe, i, avg_corr_classes, avg_tau_classes, self.trainer.test_loss_list, self.trainer.metric_list, embedding_class)
                 k+=1
 
     def diverse_classi_stesso_dataset(self, parallel_take_result):  #, metodi, ripetizioni):
@@ -354,7 +354,7 @@ class Experiments():
             avg_corr_classes = np.array(avg_corr_classes).T
             avg_tau_classes = np.array(avg_tau_classes).T
 
-            fill_df_with_results(self.gc.config_dataframe, k, avg_corr_classes, avg_tau_classes, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+            fill_df_with_results(self.gc.config_dataframe, k, avg_corr_classes, avg_tau_classes, self.trainer.test_loss_list, self.trainer.metric_list, embedding_class)
             #fill_embedding_df(self.gc.embedding_dataframe, trainer, k)
             k += 1
 
@@ -387,7 +387,7 @@ class Experiments():
             self.trainer.launch_training()
             embedding_class = self.embedding()
 
-            fill_df_with_results(self.gc.config_dataframe, k, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
+            fill_df_with_results(self.gc.config_dataframe, k, None, None, self.trainer.test_loss_list, self.trainer.metric_list, embedding_class)
             k += 1
 
 
@@ -465,11 +465,11 @@ class Experiments():
             graph_embeddings_array = trainer.graph_embedding_per_epoch[i]
             node_embeddings_array = trainer.node_embedding_per_epoch[i]
             emb_perclass0, emb_perclass1 = self.elaborate_embeddings(config_c, graph_embeddings_array, trainer.model, node_embeddings_array, node_embeddings_array_id, trainer.test_loss_list, trainer)
-            scatter_node_emb(emb_perclass0, emb_perclass1, trainer.accuracy_list[i], f"scatter_epoch{i}", show=False, close=True)
+            scatter_node_emb(emb_perclass0, emb_perclass1, trainer.metric_list[i], f"scatter_epoch{i}", show=False, close=True)
             # plot_graph_emb_1D(emb_perclass0, emb_perclass1, trainer.last_accuracy)
 
     def parallel_save_many_images_embedding(self, lista):
-        with Pool(processes=12) as pool:
+        with Pool(processes=4) as pool:
             pool.map(mylambda_save, lista)
         return
 
@@ -517,7 +517,7 @@ class Experiments():
 
         output_per_epoch = self.trainer.output_per_epoch
         loss_list = self.trainer.test_loss_list
-        accuracy_list = self.trainer.accuracy_list
+        accuracy_list = self.trainer.metric_list
         sequential_colors = seq_colors
         model_linear_pars_per_epoch = self.trainer.model_LINEAR_pars_per_epoch
         model_gconv_pars_per_epoch = self.trainer.model_GCONV_pars_per_epoch

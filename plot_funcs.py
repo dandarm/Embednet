@@ -168,7 +168,7 @@ class Data2Plot():
 
 
 # region plots
-def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list=None, accuracy_list=None,
+def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list=None, current_metric_list=None,
                  node_intrinsic_dimensions_total=None, graph_intrinsic_dimensions_total=None,
                  node_correlation=None, graph_correlation=None,
                  sequential_colors=False, log=False):
@@ -207,13 +207,14 @@ def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list
         data.plot(datatype='graph_embedding', type='plot', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
         data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
 
-        axes[1][1].plot(node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
-        axes[1][1].plot(graph_intrinsic_dimensions_total, linestyle='None', marker='.', color='blue', label='graph id')
-        axes[1][1].set_xlim(0, len(graph_intrinsic_dimensions_total))
-        axes[1][1].set_ylim(0, 3.0)
-        axes[1][1].set_title(f"Intrinsic Dimensionality")
+        if node_intrinsic_dimensions_total is not None and graph_intrinsic_dimensions_total is not None:
+            axes[1][1].plot(node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
+            axes[1][1].plot(graph_intrinsic_dimensions_total, linestyle='None', marker='.', color='blue', label='graph id')
+            axes[1][1].set_xlim(0, len(graph_intrinsic_dimensions_total))
+            axes[1][1].set_ylim(0, 3.0)
+            axes[1][1].set_title(f"Intrinsic Dimensionality")
 
-    axes[1][1].legend()
+            axes[1][1].legend()
 
 
     # plot Test loss e accuracy senza outlier
@@ -223,15 +224,16 @@ def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list
     axes[1][0].set_ylim(loss_list_min, loss_list_max)
     axes[1][0].set_xlim(0, len(test_loss_list))
     # axes[1][0].set_ylabel('Test Loss')#, fontsize=16);
+    axes[1][0].legend()
 
     # plot accuracy
     axt = axes[1][0].twinx()
-    axt.plot(accuracy_list, color='blue', label='Accuracy')
+    axt.plot(current_metric_list, color='blue', label='Accuracy')
     axt.set_ylim(0, 1)
     # axt.set_ylabel('Accuracy')#, fontsize=16);
-    axt.set_xlim(0, len(accuracy_list))
+    axt.set_xlim(0, len(current_metric_list))
     axt.set_yticklabels([])
-
+    axt.legend()
 
     plt.show()
 
