@@ -21,7 +21,7 @@ from pytorchtools import EarlyStopping
 from metrics import ExplainedVarianceMetric
 from TorchPCA import PCA
 
-from utils_tf import add_histogram
+#from utils_tf import add_histogram
 from config_valid import TrainingMode
 from models import GCN, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
 from Dataset import Dataset, GeneralDataset
