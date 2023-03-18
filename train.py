@@ -13,7 +13,7 @@ from torch_geometric.loader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tensorboardX import SummaryWriter as WriterX
 
-import tensorflow as tf
+#import tensorflow as tf
 from torchmetrics import Accuracy
 from sklearn.metrics import f1_score
 
@@ -434,71 +434,73 @@ class Trainer():
 
 
         if verbose > 0: print(f"Run training for {self.epochs} epochs")
-        with tf.compat.v1.Graph().as_default():
-            #summary_writer = tf.compat.v1.summary.FileWriter(log_dir_variance) TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
-            epoch = 0
-            for epoch in tqdm(range(self.epochs), total=self.epochs):
-                train_loss = self.train()
-                test_loss = self.test(self.dataset.test_loader)
-                writer.add_scalar("Train Loss", train_loss, epoch)
-                writer.add_scalar("Test Loss", test_loss, epoch)
+        #with tf.compat.v1.Graph().as_default():
+        #summary_writer = tf.compat.v1.summary.FileWriter(log_dir_variance) TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
+        epoch = 0
+        for epoch in tqdm(range(self.epochs), total=self.epochs):
+            train_loss = self.train()
+            test_loss = self.test(self.dataset.test_loader)
+            writer.add_scalar("Train Loss", train_loss, epoch)
+            writer.add_scalar("Test Loss", test_loss, epoch)
 
-                if self.config_class.modo != TrainingMode.mode3:  # and not self.config_class.conf['model']['autoencoder']:
-                    metric_value = self.calc_metric(self.dataset.test_loader)
-                    writer.add_scalar("Test metric", metric_value, epoch)
+            if self.config_class.modo != TrainingMode.mode3:  # and not self.config_class.conf['model']['autoencoder']:
+                metric_value = self.calc_metric(self.dataset.test_loader)
+                writer.add_scalar("Test metric", metric_value, epoch)
 
-                # prendo l'embedding a ogni epoca
-                if self.conf['training'].get('every_epoch_embedding'):
-                    #######  _____________take embedding  (switch tra gpuversion e normale)
-                    graph_embeddings_array, node_embeddings_array, _, final_output = self.get_embedding(all_data_loader)
-                    self.graph_embedding_per_epoch.append(graph_embeddings_array)
-                    self.node_embedding_per_epoch.append(node_embeddings_array)
-                    # prendo anche l'output nel caso in cui abbiamo il layer denso finale
-                    self.output_per_epoch.append(final_output)
-                    # prendo pure i weights del modello
-                    if self.conf['model']['last_layer_dense']:
-                        self.model_LINEAR_pars_per_epoch.append(get_parameters(self.model.linears))
-                    self.model_GCONV_pars_per_epoch.append(get_parameters(self.model.convs))
+            # prendo l'embedding a ogni epoca
+            if self.conf['training'].get('every_epoch_embedding'):
+                #######  _____________take embedding  (switch tra gpuversion e normale)
+                graph_embeddings_array, node_embeddings_array, _, final_output = self.get_embedding(all_data_loader)
+                self.graph_embedding_per_epoch.append(graph_embeddings_array)
+                self.node_embedding_per_epoch.append(node_embeddings_array)
+                # prendo anche l'output nel caso in cui abbiamo il layer denso finale
+                self.output_per_epoch.append(final_output)
+                # prendo pure i weights del modello
+                if self.conf['model']['last_layer_dense']:
+                    self.model_LINEAR_pars_per_epoch.append(get_parameters(self.model.linears))
+                self.model_GCONV_pars_per_epoch.append(get_parameters(self.model.convs))
 
-                #expvar = self.myExplained_variance.compute()
-                # add explained variance to tensorboard
-                #add_histogram(summary_writer, "Explained variance", var_exp, step=epoch)  TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
+            #expvar = self.myExplained_variance.compute()
+            # add explained variance to tensorboard
+            #add_histogram(summary_writer, "Explained variance", var_exp, step=epoch)  TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
 
 
-                #for i, v in enumerate(test_f1score):
-                #    writer.add_scalar(f"Test F1 Score/{i}", v, epoch)
-                #writerX.add_scalars("Test F1 Score", {f"Class_{i}": v for i, v in enumerate(test_f1score)}, epoch)   TODO: rimettere!
-                # writer.add_scalars(f'Loss', {'Train': train_loss, 'Test': test_loss}, epoch)
-                # writer.add_scalars(f'Accuracy', {'Train': train_acc, 'Test': test_acc}, epoch)
-                # print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')
-                self.train_loss_list.append(train_loss)
-                self.test_loss_list.append(test_loss)
-                self.metric_list.append(metric_value)
-                #self.f1score_list.append(test_f1score)
+            #for i, v in enumerate(test_f1score):
+            #    writer.add_scalar(f"Test F1 Score/{i}", v, epoch)
+            #writerX.add_scalars("Test F1 Score", {f"Class_{i}": v for i, v in enumerate(test_f1score)}, epoch)   TODO: rimettere!
+            # writer.add_scalars(f'Loss', {'Train': train_loss, 'Test': test_loss}, epoch)
+            # writer.add_scalars(f'Accuracy', {'Train': train_acc, 'Test': test_acc}, epoch)
+            # print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')
+            self.train_loss_list.append(train_loss)
+            self.test_loss_list.append(test_loss)
+            self.metric_list.append(metric_value)
+            #self.f1score_list.append(test_f1score)
 
-                # train_acc_list.append(train_acc)
-                # test_acc_list.append(test_acc)
+            # train_acc_list.append(train_acc)
+            # test_acc_list.append(test_acc)
 
-                print_each_step = self.conf['logging']['train_step_print']
-                if epoch % print_each_step == 0:
-                    if verbose > 1: print(f'Epoch: {epoch}\tTest loss: {test_loss}')  # \t Explained Variance: {var_exp}')
+            print_each_step = self.conf['logging']['train_step_print']
+            if epoch % print_each_step == 0:
+                if verbose > 1: print(f'Epoch: {epoch}\tTest loss: {test_loss}')  # \t Explained Variance: {var_exp}')
 
-                # save model
-                if epoch in self.epochs_checkpoint:
-                    self.model_checkpoint = copy.deepcopy(self.model)
-                if test_loss < best_loss:  # check for save best model
-                    best_loss = test_loss
-                    if verbose:
-                        print(best_loss)
-                    if self.save_best_model:
-                        self.best_model = copy.deepcopy(self.model)
+            # save model
+            if epoch in self.epochs_checkpoint:
+                self.model_checkpoint = copy.deepcopy(self.model)
+            if test_loss < best_loss:  # check for save best model
+                best_loss = test_loss
+                if verbose:
+                    print(best_loss)
+                if self.save_best_model:
+                    self.best_model = copy.deepcopy(self.model)
 
-                early_stopping(test_loss)
-                if early_stopping.early_stop:
-                    #if verbose > 0:
-                    print("Early stopping!!!")
-                    break
-            if verbose > 0: print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\tBest test loss: {best_loss} FINE TRAINING')
+            early_stopping(test_loss)
+            if early_stopping.early_stop:
+                #if verbose > 0:
+                print("Early stopping!!!")
+                break
+
+        if verbose > 0: print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\tBest test loss: {best_loss} FINE TRAINING')
+
         print(f"test accuracy finale: {metric_value}")
         writer.flush()
         #writer_variance.flush()
