@@ -102,7 +102,9 @@ class Config():
             assert self.lastneuron == self.modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
         else:
             assert self.modo['last_neuron'] == 'n_class', 'Ultimi neuroni > 1 ma training mode diverso'
-            assert self.lastneuron == self.num_classes, f'Ultimi neuroni ({self.lastneuron}) diversi dal numero di classi ({self.num_classes}) '
+            #print(f" è autoencoder? {self.conf['model']['autoencoder']}")
+            if not self.conf['model']['autoencoder']:
+                assert self.lastneuron == self.num_classes, f'Ultimi neuroni ({self.lastneuron}) diversi dal numero di classi ({self.num_classes}) '
 
         #last_layer_dense = self.config['model']['last_layer_dense']
 

@@ -91,7 +91,8 @@ class GenerateGraph():
             gr = nx.erdos_renyi_graph(Num_nodes, p)  # seed = 1
             #grafi.append(nx.to_numpy_matrix(gr))
             grafi.append(gr)
-            actual_p = nx.to_numpy_matrix(gr).sum(axis=1).mean() / (Num_nodes - 1)
+            #actual_p = nx.to_numpy_matrix(gr).sum(axis=1).mean() / (Num_nodes - 1) # VERSION
+            actual_p = nx.to_numpy_array(gr).sum(axis=1).mean() / (Num_nodes - 1)
             actual_probs.append(actual_p)
             actual_degrees.append(gr.degree())
 
@@ -101,7 +102,8 @@ class GenerateGraph():
 
     def info_connectivity(self, grafi, p):
         print("Mean connectivity for each node:", end=' ')
-        print(round(np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() for t in grafi]).mean(), 3), end=' ')
+        #print(round(np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() for t in grafi]).mean(), 3), end=' ') # VERSION
+        print(round(np.array([nx.to_numpy_array(t).sum(axis=1).mean() for t in grafi]).mean(), 3), end=' ')
         print(f'p={p}')
 
     def create_regular(self, Num_nodes, d, N_graphs, parallel=True):

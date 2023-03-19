@@ -5,11 +5,11 @@ graph_dataset:
     sbm: False
     continuous_p: False
     random_node_feat: False
-    list_p: [0.3, 0.2, 0.1, 0.05, 0.01]
+    list_p: [0.2, 0.01]
     range_p: [0.01, 0.5]
     community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]], [[0.4, 0.01], [0.01, 0.1]]]
-    Num_nodes: 450 #, 200, 200, 200, 200, 200, 200]
-    Num_grafi_per_tipo: 300
+    Num_nodes: 750 #, 200, 200, 200, 200, 200, 200]
+    Num_grafi_per_tipo: 200
     Num_grafi_totali: 1000
     list_degree: [4, 50]
     list_exponents: [-2.0, -2.2, -2.5, -2.7, -2.9, -3.3] #, -3.7]
@@ -21,7 +21,7 @@ training:
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
     learning_rate: 0.001
-    epochs: 3000
+    epochs: 200
     batch_size: 700
     percentage_train: 0.7
     earlystop_patience: 500
@@ -35,7 +35,7 @@ model:
     GCNneurons_per_layer: [1, 32, 16]
     neurons_last_linear: [16, 16, 5]
     freezeGCNlayers: False
-    autoencoder: False
+    autoencoder: True
     put_batchnorm: True
     final_pool_aggregator: True
     put_dropout: False

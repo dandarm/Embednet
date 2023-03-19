@@ -439,9 +439,10 @@ class Trainer():
         epoch = 0
         for epoch in tqdm(range(self.epochs), total=self.epochs):
             train_loss = self.train()
-            test_loss = self.test(self.dataset.test_loader)
             writer.add_scalar("Train Loss", train_loss, epoch)
-            writer.add_scalar("Test Loss", test_loss, epoch)
+            if epoch % 10 == 0:
+                test_loss = self.test(self.dataset.test_loader)
+                writer.add_scalar("Test Loss", test_loss, epoch)
 
             if self.config_class.modo != TrainingMode.mode3:  # and not self.config_class.conf['model']['autoencoder']:
                 metric_value = self.calc_metric(self.dataset.test_loader)
