@@ -72,13 +72,15 @@ def all_seeds():
 
 
 class Experiments():
-    def __init__(self, config_file, diz_trials, rootsave, config_class=None):
+    def __init__(self, config_file=None, diz_trials=None, rootsave=None, config_class=None):
         self.eseguito=False
         self.config_file = config_file
         if config_class:
             self.config_class = config_class
+        elif config_file is not None:
+            self.config_class = Config(self.config_file)                
         else:
-            self.config_class = Config(self.config_file)
+            assert False, "Inserire almeno uno tra un file di Configurazione o una classi di Configurazione"
 
         self.rootsave = rootsave
         self.init_trainer()
@@ -401,6 +403,11 @@ class Experiments():
         embedding_class = self.elaborate_embedding(graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output, self.trainer.model.linears)
 
         return embedding_class
+    
+    def get_recon_graphs(self):
+        all_data_loader = self.trainer.dataset.get_all_data_loader()
+        adjs_list = self.trainer.get_recon_adjs(all_data_loader)
+        return adjs_list
 
     def elaborate_embedding(self, graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, output_array, modelparams):
         embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, self.trainer.dataset, self.trainer.config_class, output_array, modelparams)

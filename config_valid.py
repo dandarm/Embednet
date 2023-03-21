@@ -98,12 +98,11 @@ class Config():
 
         # verifico che l'ultimo neurone sia consistente col training mode
         self.get_num_classes()
-        if self.lastneuron == 1:
-            assert self.lastneuron == self.modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
-        else:
-            assert self.modo['last_neuron'] == 'n_class', 'Ultimi neuroni > 1 ma training mode diverso'
-            #print(f" è autoencoder? {self.conf['model']['autoencoder']}")
-            if not self.conf['model']['autoencoder']:
+        if not self.conf['model']['autoencoder']:
+            if self.lastneuron == 1:
+                assert self.lastneuron == self.modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
+            else:
+                assert self.modo['last_neuron'] == 'n_class', 'Ultimi neuroni > 1 ma training mode diverso'
                 assert self.lastneuron == self.num_classes, f'Ultimi neuroni ({self.lastneuron}) diversi dal numero di classi ({self.num_classes}) '
 
         #last_layer_dense = self.config['model']['last_layer_dense']

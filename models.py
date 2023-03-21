@@ -366,9 +366,10 @@ class AutoencoderGCN(GCN):
         return self.decoder.encode(x, edge_index, batch, graph_embedding, node_embedding)
     def test(self, z, pos_edge_label_index, neg_edge_label_index):
         return self.decoder.test(z, pos_edge_label_index, neg_edge_label_index)
-
     def recon_loss(self, z, pos_edge_label_index, neg_edge_index=None):
         return self.decoder.recon_loss(z, pos_edge_label_index, neg_edge_index)
+    def forward_all(self, z, sigmoid: bool = True):
+        return self.decoder.decoder.forward_all(z)
 
     @classmethod
     def from_parent_instance(cls, dic_attr, parent_instance):

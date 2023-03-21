@@ -45,6 +45,7 @@ class Trainer():
         self.epochs = None
         self.batch_size = None
         self.last_layer_neurons = None
+        self.embedding_dimension = None
         self.unique_train_name = None
         #self.mode = self.conf['training']['mode']    # 'classification'  or 'regression'  or 'unsupervised'
         self.epochs_checkpoint = None        
@@ -103,6 +104,7 @@ class Trainer():
             modify_parameters_linear(model, init_weights_lin)
         if verbose:
             print(model)
+                    
         return model
 
     def set_optimizer(self, model):
@@ -146,6 +148,7 @@ class Trainer():
         self.model = model
         #self.model.to(self.device)
         self.set_optimizer(self.model)
+        self.embedding_dimension = self.model.convs[-1].out_channels
 
     def init_dataset(self, parallel=True, verbose=False):
         """
@@ -444,9 +447,9 @@ class Trainer():
                 test_loss = self.test(self.dataset.test_loader)
                 writer.add_scalar("Test Loss", test_loss, epoch)
 
-            if self.config_class.modo != TrainingMode.mode3:  # and not self.config_class.conf['model']['autoencoder']:
-                metric_value = self.calc_metric(self.dataset.test_loader)
-                writer.add_scalar("Test metric", metric_value, epoch)
+                if self.config_class.modo != TrainingMode.mode3:  # and not self.config_class.conf['model']['autoencoder']:
+                    metric_value = self.calc_metric(self.dataset.test_loader)
+                    writer.add_scalar("Test metric", metric_value, epoch)
 
             # prendo l'embedding a ogni epoca
             if self.conf['training'].get('every_epoch_embedding'):

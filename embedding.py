@@ -413,7 +413,7 @@ class Embedding_per_graph():
     def __init__(self, graph_embedding, node_embedding_array, node_embeddings_array_id,
                  graph_label, exponent, node_label_and_id=None,
                  actual_node_class=None, original_node_class=None, scalar_label=None,
-                 graph_output=None):
+                 graph_output=None, nx_recon_graph=None):
         self.graph_embedding = graph_embedding
         self.node_embedding_array = node_embedding_array
         self.node_embeddings_array_id = node_embeddings_array_id

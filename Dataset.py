@@ -46,6 +46,7 @@ class Dataset(GeneralDataset):
         self.config_class = config_class
         self.config = config_class.conf
         self.last_neurons = self.config_class.lastneuron
+        self.all_data_loader = None
 
 
     @classmethod

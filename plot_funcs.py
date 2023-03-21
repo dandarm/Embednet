@@ -175,7 +175,7 @@ def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list
     data = Data2Plot(embedding_class.emb_perclass, dim=num_emb_neurons, config_class=embedding_class.config_class)
     if num_emb_neurons == 1:
         print("Plotting 1D embeddings...")
-        fig, axes = plt.subplots(1, 3, figsize=(30, 7))
+        fig, axes = plt.subplots(2, 3, figsize=(20, 12))
         # embeddings_per_cluster solo per distribuzione discreta
         # graph_emb_perclass = embedding_class.get_all_graph_emb_per_class()
         # labels = embedding_class.get_unique_class_labels()
@@ -184,9 +184,9 @@ def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list
         # plot_dim1(node_emb_perclass, want_kde=False, labels=labels, title="Node Embedding")
         # plot_node_emb_1D(embedding_class.emb_perclass)
         # scatter_node_emb(embedding_class.emb_perclass, sequential_colors=False, filename=None)
-        data.plot(datatype='node_embedding', type='scatter', ax=axes[0], sequential_colors=sequential_colors, title="Node Embedding")
-        data.plot(datatype='graph_embedding', type='histogram', ax=axes[1], sequential_colors=sequential_colors, title="Graph Embedding")
-        data.plot(datatype='final_output', type='plot', ax=axes[2], sequential_colors=sequential_colors, title="Final Output")
+        data.plot(datatype='node_embedding', type='scatter', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
+        data.plot(datatype='graph_embedding', type='histogram', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
+        data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
 
         axes[1][1].plot(node_correlation, linestyle='None', marker='.', color='red', label='Node Correlation')
         axes[1][1].plot(graph_correlation, linestyle='None', marker='.', color='blue', label='Graph Correlation')
@@ -198,7 +198,6 @@ def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list
             plot_correlation_error(embedding_class)
     else:
         print("Plotting 2D or n>=2 embeddings...")
-        #fig, axes = plt.subplots(1, 3, figsize=(30, 7))
         fig, axes = plt.subplots(2, 3, figsize=(20, 12))
         #plot_dimN(embedding_class, 300)
         #plot_node_emb_nD(embedding_class.emb_perclass, ax=ax1)
@@ -590,6 +589,10 @@ def plot_data_degree_sequence(emb_by_class, sequential_colors=False, log=False):
     # plt.gca().legend(('y0','y1'))
     plt.show()
 
+def plot_recon_degree_sequence(recon_graphs):
+    degs = []
+    for gr in recon_graphs:
+        degs.append(gr.degree())
 
 def plot_corr_epoch(avg_corr_classes, config_c, ax=None):
     exps = config_c.conf['graph_dataset']['list_exponents']
