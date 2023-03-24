@@ -26,6 +26,7 @@ from config_valid import TrainingMode
 from models import GCN, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
 from Dataset import Dataset, GeneralDataset
 from graph_generation import GenerateGraph
+from take_real_data import TakeRealDataset
 from plot_model import plot_model
 
 
@@ -153,13 +154,18 @@ class Trainer():
     def init_dataset(self, parallel=True, verbose=False):
         """
         la classe GenerateGraph contiene un dataset in formato NetworkX
+        Se è un dataset reale viene creato un diverso gestore del dataset, sempre assegnato a self.gg
         :param parallel:
         :param verbose:
         :return:
         """
-        self.gg = GenerateGraph(self.config_class)
-        self.gg.initialize_dataset(parallel=parallel)  # istanzia il dataset networkx
-
+        if not self.config_class.conf['graph_dataset'].get('real_dataset'):
+            self.gg = GenerateGraph(self.config_class)
+            self.gg.initialize_dataset(parallel=parallel)  # instanzia il dataset networkx
+        else:
+            self.gg = TakeRealDataset(self.config_class)
+            self.gg.get_dataset()  # imposta gg.dataset
+            
         # alcuni controlli
         # print(self.gg.node_label)
         # print(self.gg.scalar_label)
@@ -180,13 +186,13 @@ class Trainer():
         w = new_parameters(self.init_GCN(), init_weigths_method)
         model = self.init_GCN(init_weights_gcn=w, verbose=verbose)
         self.load_model(model)
+        
         self.init_dataset(parallel=parallel, verbose=verbose)
         self.load_dataset(self.gg.dataset, parallel=False)  # parallel false perché con load_from_networkx non c'è nulla da fare...
         if verbose:
             batch = self.dataset.sample_dummy_data()
             plot = plot_model(self.model, batch)
             return plot
-
 
 
 

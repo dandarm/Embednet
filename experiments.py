@@ -17,6 +17,7 @@ import torch_geometric.transforms as T
 from models import GAEGCNEncoder, view_parameters, get_param_labels, new_parameters, modify_parameters, new_parameters_linears, modify_parameters_linear
 from train import Trainer
 from train_autoencoder import Trainer_Autoencoder
+from train_autoencoderMIAGAE import Trainer_AutoencoderMIAGAE
 from embedding import Embedding
 import plot_funcs
 from plot_funcs import scatter_node_emb, plot_graph_emb_1D, plot_node_emb_1D, save_ffmpeg, Data2Plot, plot_weights_multiple_hist, plot_metrics
@@ -71,6 +72,7 @@ def all_seeds():
     #torch.use_deterministic_algorithms(True)
 
 
+
 class Experiments():
     def __init__(self, config_file=None, diz_trials=None, rootsave=None, config_class=None):
         self.eseguito=False
@@ -101,6 +103,8 @@ class Experiments():
         if self.config_class.conf['model']['autoencoder']:
             print("Autoencoder model")
             self.trainer = Trainer_Autoencoder(self.config_class)
+        elif self.config_class.conf['model']['autoencoder_graph_ae']:
+            self.trainer = Trainer_AutoencoderMIAGAE(self.config_class)
         else:
             self.trainer = Trainer(self.config_class)
 

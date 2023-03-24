@@ -480,3 +480,8 @@ def plott(flattened, sigma):
              linewidth=2, color='r')
     plt.show()
     return count, bins
+
+
+
+
+        

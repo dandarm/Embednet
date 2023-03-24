@@ -98,7 +98,7 @@ class Config():
 
         # verifico che l'ultimo neurone sia consistente col training mode
         self.get_num_classes()
-        if not self.conf['model']['autoencoder']:
+        if not (self.conf['model'].get('autoencoder') or self.conf['model'].get('autoencoder_graph_ae')):
             if self.lastneuron == 1:
                 assert self.lastneuron == self.modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
             else:
@@ -127,7 +127,6 @@ class Config():
 
 
 
-
         # verifico nel cm multiclass che il numero di numnodes sia uguale al numero di esponenti
         if self.graphtype == GraphType.CM:
             assert len(self.conf['graph_dataset']['Num_nodes']) == len(self.conf['graph_dataset']['list_exponents'])
@@ -137,6 +136,7 @@ class Config():
 
         self.unique_train_name, self.long_string_experiment = self.create_unique_train_name()
         #print(f"Training with {self.num_classes} classes")
+        
     def set_graphtype(self):
         if self.conf['graph_dataset']['ERmodel']:
             self.graphtype = GraphType.ER

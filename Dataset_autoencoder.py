@@ -111,3 +111,27 @@ class DatasetAutoencoder(Dataset):
         # ma TODO: potrei comunque ottnere un auc su tutto il dataset
         return self.test_loader
 
+class DatasetAutoencoderReady(Dataset):
+    def __init__(self, percentage_train, batch_size, device, config_class, dataset_list):
+        super().__init__(percentage_train, batch_size, device, config_class, dataset_list) #, labels, original_node_class, exponent, actual_node_class, scalar_label)
+        train_percent = config_class.conf['training']['percentage_train']
+        test_percent = 1 - train_percent
+        #self.transform4ae = T.RandomLinkSplit(num_val=0.0, num_test=test_percent, is_undirected=True, split_labels=True, add_negative_train_samples=False)
+        self.all_data_loader = None
+        self.dataset_pyg = dataset_list
+        
+        self.train_dataset = self.dataset_pyg[:self.tt_split]
+        self.test_dataset = self.dataset_pyg[self.tt_split:]
+        self.train_len = len(self.train_dataset)
+        self.test_len = len(self.test_dataset)
+        
+        self.train_loader = DataLoader(self.train_dataset, batch_size=self.bs, shuffle=shuffle, worker_init_fn=self.seed_worker, num_workers=0)
+        self.test_loader  = DataLoader(self.test_dataset, batch_size=self.bs, shuffle=shuffle, worker_init_fn=self.seed_worker, num_workers=0)
+
+        self.all_data_loader = self.get_all_data_loader()
+
+    def get_all_data_loader(self):
+        # non ha senso applicare,l'autoencoder a tutti i link...
+        # ma TODO: potrei comunque ottnere un auc su tutto il dataset
+        return self.test_loader
+        

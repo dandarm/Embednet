@@ -3,10 +3,12 @@ import torch
 import torch.nn as nn
 from torch_geometric.utils import to_dense_adj
 from train import Trainer
+from train_autoencoder import Trainer_Autoencoder
 from models import GCN, AutoencoderGCN, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
-from Dataset_autoencoder import DatasetAutoencoder
+from model_MIAGAE import AutoencoderMIAGAE
+from Dataset_autoencoder import DatasetAutoencoder, DatasetAutoencoderReady
 
-class Trainer_Autoencoder(Trainer):
+class Trainer_AutoencoderMIAGAE(Trainer):
     def __init__(self, config_class, verbose=False):
         super().__init__(config_class, verbose)
         
@@ -31,102 +33,56 @@ class Trainer_Autoencoder(Trainer):
         else:
             device = "cpu"
 
-        encoder = GCN(self.config_class)
-        model = AutoencoderGCN.from_parent_instance(dic_attr="dict_attr", parent_instance=encoder)
-        model.set_decoder(encoder)
-
+        model = AutoencoderMIAGAE(self.config_class)
         model.to(device)
-        if init_weights_gcn is not None:
-            modify_parameters(model, init_weights_gcn)
-        if init_weights_lin is not None:
-            modify_parameters_linear(model, init_weights_lin)
+        
+        #if init_weights_gcn is not None:
+        #    modify_parameters(model, init_weights_gcn)
+        #if init_weights_lin is not None:
+        #    modify_parameters_linear(model, init_weights_lin)
         if verbose:
             print(model)
         return model
+    
+    #def init_dataset():
+    #    real_dataset
 
     def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
         print("Loading Dataset...")
-        self.dataset = DatasetAutoencoder.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
-        self.dataset.prepare(self.shuffle_dataset, parallel)
+        self.dataset = DatasetAutoencoderReady(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
         
-    def gestisci_batch(self, complete_adjacency_matrix, batch_array, num_nodi_adj):
-        # !SLOW
-        # create a mask for pairs of nodes that belong to the same graph
-        #################mask = (batch_array.unsqueeze(1) == batch_array.unsqueeze(0)).to(torch.float)
-        # filtra con la maschera assegnando a 0 i prodotti incrociati tra diversi grafi
-        
-        #################block_adj = complete_adjacency_matrix * mask
-        # in realtà non ho bisogno di portare gli elementi fuori dai blocchi diagonali a 0, 
-        # tanto comunque ora estraggo questi blocchi contando il lato come numero di nodi 
-        block_adj = complete_adjacency_matrix
-        # estrai in un tensore dim=3 con tante matrici adj
-        adjs = self.extract_block_diag(block_adj,  num_nodi_adj)        
-        return adjs
     
-    def extract_block_diag(self, A, step):
-        # !SLOW
-        diag_block = torch.stack([A[i:i+step, i:i+step] for i in range(0, A.shape[0], step)])
-        return diag_block
-    
-    def calc_inner_prod_for_batches(self, total_z, num_nodes):
-        start_out = torch.empty((1, num_nodes, num_nodes), device=torch.device('cuda'))
-
-        for i in range(0, len(total_z), num_nodes):
-            z = total_z[i:i+num_nodes]
-            out = self.model.forward_all(z)
-            #print(out.shape, start_out.shape)
-            start_out = torch.cat((start_out, out.unsqueeze(0)))
-        return start_out[1:]  # perché la prima riga è vuota
-            
         
               
     def train(self):
         self.model.train()
         running_loss = 0
-        for data in self.dataset.train_loader:
-            # encoding su tutti i grafi del batch, tutte le edges di ciascun grafo:
-            total_batch_z = self.model.encode(data.x, data.edge_index, data.batch)
-            # z è l'embedding di ciascun nodo (tutti i nodi del batch)
-            # il decoder Innerproduct calcola anche la matrice di adiacenza con il forward_all:
-            ######## adj = torch.matmul(z, z.t())
-            ######## return torch.sigmoid(adj) if sigmoid else adj
-            adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph)
+        for data in self.dataset.train_loader:    
+            total_batch_z, _, _, _ = self.model(data)
+            loss_on_features = self.criterion_autoenc(total_batch_z, data.x)
             
-            #out = self.model.forward_all(z)
-            #adjusted_pred_adj = self.gestisci_batch(out, data.batch, self.num_nodes_per_graph)
-
-            # ottieni la matrice di adiacenza dalle edge indexes
-            input_adj = to_dense_adj(data.edge_index, data.batch)
-
-            # quindi la loss è calcolata come l'errore rispetto alla riconstruzione di edges
-            loss = self.criterion_autoenc(adjusted_pred_adj, input_adj)
+            #adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph)
+            #input_adj = to_dense_adj(data.edge_index, data.batch)            
+            #loss_on_recon_edges = self.criterion_autoenc(adjusted_pred_adj, input_adj)
             
             loss.backward()  # Derive gradients.
             self.optimizer.step()  # Update parameters based on gradients.
             self.optimizer.zero_grad()  # Clear gradients.
             # self.scheduler.step()
-            running_loss += loss.item()
+            running_loss += loss_on_features.item()
         return running_loss / self.dataset.train_len
 
     def test(self, loader):
         self.model.eval()
         running_loss = 0
         with torch.no_grad():
-            for data in loader:
-                total_batch_z = self.model.encode(data.x, data.edge_index, data.batch) 
-                adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph) 
-                
-                # prendeva troppa memoria anche la sigmoid
-                #out = self.model.forward_all(z)
-                #adjusted_pred_adj = self.gestisci_batch(out, data.batch, self.num_nodes_per_graph)
-                
-                # ottieni la matrice di adiacenza dalle edge indexes
-                input_adj = to_dense_adj(data.edge_index, data.batch)                
-                #print(f"adjusted_pred_adj shape {adjusted_pred_adj.shape}, input adj shape: {input_adj.shape}")
-                
-                # quindi la loss è calcolata come l'errore rispetto alla riconstruzione di edges
-                loss = self.criterion_autoenc(adjusted_pred_adj, input_adj)
-                running_loss += loss.item()
+            for data in loader:                
+                total_batch_z, _, _, _ = self.model(data)
+                loss_on_features = self.criterion_autoenc(total_batch_z, data.x)
+                #adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph)
+                #input_adj = to_dense_adj(data.edge_index, data.batch)
+                #loss_on_recon_edges = self.criterion_autoenc(adjusted_pred_adj, input_adj)
+                running_loss += loss_on_features.item()
 
         return running_loss / self.dataset.test_len
 
@@ -166,14 +122,13 @@ class Trainer_Autoencoder(Trainer):
         return graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output
     
     def get_recon_adjs(self, loader):
-        # restituisce tutte le matrici di adiacenza e le feature del dataset
         self.model.eval()
         adjs_list = []
         feats = []
         with torch.no_grad():
             for data in loader:
                 total_batch_z = self.model.encode(data.x, data.edge_index, data.batch) 
-                adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph)
+                adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph, self.num_graphs)
                 recon_adjs = adjusted_pred_adj.detach().cpu().numpy()
                 adjs_list.extend(recon_adjs)
                 
