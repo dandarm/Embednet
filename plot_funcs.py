@@ -9,7 +9,7 @@ from matplotlib.lines import Line2D
 from config_valid import TrainingMode, GraphType
 import umap
 from matplotlib import ticker
-from utils import array_wo_outliers
+from utils_embednet import array_wo_outliers
 formatter = ticker.ScalarFormatter(useMathText=True)
 formatter.set_scientific(True)
 formatter.set_powerlimits((-1,1))

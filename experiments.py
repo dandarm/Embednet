@@ -25,7 +25,7 @@ from plt_parameters import get_colors_to_cycle_rainbow8, get_colors_to_cycle_rai
 from config_valid import Config
 from GridConfigurations import GridConfigurations
 from graph_generation import GraphType
-from utils import array_wo_outliers
+from utils_embednet import array_wo_outliers
 
 # per usare il trainer e il config nei processi paralleli
 graph_embedding_per_epoch = []
