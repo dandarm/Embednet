@@ -18,6 +18,7 @@ from models import GAEGCNEncoder, view_parameters, get_param_labels, new_paramet
 from train import Trainer
 from train_autoencoder import Trainer_Autoencoder
 from train_autoencoderMIAGAE import Trainer_AutoencoderMIAGAE
+from train_debug_MIAGAE import Trainer_AutoencoderMIAGAE_DEBUG
 from embedding import Embedding
 import plot_funcs
 from plot_funcs import scatter_node_emb, plot_graph_emb_1D, plot_node_emb_1D, save_ffmpeg, Data2Plot, plot_weights_multiple_hist, plot_metrics
@@ -104,16 +105,17 @@ class Experiments():
             print("Autoencoder model")
             self.trainer = Trainer_Autoencoder(self.config_class)
         elif self.config_class.conf['model']['autoencoder_graph_ae']:
-            self.trainer = Trainer_AutoencoderMIAGAE(self.config_class)
+            # DEBUG  self.trainer = Trainer_AutoencoderMIAGAE(self.config_class)
+            self.trainer = Trainer_AutoencoderMIAGAE_DEBUG(self.config_class)
         else:
             self.trainer = Trainer(self.config_class)
 
-    def GS_simple_experiments(self, list_points=100, parallel_take_result=True):
+    def GS_simple_experiments(self, list_points=100, parallel_take_result=True, do_plot=True):
         global graph_embedding_per_epoch
         global node_embedding_per_epoch
         global output_per_epoch
-        global dataset
-        global exp_config
+        #global dataset
+        #global exp_config
         global embedding_dimension
         global trainmode
 
@@ -133,10 +135,10 @@ class Experiments():
             self.just_train()
             embedding_class = self.embedding()
 
-            embedding_dimension = self.trainer.model.convs[-1].out_channels
+            embedding_dimension = self.trainer.embedding_dimension  #  self.trainer.model.convs[-1].out_channels
             trainmode = self.trainer.config_class.modo
-            dataset = self.trainer.dataset
-            exp_config = self.trainer.config_class
+            #dataset = self.trainer.dataset
+            #exp_config = self.trainer.config_class
 
             if self.config_class.conf['training']['every_epoch_embedding']:
                 graph_embedding_per_epoch = self.trainer.graph_embedding_per_epoch
@@ -157,11 +159,11 @@ class Experiments():
 
                 #fill_df_with_results(self.gc.config_dataframe, k, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
 
-
-            plot_metrics(embedding_class, embedding_dimension, trainmode, self.trainer.test_loss_list, self.trainer.metric_list,
-                         node_intrinsic_dimensions_total, graph_intrinsic_dimensions_total,
-                         node_correlation, graph_correlation,
-                         sequential_colors=False, log=False)
+            if do_plot:
+                plot_metrics(embedding_class, embedding_dimension, trainmode, self.trainer.test_loss_list, self.trainer.metric_list,
+                             node_intrinsic_dimensions_total, graph_intrinsic_dimensions_total,
+                             node_correlation, graph_correlation,
+                             sequential_colors=False, log=False)
 
             k += 1
 
@@ -404,7 +406,11 @@ class Experiments():
         if self.config_class.conf['training']['save_best_model']:
             self.trainer.model = self.trainer.best_model
         graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output = self.trainer.take_embedding_all_data()
-        embedding_class = self.elaborate_embedding(graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output, self.trainer.model.linears)
+        if not self.config_class.conf['model']['autoencoder_graph_ae']:
+            embedding_class = self.elaborate_embedding(graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output, self.trainer.model.linears)
+        else:
+            embedding_class = self.elaborate_embedding_autoencoder(graph_embeddings_array, node_embeddings_array, final_output)
+            
 
         return embedding_class
     
@@ -421,6 +427,9 @@ class Experiments():
         #    embedding_class.get_graph_emb_per_class()  # riempie
 
         return embedding_class
+    
+    def elaborate_embedding_autoencoder(self, graph_embeddings_array, node_embeddings_array, output_array):
+        pass
 
     def take_corr(self, epoca):
         """

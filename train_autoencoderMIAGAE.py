@@ -45,8 +45,24 @@ class Trainer_AutoencoderMIAGAE(Trainer):
             print(model)
         return model
     
-    #def init_dataset():
-    #    real_dataset
+    def init_all(self, parallel=True, verbose=False):
+        """
+        Inizializza modello e datasest
+        :param parallel:
+        :param verbose: se True ritorna il plot object del model
+        :return:
+        """
+        #init_weigths_method = self.config_class.init_weights_mode
+        #w = new_parameters(self.init_GCN(), init_weigths_method)
+        model = self.init_GCN()  #init_weights_gcn=w, verbose=verbose)
+        self.load_model(model)
+        
+        self.init_dataset(parallel=parallel, verbose=verbose)
+        self.load_dataset(self.gg.dataset, parallel=False)  # parallel false perché con load_from_networkx non c'è nulla da fare...
+        if verbose:
+            batch = self.dataset.sample_dummy_data()
+            plot = plot_model(self.model, batch)
+            return plot
 
     def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
         print("Loading Dataset...")
@@ -59,6 +75,8 @@ class Trainer_AutoencoderMIAGAE(Trainer):
         self.model.train()
         running_loss = 0
         for data in self.dataset.train_loader:   
+            self.optimizer.zero_grad()  # Clear gradients.
+            
             data = data.to(self.dataset.device)
             total_batch_z, _, _, _ = self.model(data)  #z, latent_x, latent_edge, batch
             loss_on_features = self.criterion_autoenc(total_batch_z, data.x)
@@ -69,7 +87,7 @@ class Trainer_AutoencoderMIAGAE(Trainer):
             
             loss_on_features.backward()  # Derive gradients.
             self.optimizer.step()  # Update parameters based on gradients.
-            self.optimizer.zero_grad()  # Clear gradients.
+            
             # self.scheduler.step()
             running_loss += loss_on_features.item()
         return running_loss / self.dataset.train_len
