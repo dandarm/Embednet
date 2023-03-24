@@ -11,7 +11,7 @@ import argparse
 from classification.Graph_AE import Net
 
 
-args = {'d':'REDDIT-BINARY','m':'MIAGAE', 'device':'cuda', 'batch':512, 'e':100, 'lr':0.001, 'model_dir':'data/model/', 'n_train':1500, 'n_test':1000, 'k':2, 'depth':3, 'c_rate':0.8, 'shapes':'64,64,64'}
+args = {'d':'REDDIT-BINARY','m':'MIAGAE', 'device':'cuda', 'batch':30, 'e':100, 'lr':0.001, 'model_dir':'data/model/', 'n_train':1500, 'n_test':1000, 'k':2, 'depth':3, 'c_rate':0.8, 'shapes':'64,64,64'}
 
 device = torch.device(args['device'])
 
