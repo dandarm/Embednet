@@ -30,6 +30,11 @@ class AutoencoderMIAGAE(GCN):
         #self.linears = encoder.linears
         # self.__dict__.update(dic_attr)
         
+        if self.config_class.conf['device'] == 'gpu':
+            device = torch.device('cuda')
+        else:
+            device = "cpu"
+        
         graph_ae_configs = self.conf.get('graph_ae_model')
         if graph_ae_configs is None:
             assert False, "Parametri di configurazione mancanti per il modello GRAPH_AE"
@@ -37,8 +42,7 @@ class AutoencoderMIAGAE(GCN):
         depth = graph_ae_configs['depth']
         comp_rate = graph_ae_configs['comp_rate']
         GCNneurons_per_layer = graph_ae_configs['GCNneurons_per_layer']
-        device = self.conf['device']
-        self.model = MIAGAE(GCNneurons_per_layer[0], num_kernels, depth, [comp_rate] * depth, GCNneurons_per_layer[1:], device).to(device)
+        self.model = MIAGAE(GCNneurons_per_layer[0], num_kernels, depth, [comp_rate] * depth, GCNneurons_per_layer[1:], device)
     
     def forward(self, data):
         return self.model(data)

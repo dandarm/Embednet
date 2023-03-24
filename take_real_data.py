@@ -1,6 +1,7 @@
 import sys
 sys.path.append("../")
 from abc import abstractmethod
+import torch
 from Graph_AE.utils.CustomDataSet import SelectGraph 
 
 

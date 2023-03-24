@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch_geometric.utils import to_dense_adj
+from torch_geometric.nn.aggr.basic import MeanAggregation
 from train import Trainer
 from train_autoencoder import Trainer_Autoencoder
 from models import GCN, AutoencoderGCN, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
@@ -57,15 +58,16 @@ class Trainer_AutoencoderMIAGAE(Trainer):
     def train(self):
         self.model.train()
         running_loss = 0
-        for data in self.dataset.train_loader:    
-            total_batch_z, _, _, _ = self.model(data)
+        for data in self.dataset.train_loader:   
+            data = data.to(self.dataset.device)
+            total_batch_z, _, _, _ = self.model(data)  #z, latent_x, latent_edge, batch
             loss_on_features = self.criterion_autoenc(total_batch_z, data.x)
             
             #adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph)
             #input_adj = to_dense_adj(data.edge_index, data.batch)            
             #loss_on_recon_edges = self.criterion_autoenc(adjusted_pred_adj, input_adj)
             
-            loss.backward()  # Derive gradients.
+            loss_on_features.backward()  # Derive gradients.
             self.optimizer.step()  # Update parameters based on gradients.
             self.optimizer.zero_grad()  # Clear gradients.
             # self.scheduler.step()
@@ -76,7 +78,8 @@ class Trainer_AutoencoderMIAGAE(Trainer):
         self.model.eval()
         running_loss = 0
         with torch.no_grad():
-            for data in loader:                
+            for data in loader:   
+                data = data.to(self.dataset.device)
                 total_batch_z, _, _, _ = self.model(data)
                 loss_on_features = self.criterion_autoenc(total_batch_z, data.x)
                 #adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph)
@@ -93,29 +96,23 @@ class Trainer_AutoencoderMIAGAE(Trainer):
         node_embeddings_array_id = []
         final_output = []
         
+        mean_pool_final = MeanAggregation()
+        
         with torch.no_grad():
             for data in loader:
-                if type_embedding == 'graph':
-                    out = self.model.encode(data.x, data.edge_index, data.batch, graph_embedding=True)
-                    to = out.detach().cpu().numpy()
-                    graph_embeddings_array.extend(to)
-                elif type_embedding == 'node':
-                    out = self.model.encode(data.x, data.edge_index, data.batch, node_embedding=True)
-                    to = out.detach().cpu().numpy()
-                    node_embeddings_array.extend(to)
-                    #node_embeddings_array_id.extend(data.id) TODO: rimettere
-                elif type_embedding == 'both':  # quì ho garantito che i graph embedding sono ordinati come i node_embedding
-                    node_out = self.model.encode(data.x, data.edge_index, data.batch, node_embedding=True)
-                    to = node_out.detach().cpu().numpy()
-                    #print(f"node emb size: {to.nbytes}")
-                    node_embeddings_array.extend(to)
-                    #node_embeddings_array_id.extend(data.id) TODO: rimettere
-                    graph_out = self.model.encode(data.x, data.edge_index, data.batch, graph_embedding=True)
-                    to = graph_out.detach().cpu().numpy()
-                    #print(f"graph emb size: {to.nbytes}")
-                    graph_embeddings_array.extend(to)
+                data = data.to(self.dataset.device)
+                z, latent_x, latent_edge, batch = self.model(data)  #batch restituito non è uguale a data.batch, viene cambiato da TopKPool
+                # anche il graph embedding
+                g_emb = mean_pool_final(latent_x, batch)
+                    
+                to = z.detach().cpu().numpy()
+                #print(f"node emb size: {to.nbytes}")
+                node_embeddings_array.extend(to)
+                to = g_emb.detach().cpu().numpy()
+                #print(f"graph emb size: {to.nbytes}")
+                graph_embeddings_array.extend(to)
 
-                    final_output.extend([None]*len(to))
+                final_output.extend([None]*len(to))
 
         graph_embeddings_array = np.array(graph_embeddings_array)
         node_embeddings_array = np.array(node_embeddings_array)
@@ -141,10 +138,11 @@ class Trainer_AutoencoderMIAGAE(Trainer):
         return np.array(adjs_list), np.array(feats)
 
     def calc_metric(self, loader):
-        self.model.eval()
-        with torch.no_grad():
-            for data in loader:
-                z = self.model.encode(data.x, data.edge_index, data.batch)
-                auc, ap = self.model.test(z, data.pos_edge_label_index, data.neg_edge_label_index)
+        return None
+        #self.model.eval()
+        #with torch.no_grad():
+        #    for data in loader:
+        #        z = self.model.encode(data.x, data.edge_index, data.batch)
+        #        auc, ap = self.model.test(z, data.pos_edge_label_index, data.neg_edge_label_index)#
 
-        return auc  #, ap
+        #return auc  #, ap

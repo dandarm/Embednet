@@ -21,6 +21,7 @@ class GraphType(Enum):
     Regular = 2
     CM = 3
     SBM = 4
+    REAL = 5
 
 class Inits():  # TODO: capire perché se estendo da Enum succede un CASINO! non vanno più bene le uguaglianze
     normal = 'normal'
@@ -113,11 +114,12 @@ class Config():
             assert n_class == 2, 'Num classi in list_p non consistente con training mode'
 
         # verifico che Num nodes sia consistente col training mode:
-        # nel caso di power law CM E SBM(!) -> voglio poter settare num nodes diverso per ogni classe  (per ogni comunità)
-        if isinstance(self.conf['graph_dataset']['Num_nodes'], list):
-            assert self.graphtype == GraphType.CM or self.graphtype == GraphType.SBM
-        if isinstance(self.conf['graph_dataset']['Num_nodes'], int):
-            assert self.graphtype != GraphType.CM
+        if self.graphtype != GraphType.REAL:
+            # nel caso di power law CM E SBM(!) -> voglio poter settare num nodes diverso per ogni classe  (per ogni comunità)
+            if isinstance(self.conf['graph_dataset']['Num_nodes'], list):
+                assert self.graphtype == GraphType.CM or self.graphtype == GraphType.SBM
+            if isinstance(self.conf['graph_dataset']['Num_nodes'], int):
+                assert self.graphtype != GraphType.CM
 
         # verifico che nel caso dello SBM la Num_Nodes sia una matrice
         if self.graphtype == GraphType.SBM:
@@ -147,15 +149,19 @@ class Config():
         elif self.conf['graph_dataset']['confmodel']:
             self.graphtype = GraphType.CM
             self.longstring_graphtype = "Configuration Model"
-        elif self.conf['graph_dataset']['sbm']:
+        elif self.conf['graph_dataset'].get('sbm'):
             self.graphtype = GraphType.SBM
             self.longstring_graphtype = "Stochastic Block Model"
+        elif self.conf['graph_dataset'].get('real_dataset'):
+            self.graphtype = GraphType.REAL
+            self.longstring_graphtype = self.conf['graph_dataset']['real_data_name']
 
     def only1_graphtype(self):
         bool_array = [self.conf['graph_dataset']['ERmodel'],
                     self.conf['graph_dataset']['regular'],
                     self.conf['graph_dataset']['confmodel'],
-                    self.conf['graph_dataset'].get('sbm', False)]
+                    self.conf['graph_dataset'].get('sbm', False),
+                     self.conf['graph_dataset'].get('real_dataset', False)]
         # check if bool_array contains one and only one True
         true_found = False
         for v in bool_array:
@@ -166,42 +172,60 @@ class Config():
         return true_found
 
     def create_layer_neuron_string(self):
-        gcnneurons = self.conf['model']['GCNneurons_per_layer']
-        linears = self.conf['model']['neurons_last_linear']
-        s1 = str(gcnneurons).replace(', ', '-').strip('[').strip(']')
-        s2 = str(linears).replace(', ', '-').strip('[').strip(']')
-        if self.conf['model']['last_layer_dense']:
-            res = '§' + s1 + '+' + s2 + '§'
-        else:
+        if not self.conf['model']['autoencoder_graph_ae']:
+            gcnneurons = self.conf['model']['GCNneurons_per_layer']
+            linears = self.conf['model']['neurons_last_linear']
+            s1 = str(gcnneurons).replace(', ', '-').strip('[').strip(']')
+            s2 = str(linears).replace(', ', '-').strip('[').strip(']')
+            if self.conf['model']['last_layer_dense']:
+                res = '§' + s1 + '+' + s2 + '§'
+            else:
+                res = '§' + s1 + '§'
+        elif self.conf['model']['autoencoder_graph_ae']:
+            gcnneurons = self.conf['graph_ae_model']['GCNneurons_per_layer']
+            s1 = str(gcnneurons).replace(', ', '-').strip('[').strip(']')
             res = '§' + s1 + '§'
+            
         return res
 
     def create_unique_train_name(self):
-        numnodi = self.conf['graph_dataset']['Num_nodes']
-        if isinstance(numnodi, list):
-            numnodi = numnodi[0]
-        numgrafi = self.conf['graph_dataset']['Num_grafi_per_tipo']
+        if self.graphtype != GraphType.REAL:
+            numnodi = self.conf['graph_dataset']['Num_nodes']
+            if isinstance(numnodi, list):
+                numnodi = numnodi[0]
+            numgrafi = self.conf['graph_dataset']['Num_grafi_per_tipo']            
+            if self.graphtype == GraphType.CM:
+                data_label = self.conf['graph_dataset']['list_exponents']
+                if isinstance(data_label, list):
+                    data_label = f"{len(data_label)}exps"
+            elif self.graphtype == GraphType.ER:
+                data_label = self.conf['graph_dataset']['list_p']
+            elif self.graphtype == GraphType.SBM:
+                data_label = self.conf['graph_dataset']['community_probs']
+        
+        elif self.graphtype == GraphType.REAL:
+            numnodi = ""
+            numgrafi = ""
+            data_label = ""
+                
         percentuale_train = self.conf['training']['percentage_train']
         modo = self.conf['training']['mode']
         freezed = self.conf['model']['freezeGCNlayers']
-        if self.graphtype == GraphType.CM:
-            data_label = self.conf['graph_dataset']['list_exponents']
-            if isinstance(data_label, list):
-                data_label = f"{len(data_label)}exps"
-        elif self.graphtype == GraphType.ER:
-            data_label = self.conf['graph_dataset']['list_p']
-        elif self.graphtype == GraphType.SBM:
-            data_label = self.conf['graph_dataset']['community_probs']
-
-        layer_neuron_string = self.create_layer_neuron_string()
         lr = self.conf['training']['learning_rate']
-        init_weights = self.conf['model']['init_weights']
-        #nome = f"{self.graphtype}_{data_label}_nodi{numnodi}_grafiXtipo{numgrafi}_{modo}_layers{layer_neuron_string}_initw-{init_weights}_lr{lr}_freezed{freezed}"
+        layer_neuron_string = self.create_layer_neuron_string()
+            
+        if not self.conf['model']['autoencoder_graph_ae']:
+            init_weights = self.conf['model']['init_weights']
+        else:
+            init_weights = ""            
+
         nome = f"{self.graphtype}_Classi{self.num_classes}_nodi{numnodi}_grafiXtipo{numgrafi}_{modo}_layers{layer_neuron_string}_initw-{init_weights}_lr{lr}_GCNfreezed{freezed}"
         nome = nome.replace(', ', '_')
 
         # creo stringa lunga
         long_string = f"{self.longstring_graphtype} - {numnodi} nodi - {numgrafi} grafi per classe \n {layer_neuron_string} - {init_weights} - lr:{lr} - GCNfreezed:{freezed}"
+            
+    
         return nome, long_string
 
 
@@ -215,6 +239,9 @@ class Config():
             self.num_classes = len(self.conf['graph_dataset']['community_probs'])
         #print(f"Abbiamo {self.num_classes} classi.")
         #print(self.conf['graph_dataset'])
+        elif self.conf['graph_dataset'].get('real_dataset'):
+            if self.conf['graph_dataset']['real_data_name'] == 'REDDIT-BINARY':
+                self.num_classes = 2
         return self.num_classes
 
 

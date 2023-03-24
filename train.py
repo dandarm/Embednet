@@ -163,7 +163,7 @@ class Trainer():
             self.gg = GenerateGraph(self.config_class)
             self.gg.initialize_dataset(parallel=parallel)  # instanzia il dataset networkx
         else:
-            self.gg = TakeRealDataset(self.config_class)
+            self.gg = TakeRealDataset(self.config_class, verbose)
             self.gg.get_dataset()  # imposta gg.dataset
             
         # alcuni controlli
