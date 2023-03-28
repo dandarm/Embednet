@@ -1,7 +1,7 @@
 graph_dataset:
-    ERmodel: True
+    ERmodel: False
     regular: False
-    confmodel: False
+    confmodel: True
     sbm: False
     real_dataset: False
     real_data_name: 'REDDIT-BINARY'
@@ -10,11 +10,11 @@ graph_dataset:
     list_p: [0.2, 0.01]
     range_p: [0.01, 0.5]
     community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]], [[0.4, 0.01], [0.01, 0.1]]]
-    Num_nodes: 143 #, 200, 200, 200, 200, 200, 200]
+    Num_nodes: [143] #, 200, 200, 200, 200, 200, 200]
     Num_grafi_per_tipo: 50
     Num_grafi_totali: 1000
     list_degree: [4, 50]
-    list_exponents: [-2.0, -2.2, -2.5, -2.7, -2.9, -3.3, -3.7]
+    list_exponents: [-2.0] #, -2.2, -2.5, -2.7, -2.9, -3.3, -3.7]
     
     
     
@@ -24,8 +24,8 @@ training:
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
     learning_rate: 0.002
-    epochs: 2500
-    batch_size: 3
+    epochs: 25
+    batch_size: 300
     percentage_train: 0.7
     earlystop_patience: 500
     epochs_model_checkpoint: [-1]

@@ -105,8 +105,9 @@ class Experiments():
             print("Autoencoder model")
             self.trainer = Trainer_Autoencoder(self.config_class)
         elif self.config_class.conf['model']['autoencoder_graph_ae']:
-            # DEBUG  self.trainer = Trainer_AutoencoderMIAGAE(self.config_class)
-            self.trainer = Trainer_AutoencoderMIAGAE_DEBUG(self.config_class)
+            print("Autoencoder MIAGAE")
+            self.trainer = Trainer_AutoencoderMIAGAE(self.config_class)
+            # DEBUG #self.trainer = Trainer_AutoencoderMIAGAE_DEBUG(self.config_class)
         else:
             self.trainer = Trainer(self.config_class)
 
@@ -402,6 +403,7 @@ class Experiments():
     def just_train(self, parallel=True, verbose=False):
         self.trainer.init_all(parallel=parallel, verbose=verbose)
         self.trainer.launch_training()
+        
     def embedding(self):
         if self.config_class.conf['training']['save_best_model']:
             self.trainer.model = self.trainer.best_model

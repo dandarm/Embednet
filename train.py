@@ -25,6 +25,7 @@ from TorchPCA import PCA
 from config_valid import TrainingMode
 from models import GCN, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
 from Dataset import Dataset, GeneralDataset
+from Dataset_autoencoder import DatasetReady
 from graph_generation import GenerateGraph
 from take_real_data import TakeRealDataset
 from plot_model import plot_model
@@ -163,17 +164,17 @@ class Trainer():
             self.gg = GenerateGraph(self.config_class)
             self.gg.initialize_dataset(parallel=parallel)  # instanzia il dataset networkx
         else:
-            self.gg = TakeRealDataset(self.config_class, verbose)
+            # TakeRealDataset si occupa di ottenere il dataset reale
+            self.gg = TakeRealDataset(self.config_class, verbose)  
             self.gg.get_dataset()  # imposta gg.dataset
-            
-        # alcuni controlli
-        # print(self.gg.node_label)
-        # print(self.gg.scalar_label)
 
     def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
-        print("Loading Dataset...")
-        self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
-        self.dataset.prepare(self.shuffle_dataset, parallel)
+        if not self.config_class.conf['graph_dataset'].get('real_dataset'):
+            print("Loading Dataset...")
+            self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
+            self.dataset.prepare(self.shuffle_dataset, parallel)
+        else:
+            self.dataset = DatasetReady(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
 
     def init_all(self, parallel=True, verbose=False):
         """

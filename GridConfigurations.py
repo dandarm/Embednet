@@ -60,7 +60,7 @@ class GridConfigurations():
                 config_class = Config.fromdict(config_is_back)  # faccio la validazione della config
                 self.configs.append(config_class)
             except AssertionError as e:
-                raise e
+                #raise e
                 errors += 1
                 #print(f"Errore {repr(e)}, tolgo la riga {i}\n")
                 righe_da_togliere.append(i)

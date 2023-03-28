@@ -43,11 +43,6 @@ class Trainer_Autoencoder(Trainer):
         if verbose:
             print(model)
         return model
-
-    def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
-        print("Loading Dataset...")
-        self.dataset = DatasetAutoencoder.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
-        self.dataset.prepare(self.shuffle_dataset, parallel)
         
     def gestisci_batch(self, complete_adjacency_matrix, batch_array, num_nodi_adj):
         # !SLOW
@@ -74,7 +69,7 @@ class Trainer_Autoencoder(Trainer):
         for i in range(0, len(total_z), num_nodes):
             z = total_z[i:i+num_nodes]
             out = self.model.forward_all(z)
-            #print(out.shape, start_out.shape)
+            #print(i, out.shape)
             start_out = torch.cat((start_out, out.unsqueeze(0)))
         return start_out[1:]  # perché la prima riga è vuota
             
@@ -113,7 +108,9 @@ class Trainer_Autoencoder(Trainer):
         running_loss = 0
         with torch.no_grad():
             for data in loader:
+                print(data)
                 total_batch_z = self.model.encode(data.x, data.edge_index, data.batch) 
+                #print(f"x shape: {data.x.shape}\t nodi per grafo: {self.num_nodes_per_graph}")
                 adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph) 
                 
                 # prendeva troppa memoria anche la sigmoid
@@ -186,6 +183,7 @@ class Trainer_Autoencoder(Trainer):
         return np.array(adjs_list), np.array(feats)
 
     def calc_metric(self, loader):
+        return 0
         self.model.eval()
         with torch.no_grad():
             for data in loader:

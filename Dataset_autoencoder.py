@@ -11,6 +11,9 @@ from multiprocessing import Pool
 
 
 class DatasetAutoencoder(Dataset):
+    """
+    Questo Dataset splitta i link in positive e negative test per calcolare una AUC
+    """
     def __init__(self, percentage_train, batch_size, device, config_class, dataset_list, labels, original_node_class, exponent, actual_node_class, scalar_label):
         super().__init__(percentage_train, batch_size, device, config_class, dataset_list, labels, original_node_class, exponent, actual_node_class, scalar_label)
         train_percent = config_class.conf['training']['percentage_train']
@@ -111,7 +114,7 @@ class DatasetAutoencoder(Dataset):
         # ma TODO: potrei comunque ottnere un auc su tutto il dataset
         return self.test_loader
 
-class DatasetAutoencoderReady(Dataset):
+class DatasetReady(Dataset):
     def __init__(self, percentage_train, batch_size, device, config_class, dataset_list):
         super().__init__(percentage_train, batch_size, device, config_class, dataset_list, None, None, None, None, None) #, labels, original_node_class, exponent, actual_node_class, scalar_label)
         train_percent = config_class.conf['training']['percentage_train']
@@ -120,8 +123,8 @@ class DatasetAutoencoderReady(Dataset):
         self.all_data_loader = None
         self.dataset_pyg = dataset_list
         
-        #for pyg_graph in self.dataset_pyg:
-        #    pyg_graph = pyg_graph.to(self.device)
+        for pyg_graph in self.dataset_pyg:
+            pyg_graph = pyg_graph.to(self.device)
         
         self.train_dataset = self.dataset_pyg[:self.tt_split]
         self.test_dataset = self.dataset_pyg[self.tt_split:]

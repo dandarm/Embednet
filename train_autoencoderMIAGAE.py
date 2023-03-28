@@ -7,7 +7,7 @@ from train import Trainer
 from train_autoencoder import Trainer_Autoencoder
 from models import GCN, AutoencoderGCN, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
 from model_MIAGAE import AutoencoderMIAGAE
-from Dataset_autoencoder import DatasetAutoencoder, DatasetAutoencoderReady
+from Dataset_autoencoder import DatasetAutoencoder, DatasetReady
 
 class Trainer_AutoencoderMIAGAE(Trainer):
     def __init__(self, config_class, verbose=False):
@@ -58,7 +58,7 @@ class Trainer_AutoencoderMIAGAE(Trainer):
         self.load_model(model)
         
         self.init_dataset(parallel=parallel, verbose=verbose)
-        self.load_dataset(self.gg.dataset, parallel=False)  # parallel false perché con load_from_networkx non c'è nulla da fare...
+        self.load_dataset(self.gg.dataset, parallel=False)
         if verbose:
             batch = self.dataset.sample_dummy_data()
             plot = plot_model(self.model, batch)
@@ -66,7 +66,7 @@ class Trainer_AutoencoderMIAGAE(Trainer):
 
     def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
         print("Loading Dataset...")
-        self.dataset = DatasetAutoencoderReady(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
+        self.dataset = DatasetReady(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
         
     
         
@@ -156,7 +156,7 @@ class Trainer_AutoencoderMIAGAE(Trainer):
         return np.array(adjs_list), np.array(feats)
 
     def calc_metric(self, loader):
-        return None
+        return 0
         #self.model.eval()
         #with torch.no_grad():
         #    for data in loader:

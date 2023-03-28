@@ -49,7 +49,9 @@ class Config():
         elif not config_file and not data_dict:
             self.config_file = basic_config_file_path
             self.load_conf()
-
+            
+        self.NumNodes = self.conf['graph_dataset']['Num_nodes']
+        
         self.modo = None
         self.graphtype = None
         self.num_classes = 0
@@ -116,25 +118,28 @@ class Config():
         # verifico che Num nodes sia consistente col training mode:
         if self.graphtype != GraphType.REAL:
             # nel caso di power law CM E SBM(!) -> voglio poter settare num nodes diverso per ogni classe  (per ogni comunità)
-            if isinstance(self.conf['graph_dataset']['Num_nodes'], list):
+            if isinstance( self.NumNodes, list):
                 assert self.graphtype == GraphType.CM or self.graphtype == GraphType.SBM
-            if isinstance(self.conf['graph_dataset']['Num_nodes'], int):
+            if isinstance( self.NumNodes, int):
                 assert self.graphtype != GraphType.CM
 
         # verifico che nel caso dello SBM la Num_Nodes sia una matrice
         if self.graphtype == GraphType.SBM:
-            assert isinstance(self.conf['graph_dataset']['Num_nodes'], list), "Lo Stochastic Block Model richiede una lista per Num nodes"
+            assert isinstance( self.NumNodes, list), "Lo Stochastic Block Model richiede una lista per Num nodes"
         #else:
         #    assert np.array(self.conf['graph_dataset']['list_p']).ndim == 1, "probabilità inserite come matrice ma non stiamo nel SBM"
 
 
 
         # verifico nel cm multiclass che il numero di numnodes sia uguale al numero di esponenti
+        length_list_numnodes = len(self.NumNodes)
+        
         if self.graphtype == GraphType.CM:
-            assert len(self.conf['graph_dataset']['Num_nodes']) == len(self.conf['graph_dataset']['list_exponents'])
+            assert length_list_numnodes == len(self.conf['graph_dataset']['list_exponents']), f"{length_list_numnodes} != {len(self.conf['graph_dataset']['list_exponents'])}"
+            
         # verifico che le BMS il numero di num nodes sia uguale al numero di comunità
         if self.graphtype == GraphType.SBM:
-            assert len(self.conf['graph_dataset']['Num_nodes']) == np.array(self.conf['graph_dataset']['community_probs']).shape[1]
+            assert length_list_numnodes == np.array(self.conf['graph_dataset']['community_probs']).shape[1], f"{length_list_numnodes} != {len(self.conf['graph_dataset']['community_probs'])}"
 
         self.unique_train_name, self.long_string_experiment = self.create_unique_train_name()
         #print(f"Training with {self.num_classes} classes")
