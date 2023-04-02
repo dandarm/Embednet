@@ -64,9 +64,6 @@ class Trainer_AutoencoderMIAGAE(Trainer):
             plot = plot_model(self.model, batch)
             return plot
 
-    def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
-        print("Loading Dataset...")
-        self.dataset = DatasetReady(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
         
     
         
@@ -77,7 +74,7 @@ class Trainer_AutoencoderMIAGAE(Trainer):
         for data in self.dataset.train_loader:   
             self.optimizer.zero_grad()  # Clear gradients.
             
-            data = data.to(self.dataset.device)
+            #data = data.to(self.dataset.device)
             total_batch_z, _, _, _ = self.model(data)  #z, latent_x, latent_edge, batch
             loss_on_features = self.criterion_autoenc(total_batch_z, data.x)
             
@@ -97,7 +94,7 @@ class Trainer_AutoencoderMIAGAE(Trainer):
         running_loss = 0
         with torch.no_grad():
             for data in loader:   
-                data = data.to(self.dataset.device)
+                #data = data.to(self.dataset.device)
                 total_batch_z, _, _, _ = self.model(data)
                 loss_on_features = self.criterion_autoenc(total_batch_z, data.x)
                 #adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph)

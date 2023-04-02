@@ -169,8 +169,8 @@ class Trainer():
             self.gg.get_dataset()  # imposta gg.dataset
 
     def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
-        if not self.config_class.conf['graph_dataset'].get('real_dataset'):
-            print("Loading Dataset...")
+        print("Loading Dataset...")
+        if not self.config_class.conf['graph_dataset'].get('real_dataset'):            
             self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
             self.dataset.prepare(self.shuffle_dataset, parallel)
         else:

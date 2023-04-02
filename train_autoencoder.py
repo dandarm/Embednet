@@ -12,8 +12,17 @@ class Trainer_Autoencoder(Trainer):
         
         # TODO.... poi posso impostare il criterion dentro il config
         self.criterion_autoenc = nn.MSELoss()
-        self.num_nodes_per_graph = self.conf['graph_dataset']['Num_nodes']
-        self.num_graphs = self.conf['graph_dataset']['Num_grafi_per_tipo'] * self.config_class.num_classes
+        self.num_nodes_per_graph = self.config_class.conf['graph_dataset']['Num_nodes']
+        self.num_graphs = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo'] * self.config_class.num_classes
+        #print(f"nodi per grafo e num grafi: {self.num_nodes_per_graph} {self.num_graphs}")
+        if isinstance(self.num_nodes_per_graph, list):
+            self.num_nodes_per_graph = self.num_nodes_per_graph[0]
+            
+    def reinit_conf(self, config_class):
+        super().reinit_conf(config_class)
+        self.num_nodes_per_graph = self.config_class.conf['graph_dataset']['Num_nodes']
+        self.num_graphs = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo'] * self.config_class.num_classes
+        
         if isinstance(self.num_nodes_per_graph, list):
             self.num_nodes_per_graph = self.num_nodes_per_graph[0]
 
@@ -69,7 +78,7 @@ class Trainer_Autoencoder(Trainer):
         for i in range(0, len(total_z), num_nodes):
             z = total_z[i:i+num_nodes]
             out = self.model.forward_all(z)
-            #print(i, out.shape)
+            #print(f"{i}/{len(total_z)}", out.shape)
             start_out = torch.cat((start_out, out.unsqueeze(0)))
         return start_out[1:]  # perché la prima riga è vuota
             
@@ -108,7 +117,7 @@ class Trainer_Autoencoder(Trainer):
         running_loss = 0
         with torch.no_grad():
             for data in loader:
-                print(data)
+                #print(data)
                 total_batch_z = self.model.encode(data.x, data.edge_index, data.batch) 
                 #print(f"x shape: {data.x.shape}\t nodi per grafo: {self.num_nodes_per_graph}")
                 adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph) 

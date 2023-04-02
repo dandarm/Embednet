@@ -132,7 +132,7 @@ class Experiments():
         for c in self.gc.configs:
             print(f'Run {k + 1} \t\t exp name: {c.unique_train_name}')
             # all_seeds()
-            self.trainer.reinit_conf(c)
+            self.trainer.reinit_conf(c)            
             self.just_train()
             embedding_class = self.embedding()
 
