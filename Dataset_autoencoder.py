@@ -133,7 +133,7 @@ class DatasetReady(Dataset):
         
         shuffle = self.config['training']['shuffle_dataset']
         self.train_loader = DataLoader(self.train_dataset, batch_size=self.bs, shuffle=shuffle, worker_init_fn=self.seed_worker, num_workers=0)
-        self.test_loader  = DataLoader(self.test_dataset, batch_size=self.bs, shuffle=False, worker_init_fn=self.seed_worker, num_workers=0)
+        self.test_loader = DataLoader(self.test_dataset, batch_size=self.bs, shuffle=False, worker_init_fn=self.seed_worker, num_workers=0)
 
         self.all_data_loader = self.get_all_data_loader()
 

@@ -1,20 +1,20 @@
 graph_dataset:
-    ERmodel: False
+    ERmodel: True
     regular: False
-    confmodel: True
+    confmodel: False
     sbm: False
     real_dataset: False
-    real_data_name: 'REDDIT-BINARY'
+    real_data_name: 'BACI'  #'REDDIT-BINARY'  
     continuous_p: False
     random_node_feat: False
-    list_p: [0.2, 0.01]
+    list_p: [0.3, 0.2, 0.15, 0.1, 0.01]
     range_p: [0.01, 0.5]
     community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]], [[0.4, 0.01], [0.01, 0.1]]]
-    Num_nodes: [200, 200, 200, 200, 200] #, 200, 200]
+    Num_nodes: [200, 200, 200, 200, 200]
     Num_grafi_per_tipo: 50
     Num_grafi_totali: 1000
     list_degree: [4, 50]
-    list_exponents: [-2.0, -2.2, -2.5, -2.7, -2.9] #, -3.3, -3.7]
+    list_exponents: [-2.2, -2.5, -2.8, -3.3, -3.7]
     
     
     
@@ -31,11 +31,11 @@ training:
     epochs_model_checkpoint: [-1]
     save_best_model: True
     every_epoch_embedding: False
-    shuffle_dataset: True
+    shuffle_dataset: False
     
 model:
     last_layer_dense: False
-    GCNneurons_per_layer: [1, 32, 32, 32,1]
+    GCNneurons_per_layer: [1, 32, 32, 32]
     neurons_last_linear: [16, 16, 2]
     freezeGCNlayers: False
     autoencoder: True
@@ -44,7 +44,7 @@ model:
     final_pool_aggregator: True
     put_dropout: False
     node_features_dim: 1
-    init_weights: 'eye' #'xavier_normal'
+    init_weights: 'eye'
     
 graph_ae_model:
     num_kernels: 2

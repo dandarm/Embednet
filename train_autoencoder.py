@@ -9,24 +9,25 @@ from Dataset_autoencoder import DatasetAutoencoder
 class Trainer_Autoencoder(Trainer):
     def __init__(self, config_class, verbose=False):
         super().__init__(config_class, verbose)
-        
+
         # TODO.... poi posso impostare il criterion dentro il config
         self.criterion_autoenc = nn.MSELoss()
-        self.num_nodes_per_graph = self.config_class.conf['graph_dataset']['Num_nodes']
-        self.num_graphs = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo'] * self.config_class.num_classes
+
+        #self.num_graphs = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo'] * self.config_class.num_classes
         #print(f"nodi per grafo e num grafi: {self.num_nodes_per_graph} {self.num_graphs}")
-        if isinstance(self.num_nodes_per_graph, list):
-            self.num_nodes_per_graph = self.num_nodes_per_graph[0]
+
             
     def reinit_conf(self, config_class):
         super().reinit_conf(config_class)
-        self.num_nodes_per_graph = self.config_class.conf['graph_dataset']['Num_nodes']
-        self.num_graphs = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo'] * self.config_class.num_classes
-        
-        if isinstance(self.num_nodes_per_graph, list):
-            self.num_nodes_per_graph = self.num_nodes_per_graph[0]
 
+        #self.num_graphs = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo'] * self.config_class.num_classes
 
+    def get_num_nodes_from_dataset(self):
+        if self.gg is not None:
+            return self.gg.num_nodes_per_graph
+        else:
+            # distinugo il caso in cui il dataset vero ha bisogno di generare grafi networkx e quello in cui no
+            # perciò non è prewsente self.gg
     def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False):
         """
         Returns the GCN model given the class of configurations

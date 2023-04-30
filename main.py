@@ -130,23 +130,28 @@ def count_non_iso_motif_up_to_n(n):
 
 def autoencoder():
     config_file = "configurations/Final1.yml"
-    num_nodi = 45
+    num_nodi = 200
     c = Config(config_file)
-    c.conf['training']['every_epoch_embedding'] = False
-    c.conf['graph_dataset']['list_exponents'] = [-1.9, -2.5]
+    # c.conf['graph_dataset']['Num_nodes'] = [num_nodi]
+    # c.conf['graph_dataset']['list_exponents'] = [-2.5]
     c.conf['model']['autoencoder'] = True
-    diz_trials = {'graph_dataset.ERmodel': [False], 'graph_dataset.confmodel': [True], 'graph_dataset.sbm': [False],
-                  'graph_dataset.Num_nodes': [num_nodi, [num_nodi] * 7, [num_nodi] * 2],  # per lo SBM: num nodi * num comunità
-                  'model.GCNneurons_per_layer': [[1, 32, len(c.conf['graph_dataset']['list_exponents'])],
-                                                 [1, 32, len(c.conf['graph_dataset']['list_p'])],
-                                                 [1, 32, len(c.conf['graph_dataset']['community_probs'])],
-                                                 ],
-                  'model.init_weights': ['xavier_normal'],  # 'eye'],
+    c.conf['model']['autoencoder_graph_ae'] = False
+    diz_trials = {'graph_dataset.ERmodel': [False],
+                  'graph_dataset.confmodel': [False],
+                  'graph_dataset.sbm': [False],
+                  'graph_dataset.real_dataset': [True],
+                  # 'graph_dataset.Num_nodes': [[num_nodi]*5, [num_nodi]*3],  # per lo SBM: num nodi * num comunità
+                  'model.GCNneurons_per_layer': [  # [1, 32, 16, len(c.conf['graph_dataset']['list_exponents'])],
+                      # [1, 32, 16, len(c.conf['graph_dataset']['list_p'])],
+                      # [1, 32, 16, len(c.conf['graph_dataset']['community_probs'])],
+                      [1, 32, 32, 32, 1]
+                  ],
+                  # 'model.init_weights': ['xavier_normal'],# 'eye'],
                   'model.freezeGCNlayers': [False],
                   'model.last_layer_dense': [False],
                   }
 
-    xp = Experiments(config_file, diz_trials=diz_trials, rootsave=rootsave, config_class=c)
+    xp = Experiments(diz_trials=diz_trials, rootsave=rootsave, config_class=c, reset_all_seeds=False, verbose=True)
     xp.GS_simple_experiments()
 
 

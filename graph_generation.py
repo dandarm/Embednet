@@ -32,6 +32,15 @@ class GenerateGraph():
 
         self.graphtype = config_class.graphtype
 
+        self.num_nodes_per_graph = None
+
+    @property
+    def num_nodes_per_graph(self):
+        return self.num_nodes_per_graph
+    @num_nodes_per_graph.setter
+    def num_nodes_per_graph(self):
+        #if not self.config_class.conf['graph_dataset'].get('real_dataset'):
+        self.num_nodes_per_graph = [self.N] * len(self.dataset_grafi_nx)
 
     # def make_dataset(self):
     #     switcher = {
@@ -406,6 +415,54 @@ class GenerateGraph():
             print([nx.to_numpy_matrix(g).sum(axis=1).mean() for g in dataset_list_perturbed])
         self.dataset.dataset_list = dataset_list_perturbed
 
+
+class GenerateGraph_from_numpyarray():
+    """
+    Genera grafi oggetto di networkx a partire da matrici di adiacenza come numpy arrays
+    """
+    def __init__(self, config_class, np_arrays):
+        self.config_class = config_class
+        self.conf = self.config_class.conf
+
+        self.np_arrays = np_arrays
+
+        self.dataset = None
+        self.dataset_grafi_nx = []
+        self.target_labels = []
+        self.dataset_degree_seq = []
+        self.scalar_label = []
+        self.node_label = []
+
+        self.num_nodes_per_graph = None
+
+    @property
+    def num_nodes_per_graph(self):
+        if isinstance(self.num_nodes_per_graph, list):
+            return self.num_nodes_per_graph[0]
+        else:
+            return self.num_nodes_per_graph
+    @num_nodes_per_graph.setter
+    def num_nodes_per_graph(self):
+        self.num_nodes_per_graph = [a.shape[0] for a in self.np_arrays]
+
+    def create_nx_graphs(self):
+        """
+        np_arrays è la lista di matrici di adiacenza
+        :param np_arrays:
+        :return:
+        """
+        for a in self.np_arrays:
+            gr = nx.from_numpy_array(a)
+            self.dataset_grafi_nx.append(gr)
+            actual_degrees = gr.degree()
+            only_degrees = list(dict(actual_degrees).values())
+            self.dataset_degree_seq.append(only_degrees)
+
+        self.dataset = GeneralDataset(self.dataset_grafi_nx, labels=[1]*len(self.dataset_grafi_nx),
+                                      original_node_class=None,
+                                      actual_node_class=self.dataset_degree_seq,
+                                      scalar_label=None
+                                      )
 
 def perturb_np_array(np_array, p=10, verbose=False):
     """

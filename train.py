@@ -165,8 +165,9 @@ class Trainer():
             self.gg.initialize_dataset(parallel=parallel)  # instanzia il dataset networkx
         else:
             # TakeRealDataset si occupa di ottenere il dataset reale
-            self.gg = TakeRealDataset(self.config_class, verbose)  
-            self.gg.get_dataset()  # imposta gg.dataset
+            real_dataset_taker = TakeRealDataset(self.config_class, verbose)
+            real_dataset_taker.get_dataset()  # imposta gg.dataset
+            self.gg = real_dataset_taker.gg
 
     def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
         print("Loading Dataset...")
@@ -174,7 +175,14 @@ class Trainer():
             self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
             self.dataset.prepare(self.shuffle_dataset, parallel)
         else:
-            self.dataset = DatasetReady(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
+            if self.config_class.conf['graph_dataset']['real_data_name'] == 'REDDIT-BINARY':
+                self.dataset = DatasetReady(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
+            elif self.config_class.conf['graph_dataset']['real_data_name'] == 'BACI':
+                self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
+                self.dataset.prepare(self.shuffle_dataset, parallel)
+
+
+
 
     def init_all(self, parallel=True, verbose=False):
         """
@@ -190,6 +198,7 @@ class Trainer():
         
         self.init_dataset(parallel=parallel, verbose=verbose)
         self.load_dataset(self.gg.dataset, parallel=False)  # parallel false perché con load_from_networkx non c'è nulla da fare...
+
         if verbose:
             batch = self.dataset.sample_dummy_data()
             plot = plot_model(self.model, batch)

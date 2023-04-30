@@ -75,25 +75,26 @@ def all_seeds():
 
 
 class Experiments():
-    def __init__(self, config_file=None, diz_trials=None, rootsave=None, config_class=None):
-        self.eseguito=False
+    def __init__(self, config_file=None, diz_trials=None, rootsave=None, config_class=None, reset_all_seeds=True, verbose=False):
+        self.verbose = verbose
         self.config_file = config_file
         if config_class:
             self.config_class = config_class
         elif config_file is not None:
             self.config_class = Config(self.config_file)                
         else:
-            assert False, "Inserire almeno uno tra un file di Configurazione o una classi di Configurazione"
+            assert False, "Inserire almeno uno tra un file di Configurazione o una classe di Configurazione"
 
         self.rootsave = rootsave
-        self.init_trainer()
+        self.init_trainer()  # serve Prima del make configs????
         self.gc = None
         self.diz_trials = diz_trials
 
-        all_seeds()
+        if reset_all_seeds:
+            all_seeds()
 
         if self.diz_trials:
-            self.gc = GridConfigurations(self.config_class, self.diz_trials)
+            self.gc = GridConfigurations(self.config_class, self.diz_trials, self.verbose)
             self.gc.make_configs()
 
         # risultati
@@ -411,9 +412,9 @@ class Experiments():
         if not self.config_class.conf['model']['autoencoder_graph_ae']:
             embedding_class = self.elaborate_embedding(graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output, self.trainer.model.linears)
         else:
-            embedding_class = self.elaborate_embedding_autoencoder(graph_embeddings_array, node_embeddings_array, final_output)
+            embedding_edges = get_embedding_edges(self.trainer.dataset.get_all_data_loader())
+            embedding_class = self.elaborate_embedding_autoencoder(graph_embeddings_array, node_embeddings_array, embedding_edges)
             
-
         return embedding_class
     
     def get_recon_graphs(self):
@@ -425,13 +426,11 @@ class Experiments():
         embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, self.trainer.dataset, self.trainer.config_class, output_array, modelparams)
         embedding_class.get_emb_per_graph()  # riempie node_emb_pergraph
         embedding_class.separate_embedding_by_classes()  # riempie node_emb_perclass e graph_emb_perclass
-        #if not self.config_class.conf['graph_dataset']['continuous_p']:
-        #    embedding_class.get_graph_emb_per_class()  # riempie
-
         return embedding_class
     
-    def elaborate_embedding_autoencoder(self, graph_embeddings_array, node_embeddings_array, output_array):
-        pass
+    def elaborate_embedding_autoencoder(self, graph_embeddings_array, node_embeddings_array, embedding_edges):
+        
+        return graph_embeddings_array, node_embeddings_array
 
     def take_corr(self, epoca):
         """

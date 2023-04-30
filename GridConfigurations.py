@@ -12,7 +12,8 @@ import experiments
 
 
 class GridConfigurations():
-    def __init__(self, config_class, dict_of_variables):
+    def __init__(self, config_class, dict_of_variables, verbose=False):
+        self.verbose = verbose
         self.dict_of_variables = dict_of_variables
         self.config_class = config_class
 
@@ -62,12 +63,15 @@ class GridConfigurations():
             except AssertionError as e:
                 #raise e
                 errors += 1
-                #print(f"Errore {repr(e)}, tolgo la riga {i}\n")
+                if self.verbose:
+                    print(f"AssertionError:\n {repr(e)}, tolgo la riga {i}\n")
                 righe_da_togliere.append(i)
             except Exception as e:
                 #raise e
-                errors +=1
+                errors += 1
                 print("Controllare errori non di assert")
+                if self.verbose:
+                    print(f"Errore generale:\n {repr(e)}, tolgo la riga {i}\n")
                 righe_da_togliere.append(i)
 
         df_cum.drop(index=righe_da_togliere, inplace=True)  # ricordare che è meglio non cambiare la lunghezza dell'array dentro al ciclo for

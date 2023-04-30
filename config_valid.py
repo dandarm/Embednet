@@ -51,6 +51,7 @@ class Config():
             self.load_conf()
             
         self.NumNodes = self.conf['graph_dataset']['Num_nodes']
+        self.length_list_NumNodes = len(self.NumNodes)
         
         self.modo = None
         self.graphtype = None
@@ -58,6 +59,7 @@ class Config():
         self.unique_train_name = "Noname"
         self.longstring_graphtype = "Nographtype"
         self.long_string_experiment = "Nostring"
+
         self.valid_conf()
         #self.reload_conf()
 
@@ -89,7 +91,7 @@ class Config():
         self.set_graphtype()
 
         # verifico che in graph_dataset ci sia un solo True
-        assert self.only1_graphtype(), "Errore nel config file: scegliere un solo tipo di grafi"
+        self.only1_graphtype()
 
         neurons_per_layer = self.conf['model']['GCNneurons_per_layer']
         if self.conf['model']['last_layer_dense']:
@@ -115,31 +117,25 @@ class Config():
         if self.modo['labels'] == Labels.zero_one:
             assert n_class == 2, 'Num classi in list_p non consistente con training mode'
 
-        # verifico che Num nodes sia consistente col training mode:
-        if self.graphtype != GraphType.REAL:
-            # nel caso di power law CM E SBM(!) -> voglio poter settare num nodes diverso per ogni classe  (per ogni comunità)
-            if isinstance( self.NumNodes, list):
-                assert self.graphtype == GraphType.CM or self.graphtype == GraphType.SBM
-            if isinstance( self.NumNodes, int):
-                assert self.graphtype != GraphType.CM
+        # verifico che Num nodes sia sempre una lista. nel caso di una classe o tutte uguali
+        # voglio dover speciricare lo stesso num nodes per ogni classe
+        if not isinstance(self.NumNodes, list):
+            raise ValueError('Num_nodes deve essere una lista')
 
         # verifico che nel caso dello SBM la Num_Nodes sia una matrice
-        if self.graphtype == GraphType.SBM:
-            assert isinstance( self.NumNodes, list), "Lo Stochastic Block Model richiede una lista per Num nodes"
+        #if self.graphtype == GraphType.SBM:
+        #    assert isinstance( self.NumNodes, list), "Lo Stochastic Block Model richiede una lista per Num nodes"
         #else:
         #    assert np.array(self.conf['graph_dataset']['list_p']).ndim == 1, "probabilità inserite come matrice ma non stiamo nel SBM"
 
 
+        # verifico che il numero di numnodes sia uguale al numero di classi
+        self.check_lungh_numnodes_with_classes()
 
-        # verifico nel cm multiclass che il numero di numnodes sia uguale al numero di esponenti
-        length_list_numnodes = len(self.NumNodes)
-        
-        if self.graphtype == GraphType.CM:
-            assert length_list_numnodes == len(self.conf['graph_dataset']['list_exponents']), f"{length_list_numnodes} != {len(self.conf['graph_dataset']['list_exponents'])}"
-            
-        # verifico che le BMS il numero di num nodes sia uguale al numero di comunità
+        # verifico che nel SBM il numero di num nodes sia uguale al numero di comunità
         if self.graphtype == GraphType.SBM:
-            assert length_list_numnodes == np.array(self.conf['graph_dataset']['community_probs']).shape[1], f"{length_list_numnodes} != {len(self.conf['graph_dataset']['community_probs'])}"
+            assert np.array(self.NumNodes).shape == np.array(self.conf['graph_dataset']['community_probs']).shape, \
+                f"Num_nodes non ha la stessa shape delle comunità nello SBM: {np.array(self.NumNodes.shape)} != {np.array(self.conf['graph_dataset']['community_probs']).shape}"
 
         self.unique_train_name, self.long_string_experiment = self.create_unique_train_name()
         #print(f"Training with {self.num_classes} classes")
@@ -168,12 +164,15 @@ class Config():
                     self.conf['graph_dataset'].get('sbm', False),
                      self.conf['graph_dataset'].get('real_dataset', False)]
         # check if bool_array contains one and only one True
-        true_found = False
-        for v in bool_array:
-            if v and not true_found:
-                true_found = True
-            elif v and true_found:
-                return False  # "Too Many Trues"
+        true_found = sum(bool_array)
+        # print(true_found)
+        # for v in bool_array:
+        #     if v and not true_found:
+        #         true_found = True
+        #     elif v and true_found:
+        #         return False  # "Too Many Trues"
+
+        assert true_found == 1, f"Errore nel config: scegliere un solo tipo di grafi: trovati {true_found}"
         return true_found
 
     def create_layer_neuron_string(self):
@@ -233,6 +232,12 @@ class Config():
     
         return nome, long_string
 
+    def check_lungh_numnodes_with_classes(self):
+        if not self.conf['model']['autoencoder']:
+            assert self.length_list_NumNodes == self.num_classes, f"Lunghezza di Num_nodes {self.length_list_NumNodes} != num classi {self.num_classes}"
+        else:
+            # nel caso di autoencoder non abbiamo nessun vincolo sul numero delle classi
+            pass
 
     def get_num_classes(self):
         if self.conf['graph_dataset']['ERmodel'] \
@@ -247,6 +252,8 @@ class Config():
         elif self.conf['graph_dataset'].get('real_dataset'):
             if self.conf['graph_dataset']['real_data_name'] == 'REDDIT-BINARY':
                 self.num_classes = 2
+            if self.conf['graph_dataset']['real_data_name'] == 'BACI':
+                self.num_classes = 0
         return self.num_classes
 
 
