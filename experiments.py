@@ -16,7 +16,7 @@ import torch_geometric.transforms as T
 
 from models import GAEGCNEncoder, view_parameters, get_param_labels, new_parameters, modify_parameters, new_parameters_linears, modify_parameters_linear
 from train import Trainer
-from train_autoencoder import Trainer_Autoencoder
+from train_autoencoder_inductive import Trainer_Autoencoder
 from train_autoencoderMIAGAE import Trainer_AutoencoderMIAGAE
 from train_debug_MIAGAE import Trainer_AutoencoderMIAGAE_DEBUG
 from embedding import Embedding
@@ -105,6 +105,9 @@ class Experiments():
         if self.config_class.conf['model']['autoencoder']:
             print("Autoencoder model")
             self.trainer = Trainer_Autoencoder(self.config_class)
+        elif self.config_class.conf['model']['autoencoder_confmodel']:
+            print("Autoencoder model con decoder CM")
+            self.trainer = Trainer_Autoencoder(self.config_class)
         elif self.config_class.conf['model']['autoencoder_graph_ae']:
             print("Autoencoder MIAGAE")
             self.trainer = Trainer_AutoencoderMIAGAE(self.config_class)
@@ -112,12 +115,12 @@ class Experiments():
         else:
             self.trainer = Trainer(self.config_class)
 
-    def GS_simple_experiments(self, list_points=100, parallel_take_result=True, do_plot=True):
+    def GS_simple_experiments(self, list_points=100, parallel_take_result=True, do_plot=True, **kwargs):
         global graph_embedding_per_epoch
         global node_embedding_per_epoch
         global output_per_epoch
-        #global dataset
-        #global exp_config
+        global dataset
+        global exp_config
         global embedding_dimension
         global trainmode
 
@@ -139,10 +142,11 @@ class Experiments():
 
             embedding_dimension = self.trainer.embedding_dimension  #  self.trainer.model.convs[-1].out_channels
             trainmode = self.trainer.config_class.modo
-            #dataset = self.trainer.dataset
-            #exp_config = self.trainer.config_class
+
 
             if self.config_class.conf['training']['every_epoch_embedding']:
+                dataset = self.trainer.dataset
+                exp_config = self.trainer.config_class
                 graph_embedding_per_epoch = self.trainer.graph_embedding_per_epoch
                 node_embedding_per_epoch = self.trainer.node_embedding_per_epoch
                 output_per_epoch = self.trainer.output_per_epoch
@@ -165,7 +169,7 @@ class Experiments():
                 plot_metrics(embedding_class, embedding_dimension, trainmode, self.trainer.test_loss_list, self.trainer.metric_list,
                              node_intrinsic_dimensions_total, graph_intrinsic_dimensions_total,
                              node_correlation, graph_correlation,
-                             sequential_colors=False, log=False)
+                             sequential_colors=False, log=False, **kwargs)
 
             k += 1
 
@@ -566,9 +570,13 @@ class Experiments():
         #print(node_embedding_per_epoch_.shape)
         if embedding_dimension > 1:
             bounds_for_plot = []
-            bounds_for_plot.append(axis_bounds(node_embedding_per_epoch_))
-            bounds_for_plot.append(axis_bounds(graph_embedding_per_epoch_))
-            bounds_for_plot.append(axis_bounds(output_per_epoch_))
+            try:
+                bounds_for_plot.append(axis_bounds(node_embedding_per_epoch_))
+                bounds_for_plot.append(axis_bounds(graph_embedding_per_epoch_))
+                bounds_for_plot.append(axis_bounds(output_per_epoch_))
+            except Exception as e:
+                print(e)
+                bounds_for_plot = None
         else:
             bounds_for_plot = None
 
@@ -745,18 +753,23 @@ def mylambda_figure(i):
         if bounds_for_plot is not None: axes[0][0].axis(bounds_for_plot[0])
         data.plot(datatype='graph_embedding', type='histogram', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
         if bounds_for_plot is not None: axes[0][1].axis(bounds_for_plot[1])
-        data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
-        if bounds_for_plot is not None: axes[0][2].axis(bounds_for_plot[2])
-    else:
+        if not data.config_class.autoencoding:
+            data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
+            if bounds_for_plot is not None: axes[0][2].axis(bounds_for_plot[2])
+    elif embedding_dimension == 2:
         data.plot(datatype='node_embedding', type='plot', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
         #if bounds_for_plot is not None: axes[0][0].axis(bounds_for_plot[0])
         data.plot(datatype='graph_embedding', type='plot', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
         #if bounds_for_plot is not None: axes[0][1].axis(bounds_for_plot[1])
-        data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
+        if not data.config_class.autoencoding:
+            data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
         #if bounds_for_plot is not None: axes[0][2].axis(bounds_for_plot[2])
     #scatter_node_emb(embedding_class.emb_perclass, ax=axes[0][0], show=False, close=False, sequential_colors=True)
     #plot_graph_emb_1D(embedding_class.emb_perclass, ax=axes[0][1], show=False, close=False, sequential_colors=True)
     #axes[0][2].hist(np.array(output_array).flatten(), bins=50);
+    else:
+        data.plot(datatype='graph_embedding', type='plot', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
+
 
     # plot Test loss e accuracy senza outlier
     # test loss

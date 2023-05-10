@@ -43,6 +43,23 @@ class GridConfigurations():
 
         # Riprendo la gerarchia del file yaml
         df_cum.columns = df_cum.columns.str.split('.', expand=True)
+
+        # voglio togliere prima le righe relative ai trial in cui dataset è real dove ho degenerazione di parametri per i grafi sintetici
+        # così non sono neanche inserite nei configs
+        # colonne eccetto quelle relative a graph_dataset:
+        other_cols = df_cum.columns[df_cum.columns.get_level_values(0) != 'graph_dataset']
+        # filtro i duplicati secondo tutte le altre colonne (poiché contiene liste devo usare astype(str))
+        # queste che rimangono sono le righe utile tra tutte quelle con dataset reale
+        real_ds_rows = df_cum['graph_dataset']['real_dataset']
+        col2sort = [('graph_dataset','ERmodel'),('graph_dataset','confmodel'), ('graph_dataset','sbm'), ('graph_dataset','regular')]
+        #indici_rimanenti = df_cum[real_ds_rows].astype(str).drop_duplicates(subset=other_cols, keep='first').index
+        # voglio mantenere la riga dove tutti i graphtype sintetici siano False:
+        # devo ordinarli mettendoli al primo posto, poi il drop ducplicates tieni la prima riga
+        indici_rimanenti = df_cum[real_ds_rows].sort_values(col2sort, ascending=True).astype(str).drop_duplicates(subset=other_cols, keep='first').index
+        # filtro via i ripetuti su dataset real e tengo quelli con dataset sintetici (~real_ds_rows)
+        df_cum = pd.concat([df_cum.loc[indici_rimanenti], df_cum[~real_ds_rows]])
+        df_cum.reset_index(drop=True, inplace=True)
+
         self.configs = []
         errors = 0
         righe_da_togliere = []
@@ -67,7 +84,7 @@ class GridConfigurations():
                     print(f"AssertionError:\n {repr(e)}, tolgo la riga {i}\n")
                 righe_da_togliere.append(i)
             except Exception as e:
-                #raise e
+                raise e
                 errors += 1
                 print("Controllare errori non di assert")
                 if self.verbose:
@@ -75,7 +92,8 @@ class GridConfigurations():
                 righe_da_togliere.append(i)
 
         df_cum.drop(index=righe_da_togliere, inplace=True)  # ricordare che è meglio non cambiare la lunghezza dell'array dentro al ciclo for
-        print(f"{errors} configurazioni saltate su {num_trials}, farò i seguenti {num_trials - errors} training:")
+
+        print(f"{errors} configurazioni saltate su {num_trials}, farò i seguenti {num_trials - errors} training: ")
         for c in self.configs:
             print(f'{c.unique_train_name}')
         # posso tornare a un indice sequenziale, anzi devo perché per riempire il df coi risultati non so quali sono gli indici di riga, ma riempio sequenzialmente ciclando sulle configs

@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch_geometric.utils import to_dense_adj
 from torch_geometric.nn.aggr.basic import MeanAggregation
 from train import Trainer
-from train_autoencoder import Trainer_Autoencoder
+from train_autoencoder_inductive import Trainer_Autoencoder
 from models import GCN, AutoencoderGCN, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
 from model_MIAGAE import AutoencoderMIAGAE
 from Dataset_autoencoder import DatasetAutoencoder, DatasetReady

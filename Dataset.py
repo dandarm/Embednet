@@ -23,13 +23,27 @@ class GeneralDataset:
         self.exponent = kwarg.get('exponent')
         self.scalar_label = kwarg.get('scalar_label')
 
+        # devo ricalcolare il num_nodes_per_graph
+        self._num_nodes_per_graph = None
+
+    @property
+    def num_nodes_per_graph(self):
+        if self._num_nodes_per_graph is None:
+            self._num_nodes_per_graph = [len(data.x) for data in self.dataset_pyg]
+        return self._num_nodes_per_graph
+
         #calcola il max degree
         #[dataset_list]
 
 class Dataset(GeneralDataset):
 
-    def __init__(self, percentage_train, batch_size, device, config_class, dataset_list, labels, original_node_class, exponent, actual_node_class, scalar_label):
-        super().__init__(dataset_list, labels, original_node_class=original_node_class, exponent=exponent, actual_node_class=actual_node_class, scalar_label=scalar_label)
+    def __init__(self, percentage_train, batch_size, device, config_class, dataset_list, labels, original_node_class, exponent, actual_node_class, scalar_label,_num_nodes_per_graph):
+        super().__init__(dataset_list, labels,
+                         original_node_class=original_node_class,
+                         exponent=exponent,
+                         actual_node_class=actual_node_class,
+                         scalar_label=scalar_label,
+                         _num_nodes_per_graph=_num_nodes_per_graph)
         #self.dataset_list = dataset_list  # rename in dataset_list
         self.dataset_pyg = None
         #self.labels = labels

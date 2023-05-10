@@ -8,6 +8,7 @@ from torch_geometric import nn
 from torch_geometric.nn.aggr.basic import MeanAggregation
 import torch.nn.functional as F
 from torch_geometric.datasets import Planetoid
+from torch_geometric.nn.models.autoencoder import InnerProductDecoder
 
 from config_valid import Inits
 
@@ -25,7 +26,7 @@ class GCN(torch.nn.Module):
         self.node_features_dim = self.conf['model']['node_features_dim']
         self.freezeGCNlayers = self.conf['model'].get('freezeGCNlayers', False)
 
-        self.autoencoder = self.conf['model']['autoencoder']
+        self.autoencoder = self.conf['model']['autoencoder'] or self.conf['model'].get('autoencoder_confmodel')
         self.put_batchnorm = self.conf['model']['put_batchnorm']
         self.put_dropout = self.conf['model'].get('put_dropout', False)
         self.last_linear = self.conf['model']['last_layer_dense']
@@ -348,6 +349,9 @@ def simpleautoencoder(num_features, out_channels):
     return model
 
 
+
+  # uso solo i seguenti al momento
+
 class AutoencoderGCN(GCN):
     def __init__(self, encoder, **kwargs):
         super().__init__(**kwargs)
@@ -357,8 +361,12 @@ class AutoencoderGCN(GCN):
         self.linears = encoder.linears
         # self.__dict__.update(dic_attr)
 
-    def set_decoder(self, encoder):
-        self.decoder = GAE(encoder)
+    def set_decoder(self, encoder, decoder=None):
+        if decoder is not None:
+            # necessario per attaccare corretatmente il decoder al GAE
+            self.decoder = GAE(encoder, decoder=decoder)
+        else:
+            self.decoder = GAE(encoder)
 
     #def forward(self, x, edge_index, batch=None, graph_embedding=False, node_embedding=False):
     #    return self.decoder(x, edge_index, batch, graph_embedding, node_embedding)
@@ -375,5 +383,24 @@ class AutoencoderGCN(GCN):
     def from_parent_instance(cls, dic_attr, parent_instance):
         #return cls(dic_attr, **parent_instance.__dict__)
         return cls(encoder=parent_instance, config_class=parent_instance.config_class)
+
+
+class ConfModelDecoder(InnerProductDecoder):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def forward(self, z, edge_index, sigmoid=True):
+        value = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
+        value = value / (1 + value)
+        return torch.sigmoid(value) if sigmoid else value
+
+    def forward_all(self, z, sigmoid=True):
+        adj = torch.matmul(z, z.t())
+        value = adj / (1 + adj)
+        return torch.sigmoid(value) if sigmoid else value
+
+
+
+
 
 # endregion

@@ -3,7 +3,7 @@ sys.path.append("../")
 from abc import abstractmethod
 import pickle
 import torch
-from graph_generation import  GenerateGraph, GenerateGraph_from_numpyarray
+from graph_generation import GenerateGraph, GenerateGraph_from_numpyarray
 from Graph_AE.utils.CustomDataSet import SelectGraph
 
 
@@ -21,12 +21,18 @@ class TakeRealDataset():
         if self.dataset_name == 'REDDIT-BINARY':
             dataset = TakeTUDataset(self.config_class).get_dataset()
             self.gg = GenerateGraph(self.config_class)
-            self.gg.dataset = dataset
+            self.gg.dataset = dataset  # il dataset di gg in genere è una lista, in questo caso di oggetti Data
+            self.gg.num_nodes_per_graph = self.get_num_nodes_per_graph(dataset)
         if self.dataset_name == 'BACI':
-            dataset = TakeWTWdataset(self.config_class).get_dataset()
+            gg = TakeWTWdataset(self.config_class).get_dataset()
+            self.gg = gg
             # TakeWTWdataset già istanzia un gg e il gg.dataset
 
-
+    def get_num_nodes_per_graph(self, dataset):
+        num = []
+        for d in dataset:
+            num.append(d.num_nodes)
+        return num
 
     
     
@@ -44,7 +50,9 @@ class TakeTUDataset(TakeRealDataset):
         dataset_mod = []
         for d in data_set:
             if d.x is None:
-                d.x = torch.ones([d.num_nodes], dtype=torch.float).unsqueeze(1) 
+                d.x = torch.ones([d.num_nodes], dtype=torch.float).unsqueeze(1)
+            if d.y is None:  # aggiungo la graph label y
+                d.y = torch.ones(1, dtype=torch.int8)
             dataset_mod.append(d)
         return dataset_mod
         
@@ -60,4 +68,4 @@ class TakeWTWdataset(TakeRealDataset):
 
         self.gg = GenerateGraph_from_numpyarray(self.config_class, list_adj)
         self.gg.create_nx_graphs()
-        return self.gg.dataset
+        return self.gg

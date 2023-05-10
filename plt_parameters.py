@@ -16,8 +16,8 @@ def init_params():
     #mpl.rcParams['xtick.major.size'] = 10
     #plt.rc('xtick',labelsize=8)
     #plt.rc('ytick',labelsize=8)
-    plt.rc('xtick', labelsize=16)#, direction='out', color='gray')
-    plt.rc('ytick', labelsize=16)#, direction='out', color='gray')
+    plt.rc('xtick', labelsize=12)#, direction='out', color='gray')
+    plt.rc('ytick', labelsize=12)#, direction='out', color='gray')
     #####plt.rc('patch', edgecolor='#E6E6E6')
     plt.rc('lines', linewidth=2)
 
@@ -29,7 +29,7 @@ def init_params():
     plt.rc('axes', titlesize='large')
     plt.rcParams.update({'figure.titlesize': 'large'})
     plt.rcParams.update({'axes.titlesize': 'large'})
-    plt.rcParams['axes.labelsize'] = 16
+    plt.rcParams['axes.labelsize'] = 12
     plt.rcParams['axes.titlesize'] = 18
     plt.rcParams['figure.titlesize'] = 20
     #plt.xlabel('Degrees', fontsize=16);

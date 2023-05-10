@@ -2,6 +2,7 @@ import itertools
 from scipy import stats
 import yaml
 import ctypes
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import multiprocessing as mp
@@ -18,6 +19,7 @@ from config_valid import Config, TrainingMode
 
 import torch
 from torch_geometric.loader import DataLoader
+
 device = torch.device('cuda')
 from motif_count import init_worker, get_valid_p, build_permutation_complete_graph
 
@@ -25,7 +27,9 @@ import asyncio
 
 import networkx.algorithms.isomorphism as iso
 
-
+pd.set_option('display.max_rows', 500)
+pd.set_option('display.max_columns', 10)
+pd.set_option('display.width', 400)
 
 rootsave = Path("output_plots/")
 
@@ -130,17 +134,18 @@ def count_non_iso_motif_up_to_n(n):
 
 def autoencoder():
     config_file = "configurations/Final1.yml"
-    num_nodi = 200
+    num_nodi = 117
     c = Config(config_file)
     # c.conf['graph_dataset']['Num_nodes'] = [num_nodi]
     # c.conf['graph_dataset']['list_exponents'] = [-2.5]
-    c.conf['model']['autoencoder'] = True
+    c.conf['model']['autoencoder'] = False
+    c.conf['model']['autoencoder_confmodel'] = True
     c.conf['model']['autoencoder_graph_ae'] = False
     diz_trials = {'graph_dataset.ERmodel': [False],
-                  'graph_dataset.confmodel': [False],
+                  'graph_dataset.confmodel': [True, False],
                   'graph_dataset.sbm': [False],
-                  'graph_dataset.real_dataset': [True],
-                  # 'graph_dataset.Num_nodes': [[num_nodi]*5, [num_nodi]*3],  # per lo SBM: num nodi * num comunità
+                  'graph_dataset.real_dataset': [False],
+                  'graph_dataset.Num_nodes': [[num_nodi]*5, [num_nodi]*3, [[num_nodi, int(num_nodi/2)]]*3],  # per lo SBM: num nodi * num classi * num comunità
                   'model.GCNneurons_per_layer': [  # [1, 32, 16, len(c.conf['graph_dataset']['list_exponents'])],
                       # [1, 32, 16, len(c.conf['graph_dataset']['list_p'])],
                       # [1, 32, 16, len(c.conf['graph_dataset']['community_probs'])],
@@ -151,7 +156,7 @@ def autoencoder():
                   'model.last_layer_dense': [False],
                   }
 
-    xp = Experiments(diz_trials=diz_trials, rootsave=rootsave, config_class=c, reset_all_seeds=False, verbose=True)
+    xp = Experiments(diz_trials=diz_trials, rootsave=rootsave, config_class=c, reset_all_seeds=False, verbose=False)
     xp.GS_simple_experiments()
 
 

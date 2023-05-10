@@ -26,6 +26,7 @@ class Data2Plot():
         - node embedding: un array per ogni grafo che descrive i nodi
     """
     def __init__(self, input_obj, dim, config_class=None):
+        self.config_class = config_class
         self.input_obj = input_obj
         self.array2plot = []
         self.class_labels = []
@@ -36,6 +37,7 @@ class Data2Plot():
                 mapdict = {str(c): i for i, c in enumerate(config_class.conf['graph_dataset']['community_probs'])}
                 self.allgraph_class_labels = np.array([[mapdict[str(emb.scalar_label)] for emb in emb_per_graph] for emb_per_graph in self.input_obj])
         self.allnode_labels = [[emb.actual_node_class for emb in emb_per_graph] for emb_per_graph in self.input_obj]
+        self.allnode_labels_scalar_class = [[[emb.scalar_label]*len(emb.actual_node_class) for emb in emb_per_graph] for emb_per_graph in self.input_obj]
         #self.set_data()
 
     def set_data(self, type=None):
@@ -82,27 +84,32 @@ class Data2Plot():
             num_tot = len(self.input_obj) * len(self.input_obj[0]) * len(self.input_obj[0][0].node_embedding_array)
         elif type == 'graph_embedding' or type == 'final_output':
             num_tot = len(self.input_obj) * len(self.input_obj[0])
-        alpha_value = min(1, 3000 / num_tot)
+        alpha_value = min(1, 2000 / num_tot)
         return alpha_value
+
     def plot(self, datatype = 'node_embedding', type='histogram',
              ax=None, filename=None, ylim=None, xlim=None,
              sequential_colors=False, log=False, title=None):
         self.set_data(datatype)
-        if (self.array2plot == None).all():
+        if self.array2plot is None: #.all():
             return
+        alpha_value = self.get_alpha_value(datatype)
         if self.dim > 2:
+            #print(f"shape array:  {self.array2plot.shape}")
             array2plotflattened = self.array2plot.reshape(-1, self.array2plot.shape[-1])
             emb_data = self.calc_umap(array2plotflattened)
             if datatype == 'node_embedding':
-                labels_ripetute_pergraph = np.array(self.allnode_labels).flatten()
+                #print(f"labels ripetute pergraph prima: {np.array(self.allnode_labels_scalar_class).shape}")
+                labels_ripetute_pergraph = np.array(self.allnode_labels_scalar_class).flatten()
             elif datatype == 'graph_embedding' or datatype == 'final_output':
+                #print(f"labels ripetute pergraph prima: {np.array(self.allgraph_class_labels).shape}")
                 labels_ripetute_pergraph = np.array(self.allgraph_class_labels).flatten()
+            #print(f"labels ripetute pergraph dopo: {labels_ripetute_pergraph.shape}")
             cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", get_colors_to_cycle_rainbow8())
             #cmap = matplotlib.colors.ListedColormap(get_colors_to_cycle_sequential(len(self.input_obj)), name='from_list', N=None)
-            ax.scatter(emb_data[:, 0], emb_data[:, 1], c=labels_ripetute_pergraph, cmap=cmap) #'gist_rainbow');
+            ax.scatter(emb_data[:, 0], emb_data[:, 1], c=labels_ripetute_pergraph, cmap=cmap, alpha=alpha_value) #'gist_rainbow');
 
         else:
-            alpha_value = self.get_alpha_value(datatype)
             if ax is None:
                 fig, ax = plt.subplots(figsize=(12, 6))
             custom_lines = []
@@ -163,7 +170,9 @@ class Data2Plot():
         return sc1
 
     def calc_umap(self, data):
-        embedding = umap.UMAP().fit_transform(data)
+        print("UMAP...")
+        #print(f"shape array: {data.shape}")
+        embedding = umap.UMAP(n_epochs=10, n_neighbors=10, n_jobs=32, verbose=False).fit_transform(data)
         return embedding
 
 
@@ -171,7 +180,7 @@ class Data2Plot():
 def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list=None, current_metric_list=None,
                  node_intrinsic_dimensions_total=None, graph_intrinsic_dimensions_total=None,
                  node_correlation=None, graph_correlation=None,
-                 sequential_colors=False, log=False):
+                 sequential_colors=False, log=False, **kwargs):
     data = Data2Plot(embedding_class.emb_perclass, dim=num_emb_neurons, config_class=embedding_class.config_class)
     if num_emb_neurons == 1:
         print("Plotting 1D embeddings...")
@@ -186,7 +195,8 @@ def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list
         # scatter_node_emb(embedding_class.emb_perclass, sequential_colors=False, filename=None)
         data.plot(datatype='node_embedding', type='scatter', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
         data.plot(datatype='graph_embedding', type='histogram', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
-        data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
+        if not data.config_class.autoencoding:
+            data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
 
         axes[1][1].plot(node_correlation, linestyle='None', marker='.', color='red', label='Node Correlation')
         axes[1][1].plot(graph_correlation, linestyle='None', marker='.', color='blue', label='Graph Correlation')
@@ -202,9 +212,11 @@ def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list
         #plot_dimN(embedding_class, 300)
         #plot_node_emb_nD(embedding_class.emb_perclass, ax=ax1)
         #plot_graph_emb_nD(embedding_class.emb_perclass, ax=ax2)
-        data.plot(datatype='node_embedding', type='plot', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
+        if kwargs.get('plot_node_embedding', True):
+            data.plot(datatype='node_embedding', type='plot', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
         data.plot(datatype='graph_embedding', type='plot', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
-        data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
+        if not data.config_class.autoencoding:
+            data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
 
         if node_intrinsic_dimensions_total is not None and graph_intrinsic_dimensions_total is not None:
             axes[1][1].plot(node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
@@ -219,20 +231,24 @@ def plot_metrics(embedding_class, num_emb_neurons, training_mode, test_loss_list
     # plot Test loss e accuracy senza outlier
     # test loss
     loss_list_min, loss_list_max = min(array_wo_outliers(test_loss_list)), max(array_wo_outliers(test_loss_list))
-    axes[1][0].plot(test_loss_list, color='black', label='Test Loss')
+    ploss, = axes[1][0].plot(test_loss_list, color='black', label='Test Loss')
     axes[1][0].set_ylim(loss_list_min, loss_list_max)
     axes[1][0].set_xlim(0, len(test_loss_list))
-    # axes[1][0].set_ylabel('Test Loss')#, fontsize=16);
-    axes[1][0].legend()
+    #axes[1][0].set_ylabel('Test Loss', fontsize=12);
+    axes[1][0].legend(loc='lower left')
+    #axes[1][0].yaxis.label.set_color(ploss.get_color())
 
     # plot accuracy
+    #if not (data.config_class.conf['model'].get('autoencoder') or data.config_class.conf['model'].get('autoencoder_confmodel')):
     axt = axes[1][0].twinx()
-    axt.plot(current_metric_list, color='blue', label='Accuracy')
+    pmetric, = axt.plot(current_metric_list, color='blue', label='Test metric')
     axt.set_ylim(0, 1)
-    # axt.set_ylabel('Accuracy')#, fontsize=16);
+    #axt.set_ylabel('Test metric', fontsize=12);
     axt.set_xlim(0, len(current_metric_list))
-    axt.set_yticklabels([])
-    axt.legend()
+#    axt.set_yticklabels([0.0,1.0])
+    axt.legend(loc='upper right')
+    #axt.yaxis.label.set_color(pmetric.get_color())
+    axt.tick_params(axis='y', colors=pmetric.get_color())
 
     plt.show()
 

@@ -21,8 +21,12 @@ class Embedding():
         self.training_labels = dataset.labels  # sono le label dettate dal training mode ad uso della training loss
         self.exponents = dataset.exponent
         self.original_node_class = dataset.original_node_class
+        # devo essere sicuro che actual node class abbia la stessa shape del numero di nodi per grafo
+        # così posso usarla per suddividere gli embedding anche nel caso di dataset reali, che quindi hanno num nodi che non viene dal config
         self.actual_node_class = dataset.actual_node_class
         self.scalar_class = dataset.scalar_label
+
+        self.num_nodes_per_graph = dataset.num_nodes_per_graph
 
         self.config_class = config_c
 
@@ -68,12 +72,13 @@ class Embedding():
         né tantomeno in quanti nodi sono rimasti dopo il pruning dei nodi sconnessi, come cioè mi serve ora
         """
 
-        Num_nodi = self.config_class.conf['graph_dataset']['Num_nodes']
-        if isinstance(Num_nodi, list):
-            if self.config_class.conf['graph_dataset']['sbm']:
-                Num_nodi = sum(Num_nodi)
-            else:
-                Num_nodi = Num_nodi[0]
+        #Num_nodi = self.config_class.conf['graph_dataset']['Num_nodes']
+        #if isinstance(Num_nodi, list):
+        #    if self.config_class.conf['graph_dataset']['sbm']:
+        #        Num_nodi = sum(Num_nodi)
+        #    else:
+        #        Num_nodi = Num_nodi[0]
+
         total_num_grafi = len(self.dataset_nx)
         r = 0
         for i in range(total_num_grafi):
@@ -100,7 +105,8 @@ class Embedding():
                 scalar_label = self.scalar_class[i]
 
             graph_emb = self.graph_embedding_array[i]
-            node_emb = self.node_embedding_array[r:r + Num_nodi]
+            #node_emb = self.node_embedding_array[r:r + Num_nodi]
+            node_emb = self.node_embedding_array[r:r + self.num_nodes_per_graph[i]]
             graph_output = self.output_array[i]
 
             # poiché nel training prepare ho shufflato coerentemente sia dataset_pyg che original_class che labels,
@@ -109,7 +115,7 @@ class Embedding():
                                            node_label_and_id, actual_node_label, original_nodel_label, scalar_label,
                                            graph_output)
             self.emb_pergraph.append(toappend)
-            r += Num_nodi
+            r += self.num_nodes_per_graph[i]
 
     def separate_embedding_by_classes(self):
         # devo gestire il caso in cui i target non siano scalari

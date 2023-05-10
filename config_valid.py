@@ -60,6 +60,11 @@ class Config():
         self.longstring_graphtype = "Nographtype"
         self.long_string_experiment = "Nostring"
 
+        self.autoencoding = False
+        if (self.conf['model'].get('autoencoder') or
+                self.conf['model'].get('autoencoder_confmodel')):
+            self.autoencoding = True
+
         self.valid_conf()
         #self.reload_conf()
 
@@ -103,7 +108,7 @@ class Config():
 
         # verifico che l'ultimo neurone sia consistente col training mode
         self.get_num_classes()
-        if not (self.conf['model'].get('autoencoder') or self.conf['model'].get('autoencoder_graph_ae')):
+        if not (self.conf['model'].get('autoencoder') or self.conf['model'].get('autoencoder_confmodel') or self.conf['model'].get('autoencoder_graph_ae')):
             if self.lastneuron == 1:
                 assert self.lastneuron == self.modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
             else:
@@ -134,8 +139,10 @@ class Config():
 
         # verifico che nel SBM il numero di num nodes sia uguale al numero di comunità
         if self.graphtype == GraphType.SBM:
-            assert np.array(self.NumNodes).shape == np.array(self.conf['graph_dataset']['community_probs']).shape, \
-                f"Num_nodes non ha la stessa shape delle comunità nello SBM: {np.array(self.NumNodes.shape)} != {np.array(self.conf['graph_dataset']['community_probs']).shape}"
+            shape_nodi = np.array(self.NumNodes).shape
+            shape_comunity = np.array(self.conf['graph_dataset']['community_probs']).shape[:-1]
+            assert shape_nodi == shape_comunity, \
+                f"Num_nodes non ha la stessa shape delle comunità nello SBM: {shape_nodi} != {shape_comunity}"
 
         self.unique_train_name, self.long_string_experiment = self.create_unique_train_name()
         #print(f"Training with {self.num_classes} classes")
@@ -158,11 +165,14 @@ class Config():
             self.longstring_graphtype = self.conf['graph_dataset']['real_data_name']
 
     def only1_graphtype(self):
+        #if self.conf['graph_dataset'].get('real_dataset', False):
+        #    print("Dataset reale: ignoro tutti gli altri graphtype sintetici")
+        #    return 1
         bool_array = [self.conf['graph_dataset']['ERmodel'],
                     self.conf['graph_dataset']['regular'],
                     self.conf['graph_dataset']['confmodel'],
                     self.conf['graph_dataset'].get('sbm', False),
-                     self.conf['graph_dataset'].get('real_dataset', False)]
+                    self.conf['graph_dataset'].get('real_dataset', False)]
         # check if bool_array contains one and only one True
         true_found = sum(bool_array)
         # print(true_found)
@@ -193,27 +203,39 @@ class Config():
         return res
 
     def create_unique_train_name(self):
+        tipo_grafo = ""
         if self.graphtype != GraphType.REAL:
+            tipo_grafo = "GraphType-"
             numnodi = self.conf['graph_dataset']['Num_nodes']
             if isinstance(numnodi, list):
                 numnodi = numnodi[0]
             numgrafi = self.conf['graph_dataset']['Num_grafi_per_tipo']            
             if self.graphtype == GraphType.CM:
+                tipo_grafo += "CM"
                 data_label = self.conf['graph_dataset']['list_exponents']
                 if isinstance(data_label, list):
                     data_label = f"{len(data_label)}exps"
             elif self.graphtype == GraphType.ER:
+                tipo_grafo += "ER"
                 data_label = self.conf['graph_dataset']['list_p']
             elif self.graphtype == GraphType.SBM:
+                tipo_grafo += "SBM"
                 data_label = self.conf['graph_dataset']['community_probs']
         
         elif self.graphtype == GraphType.REAL:
             numnodi = ""
             numgrafi = ""
             data_label = ""
+            tipo_grafo = self.conf['graph_dataset']['real_data_name']
                 
         percentuale_train = self.conf['training']['percentage_train']
         modo = self.conf['training']['mode']
+        if self.conf['model']['autoencoder']:
+            modo = "AE"
+        if self.conf['model']['autoencoder_confmodel']:
+            modo = "AE_CM"
+        if self.conf['model']['autoencoder_graph_ae']:
+            modo = "MIAGAE"
         freezed = self.conf['model']['freezeGCNlayers']
         lr = self.conf['training']['learning_rate']
         layer_neuron_string = self.create_layer_neuron_string()
@@ -223,20 +245,23 @@ class Config():
         else:
             init_weights = ""            
 
-        nome = f"{self.graphtype}_Classi{self.num_classes}_nodi{numnodi}_grafiXtipo{numgrafi}_{modo}_layers{layer_neuron_string}_initw-{init_weights}_lr{lr}_GCNfreezed{freezed}"
+        nome = f"{tipo_grafo.ljust(15, '_')}_Classi{self.num_classes}_nodi{str(numnodi).ljust(13, '_')}_grafiXtipo{str(numgrafi).ljust(4, '_')}_{modo.ljust(6, '_')}_layers{layer_neuron_string}_initw-{init_weights.ljust(10, '_')}_lr{lr}_GCNfreezed{freezed}"
         nome = nome.replace(', ', '_')
 
         # creo stringa lunga
+        #print(f"{sensori_eolici_rt.get(sensore[0]):<20}  -  Totale record: {df.shape[0]:<6} \t Record mancanti: {gaps.shape[0]:<6} ({round(gaps.shape[0] / df.shape[0], 2) * 100}%) \t vento calmo: {righe_ventocalmo}")
         long_string = f"{self.longstring_graphtype} - {numnodi} nodi - {numgrafi} grafi per classe \n {layer_neuron_string} - {init_weights} - lr:{lr} - GCNfreezed:{freezed}"
             
     
         return nome, long_string
 
     def check_lungh_numnodes_with_classes(self):
-        if not self.conf['model']['autoencoder']:
+        # TODO nel caso di autoencoder devo o no controllare il numero di classi ? forse è solo per dataset reali
+        if not self.conf['graph_dataset']['real_dataset']:
             assert self.length_list_NumNodes == self.num_classes, f"Lunghezza di Num_nodes {self.length_list_NumNodes} != num classi {self.num_classes}"
         else:
-            # nel caso di autoencoder non abbiamo nessun vincolo sul numero delle classi
+            # nel caso di dataset reale non devo controllare che numnodes sia qualcosa,
+            # perché non decido io i nodi
             pass
 
     def get_num_classes(self):

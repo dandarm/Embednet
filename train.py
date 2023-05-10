@@ -176,6 +176,7 @@ class Trainer():
             self.dataset.prepare(self.shuffle_dataset, parallel)
         else:
             if self.config_class.conf['graph_dataset']['real_data_name'] == 'REDDIT-BINARY':
+                # con questo dataset abbiamo già una lista di oggetti Data
                 self.dataset = DatasetReady(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
             elif self.config_class.conf['graph_dataset']['real_data_name'] == 'BACI':
                 self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
@@ -459,7 +460,7 @@ class Trainer():
         for epoch in tqdm(range(self.epochs), total=self.epochs):
             train_loss = self.train()
             writer.add_scalar("Train Loss", train_loss, epoch)
-            if epoch % 10 == 0:
+            if epoch % 100 == 0:
                 test_loss = self.test(self.dataset.test_loader)
                 writer.add_scalar("Test Loss", test_loss, epoch)
 

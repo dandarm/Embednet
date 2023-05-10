@@ -12,6 +12,7 @@ from multiprocessing import Pool
 
 class DatasetAutoencoder(Dataset):
     """
+    Transductive autoencoder
     Questo Dataset splitta i link in positive e negative test per calcolare una AUC
     """
     def __init__(self, percentage_train, batch_size, device, config_class, dataset_list, labels, original_node_class, exponent, actual_node_class, scalar_label):
@@ -122,6 +123,8 @@ class DatasetReady(Dataset):
         #self.transform4ae = T.RandomLinkSplit(num_val=0.0, num_test=test_percent, is_undirected=True, split_labels=True, add_negative_train_samples=False)
         self.all_data_loader = None
         self.dataset_pyg = dataset_list
+
+        self.labels = np.array([d.y.numpy() for d in self.dataset_pyg]).squeeze()
         
         for pyg_graph in self.dataset_pyg:
             pyg_graph = pyg_graph.to(self.device)
@@ -136,6 +139,8 @@ class DatasetReady(Dataset):
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.bs, shuffle=False, worker_init_fn=self.seed_worker, num_workers=0)
 
         self.all_data_loader = self.get_all_data_loader()
+
+        # rimangono altre variabili da riempire
 
     def get_all_data_loader(self):
         # non ha senso applicare,l'autoencoder a tutti i link...
