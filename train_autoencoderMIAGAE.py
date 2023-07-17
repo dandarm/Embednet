@@ -174,7 +174,7 @@ class Trainer_AutoencoderMIAGAE(Trainer):
             start_out = torch.cat((start_out, out.unsqueeze(0)))
         return start_out[1:]  # perché la prima riga è vuota
     
-    def forward_all(self, z, sigmoid=True):
+    def forward_all(self, z, sigmoid=False):
         r"""Decodes the latent variables :obj:`z` into a probabilistic dense
         adjacency matrix.
 

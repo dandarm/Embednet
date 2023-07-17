@@ -9,15 +9,14 @@ from config_valid import Config, TrainingMode
 from scipy.stats import kendalltau
 import skdim
 
+import torch
 class Embedding():
     def __init__(self, graph_embedding_array, node_embedding_array, dataset, config_c=None, output_array=None, model_params=None):
         self.graph_embedding_array = graph_embedding_array
         self.node_embedding_array = node_embedding_array
         self.output_array = output_array
-        self.model_params = model_params
+        #self.model_params = model_params
 
-        #dataset = dataset
-        # tolgo il dataset dalla classe embedding
         self.training_labels = dataset.labels  # sono le label dettate dal training mode ad uso della training loss
         self.exponents = dataset.exponent
         self.original_node_class = dataset.original_node_class
@@ -67,9 +66,9 @@ class Embedding():
     def get_emb_per_graph(self):
         """
         Suddivide i node embeddings per ciascun grafo, e riempie in self.node_emb_pergraph
-        -> riprendo gli embeddings suddividendo i nodi come sono le lunghezze di original class (in questo caso la sequenza di grado, che quindi è lunga come il num di nodi)
-        poiché gli embedding presi come output della rete vengono dal dataloader che suddivide in batch size, non in Num_grafi_per_tipo,
-        né tantomeno in quanti nodi sono rimasti dopo il pruning dei nodi sconnessi, come cioè mi serve ora
+        -> riprendo gli embeddings suddividendo i nodi come dato da self.num_nodes_per_graph
+        (poiché gli embedding presi come output della rete vengono dal dataloader che suddivide in batch size, non in Num_grafi_per_tipo,
+        né tantomeno in quanti nodi sono rimasti dopo il pruning dei nodi sconnessi)
         """
 
         #Num_nodi = self.config_class.conf['graph_dataset']['Num_nodes']
@@ -97,8 +96,6 @@ class Embedding():
                 original_nodel_label = self.original_node_class[i]
 
             node_label_and_id = None
-            #if self.original_node_class is not None:
-            #    node_label_and_id = self.original_node_class[i]
 
             scalar_label = None
             if self.scalar_class:
@@ -404,15 +401,16 @@ class Embedding():
 
         return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_graph_emb_dim
 
-    def get_metrics(self, num_emb_neurons, training_mode):
+    def get_metrics(self, num_emb_neurons):
         if num_emb_neurons == 1:
             self.calc_graph_emb_correlation()  # calcola self.graph_correlation_per_class o self.total_graph_correlation
             self.calc_node_emb_correlation()
-            if training_mode == TrainingMode.mode3:
-                self.calc_regression_error()
+            #if training_mode == TrainingMode.mode3:
+            #    self.calc_regression_error()
         else:
+            pass
             #self.calc_distances(num_emb_neurons)  # calcola self.difference_of_means
-            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_graph_emb_dim = self.calc_instrinsic_dimension(num_emb_neurons)
+            #self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_graph_emb_dim = self.calc_instrinsic_dimension(num_emb_neurons)
 
 
 class Embedding_per_graph():
@@ -454,4 +452,160 @@ class Embedding_per_graph():
         self.kendall_with_degree, p_value = kendalltau(node_emb_array, self.actual_node_class)  # TODO: node_label flatten!!!
 
 
+class Embedding_autoencoder_per_graph():
+    """
+    E' sempre un embedding per graph, specifico per le esigenze dell'autoencoder:
+    traccia l'output del decoder oltre all'embedding
+    :return:
+    """
 
+    def __init__(self, node_embedding, input_adj_mat=None):
+        """
+        :param node_embedding:  è considerato già appartenente a un solo grafo
+        """
+        self.node_embedding = node_embedding
+        self.graph_embedding = None
+        #self.calc_graph_emb()
+        self.input_adj_mat = input_adj_mat
+        self.decoder_output = None
+        self.decoder_output_after_activation = None
+        self.thresholded = None
+        self.hamming_distance = None
+
+        self.scalar_label = None
+        self.node_label_from_dataset = None
+        self.node_degree = None
+
+
+    def calc_decoder_output(self, model_decoder, activation_func, **kwargs):
+        self.decoder_output = model_decoder(self.node_embedding, **kwargs)
+        ##adj = torch.matmul(self.node_embedding, self.node_embedding.t())
+        ##res = adj / (1 + adj)
+        ##print("verifico decoder output", end=' ')
+        ##print(torch.allclose(self.decoder_output, res))
+        self.decoder_output_after_activation = activation_func(self.decoder_output)
+
+    def calc_thresholded_values(self):
+        self.thresholded = (self.decoder_output_after_activation > 0.5).astype(np.uint8)
+        # calcolo subito anche la distanza di hamming
+
+
+    def calc_graph_emb(self):
+        self.graph_embedding = np.mean(self.node_embedding, axis=-2)   # perch
+
+    def to_cpu(self):
+        self.node_embedding = self.node_embedding.detach().cpu().numpy()
+        self.input_adj_mat = self.input_adj_mat.detach().cpu().numpy()
+        self.decoder_output = self.decoder_output.detach().cpu().numpy()
+        self.decoder_output_after_activation = self.decoder_output_after_activation.detach().cpu().numpy()
+
+
+
+
+class Embedding_autoencoder(Embedding):
+    def __init__(self, list_emb_autoenc_per_graph, dataset, config_c):
+        """
+        In teoria sia list_emb_autoenc_per_graph che gli elementi di dataset
+        arrivano con lo stesso ordine.... (è un problema lo shuffle?)
+        :param list_emb_autoenc_per_graph: la lista di oggetti Embedding_autoencoder_per_graph
+        :param dataset:
+        :param config_c:
+        """
+        self.node_emb_dims = None
+        self.graph_emb_dims = None
+        self.total_node_emb_dim = None
+        self.total_graph_emb_dim = None
+        self.total_graph_correlation = None
+        self.total_node_correlation = None
+        self.config_class = config_c
+        self.list_emb_autoenc_per_graph = list_emb_autoenc_per_graph
+
+        self.node_label_from_dataset = dataset.original_node_class
+        self.node_degree = dataset.actual_node_class
+        self.scalar_label = dataset.scalar_label
+        self.tidy_embeddings_with_labels()
+
+    def tidy_embeddings_with_labels(self):
+        for i, graph in enumerate(self.list_emb_autoenc_per_graph):
+            graph.node_label_from_dataset = self.node_label_from_dataset[i]
+            graph.node_degree = self.node_degree[i]
+            graph.scalar_label = self.scalar_label[i]
+
+    def calc_decoder_output(self, model_decoder, activation_func, **kwargs):
+        for graph_emb in self.list_emb_autoenc_per_graph:
+            graph_emb.calc_decoder_output(model_decoder, activation_func, **kwargs)
+
+    def calc_thresholded_values(self):
+        for graph_emb in self.list_emb_autoenc_per_graph:
+            graph_emb.calc_thresholded_values()
+
+    def calc_instrinsic_dimension(self, num_emb_neurons, calc_per_graph=False):
+        metodo = skdim.id.TwoNN()
+        # metodo = skdim.id.DANCo() troppo tempo
+        # metodo = skdim.id.ESS() troppo tempo
+        # metodo = skdim.id.FisherS()
+        # metodo = skdim.id.CorrInt() quasi 10 minuti per 20 punti
+        # metodo = skdim.id.lPCA()
+
+        node_emb_dims = []
+        graph_emb_dims = []
+        if calc_per_graph:
+            for n in self.list_emb_autoenc_per_graph:
+                dim = metodo.fit(n).dimension_
+                node_emb_dims.append(dim)
+
+            # graph_emb_perclass = np.array(self.get_all_graph_emb_per_class())
+            # for n in graph_emb_perclass:
+            #     dim = metodo.fit(n).dimension_
+            #     graph_emb_dims.append(dim)
+
+        total_node_emb_array = np.array([graph_emb.node_embedding for graph_emb in self.list_emb_autoenc_per_graph])
+
+        total_graph_emb_dim = None  # metodo.fit(self.graph_embedding_array).dimension_
+        total_node_emb_dim = metodo.fit(total_node_emb_array).dimension_
+
+        return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_graph_emb_dim
+
+    def calc_node_emb_correlation(self):
+        pass
+        # tODO: completare
+        avg_corr_classes = []
+        avg_tau_classes = []
+        # for class_emb in self.emb_perclass:
+        #     corrs = []
+        #     kendall_tau = []
+        #     for emb_pergraph in self.list_emb_autoenc_per_graph:
+        #         emb_pergraph.get_correlation_with_degree_sequence()
+        #         emb_pergraph.get_kendall_with_degree_sequence()
+        #         corrs.append(emb_pergraph.correlation_with_degree)
+        #         kendall_tau.append(emb_pergraph.kendall_with_degree)
+        #     avg_corr_class0 = sum(corrs) / len(class_emb)
+        #     avg_corr_classes.append(avg_corr_class0)
+        #     avg_tau = sum(kendall_tau) / len(class_emb)
+        #     avg_tau_classes.append(avg_tau)
+        #
+        # self.node_correlation_per_class = avg_corr_classes
+        # self.total_node_correlation = np.mean(avg_corr_classes)
+
+        return avg_corr_classes, avg_tau_classes
+
+    def calc_graph_emb_correlation(self):
+        return
+        num_nodes = self.config_class.conf['graph_dataset']['Num_nodes']
+
+        #if self.config_class.conf['graph_dataset']['confmodel']:  # self.original_class ha un'array (degree sequence) per ciascun grafo
+        #    #self.original_class #
+        #    correlazioni = np.corrcoef(self.graph_embedding_array.flatten(), self.original_class)[0, 1]
+        self.graph_correlation_per_class = []
+        #print((self.scalar_class))
+        actual_p = np.array([nx.to_numpy_matrix(t).sum(axis=1).mean() / (200 - 1) for t in self.dataset_nx]) # num_nodes
+
+
+        for p in self.probabilities_ER:
+            # TODO: metodo elegante che dovrei usare a monte quando separo i graph embedding per classe
+            mask_int = np.argwhere(np.array(self.scalar_class) == p).flatten()
+            emb = self.graph_embedding_array[mask_int].flatten()
+            correlaz = np.corrcoef(emb, actual_p[mask_int])[0, 1]
+            self.graph_correlation_per_class.append(correlaz)
+
+        self.total_graph_correlation = np.mean(self.graph_correlation_per_class)

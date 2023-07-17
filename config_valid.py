@@ -62,7 +62,8 @@ class Config():
 
         self.autoencoding = False
         if (self.conf['model'].get('autoencoder') or
-                self.conf['model'].get('autoencoder_confmodel')):
+                self.conf['model'].get('autoencoder_confmodel') or
+                self.conf['model'].get('autoencoder_graph_ae')):
             self.autoencoding = True
 
         self.valid_conf()
@@ -108,7 +109,7 @@ class Config():
 
         # verifico che l'ultimo neurone sia consistente col training mode
         self.get_num_classes()
-        if not (self.conf['model'].get('autoencoder') or self.conf['model'].get('autoencoder_confmodel') or self.conf['model'].get('autoencoder_graph_ae')):
+        if not self.autoencoding:
             if self.lastneuron == 1:
                 assert self.lastneuron == self.modo['last_neuron'], 'Ultimo neurone = 1 ma training mode diverso'
             else:

@@ -175,6 +175,8 @@ runs_before_231122/
 runs_before_6dic/
 runs_before_18gen23/
 runs_before_14Mar23/
+runs_before_6-23/
+
 
 #la cartella di pycharm
 .idea/
@@ -217,3 +219,5 @@ output_plots/
 
 load_datasets.ipynb
 Untitled*.ipynb
+
+DEADJOE

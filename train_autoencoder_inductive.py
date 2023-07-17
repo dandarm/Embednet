@@ -1,20 +1,34 @@
 import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.utils import class_weight, compute_class_weight
+
 import torch
 import torch.nn as nn
 from torch_geometric.utils import to_dense_adj
-from train import Trainer
-from models import GCN, AutoencoderGCN, ConfModelDecoder, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
-from Dataset_autoencoder import DatasetAutoencoder
 import torch.nn.functional as F
-from sklearn.metrics import roc_auc_score
-import matplotlib.pyplot as plt
+from torch.nn import Linear, BatchNorm1d, LeakyReLU, Hardsigmoid, Tanh, ELU, Hardtanh
+
+from train import Trainer
+from models import GCN, AutoencoderGCN, ConfModelDecoder, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear, view_weights_gradients
+from Dataset_autoencoder import DatasetAutoencoder
+from embedding import Embedding_autoencoder_per_graph, Embedding_autoencoder
+from Metrics import Metrics
 
 class Trainer_Autoencoder(Trainer):
     def __init__(self, config_class, verbose=False):
         super().__init__(config_class, verbose)
-
+        self.name_of_metric = "pr_auc"
         # TODO.... poi posso impostare il criterion dentro il config
-        self.criterion_autoenc = nn.MSELoss()
+        self.criterion_MSE = nn.MSELoss()
+        self.criterion_BCELoss_weighted = torch.nn.BCELoss(reduction='none')
+        self.criterion_BCELoss_unweighted = torch.nn.BCELoss()
+
+        self.loss_activation = None
+        if self.conf['model']['autoencoder']:
+            self.loss_activation = torch.sigmoid
+        elif self.conf['model'].get('autoencoder_confmodel'):
+            self.loss_activation = Hardtanh(0.01, 0.99)
 
         #self.num_graphs = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo'] * self.config_class.num_classes
         #print(f"nodi per grafo e num grafi: {self.num_nodes_per_graph} {self.num_graphs}")
@@ -75,7 +89,7 @@ class Trainer_Autoencoder(Trainer):
         diag_block = torch.stack([A[i:i+step, i:i+step] for i in range(0, A.shape[0], step)])
         return diag_block
     
-    def calc_inner_prod_for_batches(self, total_z, num_nodes):
+    def calc_decoder_for_batches(self, total_z, num_nodes):
         """
         :param total_z: embedding complessivo di tutti i nodi del batch
         :param num_nodes: lista che rappresenta i nodi per ciascun grafo
@@ -95,8 +109,9 @@ class Trainer_Autoencoder(Trainer):
         i = 0
         for n in num_nodes:
             z = total_z[i:i+n]
-            out = self.model.forward_all(z)
-            #print(f"{i}/{len(total_z)}", out.shape)
+            out = self.model.forward_all(z, sigmoid=False)
+            #self.check_nans(out, z)
+            #print(f"z shape {z.shape} -  out shape {out.shape}")
             if need_padding:
                 d = max_nodes - out.shape[0]
                 # here, pad = (padding_left, padding_right, padding_top, padding_bottom)
@@ -107,33 +122,148 @@ class Trainer_Autoencoder(Trainer):
             #print(e)
             i += n
         return start_out[1:]  # perché la prima riga è vuota
-            
-        
+
+    def separate_per_graph_from_batch(self, batch_embedding, numnodes_list, input_adj=None):
+        """
+        :param batch_embedding:  embedding complessivo di tutti i nodi del batch
+        :param numnodes_list: lista che rappresenta i nodi per ciascun grafo
+        :return: una lista di Embedding_autoencoder (per graph)
+        """
+        embs = []
+        i = 0
+        for j, n in enumerate(numnodes_list):
+            # z è il vettore di embedding dei nodi per un singolo grafo
+            z = batch_embedding[i:i + n]
+            if input_adj is not None:
+                ia = input_adj[j]
+            else:
+                ia = None
+            emb_auto = Embedding_autoencoder_per_graph(z, input_adj_mat=ia)
+            embs.append(emb_auto)
+            i += n
+        return embs
+
+
+    def transf_complementare(self, array):
+        ##v_a2 = torch.tensor(adjusted_pred_adj.clone().ravel(),
+        ##                   device='cuda',
+        ##                   requires_grad=True,
+        ##                   dtype=torch.float32)  ##.unsqueeze(1)
+        complementare = 1 - array
+        res = torch.cat((array, complementare), -1)
+        return res
               
+        
+    def get_weighted_criterion(self, y_true):
+        uni = y_true.sum()
+        tot = len(y_true)
+        # al primo posto è il peso della classe negativa (0)
+        #class_weights = compute_class_weight(class_weight="balanced", classes=np.unique(y_true), y=y_true)
+        class_weights = [(tot-uni), uni]
+        custom_weights = torch.tensor(class_weights, dtype=torch.float32, device='cuda')
+        #pos_weight = torch.tensor(class_weights, dtype=torch.float32)
+        # imposto come peso  la quantità di uni, la classe minoritaria
+        #criterion = torch.nn.BCEWithLogitsLoss(pos_weight=custom_weights) ##class_weights[1])
+        criterion = torch.nn.BCELoss(reduction=None)
+        #criterion = nn.MSELoss()
+        return criterion
+
+    def get_all_weights_for_loss(self, y_true):
+        uni = y_true.sum()
+        tot = len(y_true)
+        # al primo posto è il peso della classe negativa (0)
+        positive_weight = (tot - uni) / uni  # è maggiore di 1
+        # diz = {c: w for c, w in enumerate(positive_weight)}
+        # torch.tensor([diz[y] for y in y_true])
+        # visto che sono 1 e 0, moltiplico tutto l'array per positive_w-1, e poi sommo 1.
+        return (y_true * (positive_weight - 1)) + 1
+
+    def encode_decode_inputadj(self, data, i, batch_size, num_nodes_batch):
+        # encoding su tutti i grafi del batch, tutte le edges di ciascun grafo:
+        total_batch_z = self.model.encode(data.x, data.edge_index, data.batch)
+        # plt.hist(total_batch_z.detach().cpu().numpy().squeeze(), bins=50);
+        # plt.show()
+        # print(f"x shape: {data.x.shape}\t nodi per grafo: {self.gg.num_nodes_per_graph}")
+
+        # z è l'embedding di ciascun nodo (tutti i nodi del batch)
+        # il decoder Innerproduct calcola anche la matrice di adiacenza con il forward_all
+        # out = self.model.forward_all(z, sigmoid=False)  effettua un prod scalare per z = total_z[i:i+n]
+        # quindi è già separato per grafi
+        adjusted_pred_adj = self.calc_decoder_for_batches(total_batch_z, num_nodes_batch[i:i + batch_size])
+
+        # (tolto perché prendeva troppa memoria anche la sigmoid)
+        # out = self.model.forward_all(z)
+        # adjusted_pred_adj = self.gestisci_batch(out, data.batch, self.num_nodes_per_graph)
+
+        # ottieni la matrice di adiacenza dalle edge indexes
+        input_adj = to_dense_adj(data.edge_index, data.batch)
+        # print(f"adjusted_pred_adj shape {adjusted_pred_adj.shape}, input adj shape: {input_adj.shape}")
+
+        return total_batch_z, adjusted_pred_adj, input_adj
+
+    def check_nans(self, input_array, embedding_z):
+        nans = torch.isnan(input_array).any()
+        if nans:
+            print("NANNNNNNS")
+        non_finiti = torch.logical_not(torch.isfinite(input_array))
+        if non_finiti.any():
+            print("non finiti")
+            print(input_array)
+            print(f"Embedding z chi erano  {embedding_z}")
+            print(non_finiti.sum().item() / input_array.shape[0])
+            # adjusted_pred_adj[adjusted_pred_adj != adjusted_pred_adj] = 0.5
+            # print(adjusted_pred_adj)
+            print("\n")
+
     def train(self):
         self.model.train()
         running_loss = 0
         num_nodes_batch = [len(data.x) for data in self.dataset.train_loader.dataset]
         i = 0
         for data in self.dataset.train_loader:
-            # encoding su tutti i grafi del batch, tutte le edges di ciascun grafo:
-            total_batch_z = self.model.encode(data.x, data.edge_index, data.batch)
-            # z è l'embedding di ciascun nodo (tutti i nodi del batch)
-            # il decoder Innerproduct calcola anche la matrice di adiacenza con il forward_all:
-            ######## adj = torch.matmul(z, z.t())
-            ######## return torch.sigmoid(adj) if sigmoid else adj
-            adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, num_nodes_batch[i:i+self.dataset.train_loader.batch_size])
-            
-            #out = self.model.forward_all(z)
-            #adjusted_pred_adj = self.gestisci_batch(out, data.batch, self.num_nodes_per_graph)
+            total_batch_z, adjusted_pred_adj, input_adj = self.encode_decode_inputadj(
+                data, i, self.dataset.train_loader.batch_size, num_nodes_batch)
 
-            # ottieni la matrice di adiacenza dalle edge indexes
-            input_adj = to_dense_adj(data.edge_index, data.batch)
+            adjusted_pred_adj_r = adjusted_pred_adj.ravel()
+            input_adj_r = input_adj.ravel()
+            ##print(f"adjusted_pred_adj shape: {adjusted_pred_adj_r.shape}")
+            ##print(f"input_adj shape: {input_adj_r.shape}")
 
             # quindi la loss è calcolata come l'errore rispetto alla riconstruzione di edges
-            loss = self.criterion_autoenc(adjusted_pred_adj, input_adj)
-            
+            # devo usare la binary cross entropy perché devo pesare diversamente le edges,
+            # essendo un problema sbilanciato (la matrice è sparsa!)
+
+            #criterion = self.get_weighted_criterion(input_adj_r)  # .detach().cpu().numpy()
+            #input_adj_t = self.transf_complementare(input_adj_r.unsqueeze(1))
+            #adjusted_pred_adj_t = self.transf_complementare(adjusted_pred_adj_r.unsqueeze(1))
+
+            ##print(f"adjusted_pred_adj_t shape: {adjusted_pred_adj_t.shape}")
+            ##print(f"input_adj_t shape_t: {input_adj_t.shape}")
+            loss = self.calc_loss(adjusted_pred_adj_r, input_adj_r, is_weighted=False)
+            ##loss = self.criterion_autoenc(adjusted_pred_adj_r, input_adj_r)
+
+            ##view_weights_gradients(self.model)
             loss.backward()  # Derive gradients.
+            # check che i gradienti siano non nulli
+
+            # gradients = view_weights_gradients(self.model)
+            # for g in gradients:
+            #     if torch.count_nonzero(g).item() == 0:
+            #         pars = get_parameters(self.model.convs)
+            #         for p in pars:
+            #             print(f"loss: {loss.item()}")
+            #             print(f" max: {max(p)}, min: {min(p)}")
+            #         raise "Problema con i gradienti: sono tutti ZER000"
+
+            ##print(gradients)
+            ##plt.hist([g.detach().cpu().numpy().ravel() for g in gradients])
+            ##plt.show()
+
+            # se volessi aggiungere del rumore al gradiente per (o ai pesi)
+            # con lo scopo di uscire da eventuali minimi locali
+            #model.layer.weight.grad = model.layer.weight.grad + torch.randn_like(model.layer.weight.grad)
+
+            
             self.optimizer.step()  # Update parameters based on gradients.
             self.optimizer.zero_grad()  # Clear gradients.
             # self.scheduler.step()
@@ -146,28 +276,33 @@ class Trainer_Autoencoder(Trainer):
         self.model.eval()
         running_loss = 0
         num_nodes_batch = [len(data.x) for data in loader.dataset]
+        i = 0
         with torch.no_grad():
-            i = 0
             for data in loader:
-                #print(data)
-                total_batch_z = self.model.encode(data.x, data.edge_index, data.batch)
-                #print(f"x shape: {data.x.shape}\t nodi per grafo: {self.gg.num_nodes_per_graph}")
-                adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, num_nodes_batch[i:i+loader.batch_size])
-                
-                # prendeva troppa memoria anche la sigmoid
-                #out = self.model.forward_all(z)
-                #adjusted_pred_adj = self.gestisci_batch(out, data.batch, self.num_nodes_per_graph)
-                
-                # ottieni la matrice di adiacenza dalle edge indexes
-                input_adj = to_dense_adj(data.edge_index, data.batch)                
-                #print(f"adjusted_pred_adj shape {adjusted_pred_adj.shape}, input adj shape: {input_adj.shape}")
-                
-                # quindi la loss è calcolata come l'errore rispetto alla riconstruzione di edges
-                loss = self.criterion_autoenc(adjusted_pred_adj, input_adj)
+                total_batch_z, adjusted_pred_adj, input_adj = self.encode_decode_inputadj(
+                    data, i, loader.batch_size, num_nodes_batch)
+
+                adjusted_pred_adj_r = adjusted_pred_adj.ravel()
+                input_adj_r = input_adj.ravel()
+
+                loss = self.calc_loss(adjusted_pred_adj_r, input_adj_r, is_weighted=False)
+
                 running_loss += loss.item()
                 i += loader.batch_size
 
         return running_loss / self.dataset.test_len
+
+    def calc_loss(self, adjusted_pred_adj_r, input_adj_r, is_weighted=False):
+        pred_activated = self.loss_activation(adjusted_pred_adj_r)
+        if is_weighted:
+            unreduced_loss = self.criterion_BCELoss_weighted(
+                pred_activated,
+                input_adj_r)
+            all_weights = self.get_all_weights_for_loss(input_adj_r)
+            loss = (unreduced_loss.squeeze() * all_weights).mean()
+        else:
+            loss = self.criterion_BCELoss_unweighted(pred_activated, input_adj_r)
+        return loss
 
     def get_embedding(self, loader, type_embedding='both'):
         self.model.eval()
@@ -186,13 +321,13 @@ class Trainer_Autoencoder(Trainer):
                     out = self.model.encode(data.x, data.edge_index, data.batch, node_embedding=True)
                     to = out.detach().cpu().numpy()
                     node_embeddings_array.extend(to)
-                    #node_embeddings_array_id.extend(data.id) TODO: rimettere
+                    #node_embeddings_array_id.extend(data.id)
                 elif type_embedding == 'both':  # quì ho garantito che i graph embedding sono ordinati come i node_embedding
                     node_out = self.model.encode(data.x, data.edge_index, data.batch, node_embedding=True)
                     to = node_out.detach().cpu().numpy()
                     #print(f"node emb size: {to.nbytes}")
                     node_embeddings_array.extend(to)
-                    #node_embeddings_array_id.extend(data.id) TODO: rimettere
+                    #node_embeddings_array_id.extend(data.id)
                     graph_out = self.model.encode(data.x, data.edge_index, data.batch, graph_embedding=True)
                     to = graph_out.detach().cpu().numpy()
                     #print(f"graph emb size: {to.nbytes}")
@@ -212,7 +347,7 @@ class Trainer_Autoencoder(Trainer):
         with torch.no_grad():
             for data in loader:
                 total_batch_z = self.model.encode(data.x, data.edge_index, data.batch) 
-                adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, self.num_nodes_per_graph)
+                adjusted_pred_adj = self.calc_decoder_for_batches(total_batch_z, self.num_nodes_per_graph)
                 recon_adjs = adjusted_pred_adj.detach().cpu().numpy()
                 adjs_list.extend(recon_adjs)
                 
@@ -224,36 +359,92 @@ class Trainer_Autoencoder(Trainer):
                 
         return np.array(adjs_list), np.array(feats)
 
+    def get_embedding_autoencoder(self, loader):
+        """
+        Funzione che si occupa di prendere l'embedding nel caso di autoencoding,
+        è l'equivalente di get_embedding nel trainer base, ma istanzia anche la classe
+        Embedding_autoencoder
+        :param loader:
+        :return:
+        """
+        self.model.eval()
+        graph_embeddings_array = []
+        node_embeddings_array = []
+        node_embeddings_array_id = []
+        final_output = []
+        embeddings_per_graph = []
+
+        num_nodes_batch = [len(data.x) for data in loader.dataset]
+        with torch.no_grad():
+            i = 0
+            for data in loader:
+                total_batch_z, adjusted_pred_adj, input_adj = self.encode_decode_inputadj(
+                    data, i, loader.batch_size, num_nodes_batch)
+
+                # calcolo l'emb per graph
+                # print(f"shape z  {total_batch_z.shape},  shape input_adj {input_adj.shape}")
+                epg = self.separate_per_graph_from_batch(
+                    total_batch_z, num_nodes_batch[i:i + loader.batch_size],
+                    input_adj)
+                # print("verifico decoder output")
+                # print(all([np.allclose(e.decoder_output, adjusted_pred_adj[i].detach().cpu().numpy()) for i,e in enumerate(epg)]))
+                embeddings_per_graph.extend(epg)
+                # verifico che siano lo stessa cosa...qunte volte lo faccio?
+                # print(f"\n i: {i} ")
+                # print( all([torch.all(torch.eq(a, e.decoder_output)) for a,e in zip(adjusted_pred_adj, epg)]))
+
+        # devo calcolare subito l'output perché deve passare per le funzioni di torch e poi
+        # posso fare detach
+        # TODO: però vorrei ricontrollare se posso trovare un altro modo per posticipare queste operazioni
+        #  e farle fare in parallelo mentre il training va avanti
+        # calcolo il z.zT e la matrice di adiacenza binaria
+        for e in epg:
+            e.calc_decoder_output(self.model.forward_all, activation_func=self.loss_activation)
+            e.to_cpu()
+            e.calc_thresholded_values()
+
+
+        return embeddings_per_graph
+
+
+
     def calc_metric(self, loader):
         """
         Calcola una AUC per la ricostruzione dell'intera matrice
         :param loader:
-        :return:
+        :return: un oggetto Metric contenente embeddings_per_graph (Embedding_autoencoder class)
         """
-
         self.model.eval()
+        num_nodes_batch = [len(data.x) for data in loader.dataset]
         with torch.no_grad():
-            num_nodes_batch = [len(data.x) for data in loader.dataset]
             i = 0
             for data in loader:
-                total_batch_z = self.model.encode(data.x, data.edge_index, data.batch)
-                adjusted_pred_adj = self.calc_inner_prod_for_batches(total_batch_z, num_nodes_batch[i:i + loader.batch_size])
-                input_adj = to_dense_adj(data.edge_index, data.batch)
+                total_batch_z, adjusted_pred_adj, input_adj = self.encode_decode_inputadj(
+                    data, i, loader.batch_size, num_nodes_batch)
+                input_adj_flat = input_adj.detach().cpu().numpy().ravel()
+                pred_adj_flat = adjusted_pred_adj.detach().cpu().numpy().ravel()
+
                 try:
-                    input_adj_flat = input_adj.detach().cpu().numpy().ravel()
-                    pred_adj_flat = adjusted_pred_adj.detach().cpu().numpy().ravel()
-                    print(input_adj_flat)
-                    print(pred_adj_flat)
                     auc = roc_auc_score(input_adj_flat, pred_adj_flat)
-                    plt.hist((input_adj_flat, pred_adj_flat), bins=50);
-                    plt.show()
+                    # average_precision è la PR_AUC
+                    average_precision = average_precision_score(input_adj_flat, pred_adj_flat)
+                    #plt.hist((input_adj_flat, pred_adj_flat), bins=50);
+                    #plt.show()
                 except Exception as e:
+                    auc = 0
+                    average_precision = 0
+                    print(f"Eccezione data dalla AUC...")
                     print(e)
+                    #print(f"nan elements: {np.count_nonzero(np.isnan(input_adj_flat))} su totale: {input_adj_flat.size}")
+                    print(f"nan elements: {np.count_nonzero(np.isnan(pred_adj_flat))} su totale: {pred_adj_flat.size}")
+
                 #print(f"auc_{i}: {auc}", end=', ')
                 i += loader.batch_size
-                break # tanto posso prendere solo la auc di un batch, 
-                #perché: !!!! non possono sommare o mediare!!!!!
+
+                #................comunque non posso sommare o mediare le AUC
 
                 #auc, ap = self.model.test(z, data.pos_edge_label_index, data.neg_edge_label_index)
 
-        return auc  #, ap
+            metriche = Metrics(auc=auc, pr_auc=average_precision)
+
+        return metriche

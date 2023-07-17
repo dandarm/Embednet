@@ -1,10 +1,13 @@
 import datetime
 import os
+import traceback
 import copy
 from time import time
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+import imageio
 
-from config_valid import Config
+import multiprocessing
 
 import numpy as np
 import torch
@@ -22,13 +25,16 @@ from metrics import ExplainedVarianceMetric
 from TorchPCA import PCA
 
 #from utils_tf import add_histogram
-from config_valid import TrainingMode
-from models import GCN, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear
+from config_valid import Config, TrainingMode
+from models import GCN, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear, get_param_labels
 from Dataset import Dataset, GeneralDataset
 from Dataset_autoencoder import DatasetReady
 from graph_generation import GenerateGraph
 from take_real_data import TakeRealDataset
 from plot_model import plot_model
+from Metrics import Metrics
+from plot_funcs import Data2Plot, DataAutoenc2Plot, plot_metrics, save_ffmpeg
+from embedding import Embedding, Embedding_autoencoder
 
 
 
@@ -64,6 +70,8 @@ class Trainer():
         #if verbose:
         #    print(self.criterion)
 
+        self.name_of_metric = "accuracy"
+
         self.softmax = Softmax(dim=1)
 
         self.gg = None  # class generate_graph
@@ -82,6 +90,7 @@ class Trainer():
         self.output_per_epoch = []
         self.model_LINEAR_pars_per_epoch = []
         self.model_GCONV_pars_per_epoch = []
+        self.autoencoder_embedding_per_epoch = []
 
         self.reinit_conf(config_class)
 
@@ -98,6 +107,7 @@ class Trainer():
             device = torch.device('cuda')
         else:
             device = "cpu"
+
         model = GCN(self.config_class)
         model.to(device)
         if init_weights_gcn is not None:
@@ -111,7 +121,7 @@ class Trainer():
 
     def set_optimizer(self, model):
         # self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr , )
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr,
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=float(self.lr),
                                           betas=(0.9, 0.999),
                                           eps=1e-08,
                                           weight_decay=0,
@@ -155,7 +165,7 @@ class Trainer():
     def init_dataset(self, parallel=True, verbose=False):
         """
         la classe GenerateGraph contiene un dataset in formato NetworkX
-        Se è un dataset reale viene creato un diverso gestore del dataset, sempre assegnato a self.gg
+        Se è un dataset reale viene creato un diverso gestore del dataset
         :param parallel:
         :param verbose:
         :return:
@@ -365,7 +375,8 @@ class Trainer():
             #correct += accuracy_class(out2.cpu(), target2.cpu())
             #correct += int((out == target).sum())  # Check against ground-truth labels.
 
-        return correct / len(loader.dataset)  # Derive ratio of correct predictions.
+        metriche = Metrics(accuracy=correct / len(loader.dataset))
+        return metriche
 
     def binary_accuracy(self, y_true, y_prob):
         assert y_true.ndim == 1, "dim not 1"
@@ -387,7 +398,7 @@ class Trainer():
         return f1
 
 
-    def launch_training(self, verbose=0):
+    def launch_training(self, epochs_list=None, verbose=0):
         self.train_loss_list = []
         self.test_loss_list = []
         self.metric_list = []
@@ -404,25 +415,36 @@ class Trainer():
         else:
             all_data_loader = self.dataset.all_data_loader
         alldata_loss = self.test(all_data_loader)
-        all_graph_embeddings_array, all_node_embeddings_array, _, _ = self.get_embedding(all_data_loader)
+        all_graph_embeddings_array, all_node_embeddings_array, _, final_output = self.get_embedding(all_data_loader)
 
         # Calcola la metrica (accuracy o auc etc...)
-        if self.config_class.modo != TrainingMode.mode3:  # and not self.config_class.conf['model']['autoencoder']:
-            metric_value = self.calc_metric(self.dataset.test_loader)
+        #if self.config_class.modo != TrainingMode.mode3:  # and not self.config_class.conf['model']['autoencoder']:
+        metric_object = self.calc_metric(self.dataset.test_loader)
+        all_metric_object = self.calc_metric(self.dataset.all_data_loader)
 
         if verbose > 1:
             print(f'Before training Test loss: {test_loss}')
-            print(f"test accuracy iniziale: {metric_value}")
+            print(f"Test {self.name_of_metric} iniziale: {metric_object.get_metric(self.name_of_metric)}")
             print(f'Before training Training + Test loss: {alldata_loss}')
 
-
+        self.train_loss_list.append(0)
         self.test_loss_list.append(test_loss)
-        self.metric_list.append(metric_value)
+        self.metric_list.append(metric_object.get_metric(self.name_of_metric))
         #self.f1score_list.append(test_f1score)
-        self.last_metric_value = metric_value
+        self.last_metric_value = self.metric_list[-1]
         self.last_epoch = 0
+
         self.graph_embedding_per_epoch.append(all_graph_embeddings_array)
         self.node_embedding_per_epoch.append(all_node_embeddings_array)
+        self.output_per_epoch.append(final_output)
+        if self.conf['model']['last_layer_dense']:
+            self.model_LINEAR_pars_per_epoch.append(get_parameters(self.model.linears))
+        self.model_GCONV_pars_per_epoch.append(get_parameters(self.model.convs))
+
+        # TODO: rigestire anche tutta la procedura per l'epoca 0 ZERO
+        #all_metric_object = self.get_embedding_autoencoder(self.dataset.all_data_loader)
+        #metrica = all_metric_object.get_metric("embeddings_per_graph")
+        #self.autoencoder_embedding_per_epoch.append(metrica)
 
         if self.epochs == 0:
             return
@@ -456,35 +478,20 @@ class Trainer():
         if verbose > 0: print(f"Run training for {self.epochs} epochs")
         #with tf.compat.v1.Graph().as_default():
         #summary_writer = tf.compat.v1.summary.FileWriter(log_dir_variance) TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
-        epoch = 0
-        for epoch in tqdm(range(self.epochs), total=self.epochs):
+
+        animation_files = []
+        parallel_processes_save_images = []
+        for epoch in tqdm(range(1, self.epochs), total=self.epochs):
             train_loss = self.train()
             writer.add_scalar("Train Loss", train_loss, epoch)
+
             if epoch % 100 == 0:
                 test_loss = self.test(self.dataset.test_loader)
                 writer.add_scalar("Test Loss", test_loss, epoch)
 
-                if self.config_class.modo != TrainingMode.mode3:  # and not self.config_class.conf['model']['autoencoder']:
-                    metric_value = self.calc_metric(self.dataset.test_loader)
-                    writer.add_scalar("Test metric", metric_value, epoch)
-
-            # prendo l'embedding a ogni epoca
-            if self.conf['training'].get('every_epoch_embedding'):
-                #######  _____________take embedding  (switch tra gpuversion e normale)
-                graph_embeddings_array, node_embeddings_array, _, final_output = self.get_embedding(all_data_loader)
-                self.graph_embedding_per_epoch.append(graph_embeddings_array)
-                self.node_embedding_per_epoch.append(node_embeddings_array)
-                # prendo anche l'output nel caso in cui abbiamo il layer denso finale
-                self.output_per_epoch.append(final_output)
-                # prendo pure i weights del modello
-                if self.conf['model']['last_layer_dense']:
-                    self.model_LINEAR_pars_per_epoch.append(get_parameters(self.model.linears))
-                self.model_GCONV_pars_per_epoch.append(get_parameters(self.model.convs))
-
-            #expvar = self.myExplained_variance.compute()
-            # add explained variance to tensorboard
-            #add_histogram(summary_writer, "Explained variance", var_exp, step=epoch)  TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
-
+                #if self.config_class.modo != TrainingMode.mode3:
+                metric_object = self.calc_metric(self.dataset.test_loader)
+                #writer.add_scalar(f"Test {self.name_of_metric}", metric_object.get_metric(self.name_of_metric), epoch)
 
             #for i, v in enumerate(test_f1score):
             #    writer.add_scalar(f"Test F1 Score/{i}", v, epoch)
@@ -494,11 +501,40 @@ class Trainer():
             # print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')
             self.train_loss_list.append(train_loss)
             self.test_loss_list.append(test_loss)
-            self.metric_list.append(metric_value)
+            self.metric_list.append(metric_object.get_metric(self.name_of_metric))
             #self.f1score_list.append(test_f1score)
 
-            # train_acc_list.append(train_acc)
-            # test_acc_list.append(test_acc)
+            if self.conf['training'].get('every_epoch_embedding'):
+                if epoch in epochs_list:
+                    if self.config_class.autoencoding:
+                        embeddings_per_graph = self.get_embedding_autoencoder(self.dataset.all_data_loader)
+                        embeddings_arrays = embeddings_per_graph
+                    else:
+                        graph_embeddings_array, node_embeddings_array, _, final_output = self.get_embedding(all_data_loader)
+                        embeddings_arrays = graph_embeddings_array, node_embeddings_array, final_output
+
+                    if self.conf['model']['last_layer_dense']:
+                        model_pars = get_parameters(self.model.convs) + get_parameters(self.model.linears)
+                        param_labels = get_param_labels(self.model.convs) + get_param_labels(self.model.linears)
+                    else:
+                        model_pars = get_parameters(self.model.convs)
+                        param_labels = get_param_labels(self.model.convs)
+                    model_weights = model_pars, param_labels
+
+                    p = multiprocessing.Process(target=self.save_image_at_epoch,
+                                                args=(embeddings_arrays, model_weights, epoch, epochs_list))
+                    p.start()
+                    parallel_processes_save_images.append(p)
+                    #self.save_image_at_epoch(embeddings_arrays,model_weights, epoch, epochs_list)
+
+                    file_path = f"scatter_epoch{epoch}.png"
+                    animation_files.append(file_path)
+
+
+            #expvar = self.myExplained_variance.compute()
+            # add explained variance to tensorboard
+            #add_histogram(summary_writer, "Explained variance", var_exp, step=epoch)  TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
+
 
             print_each_step = self.conf['logging']['train_step_print']
             if epoch % print_each_step == 0:
@@ -520,20 +556,95 @@ class Trainer():
                 print("Early stopping!!!")
                 break
 
-        if verbose > 0: print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\tBest test loss: {best_loss} FINE TRAINING')
+        if verbose > 0:
+            print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\tBest test loss: {best_loss} FINE TRAINING')
+            print(f"Test {self.name_of_metric} finale: {round(metric_object.get_metric(self.name_of_metric), 5)}")
 
-        print(f"test accuracy finale: {metric_value}")
         writer.flush()
         #writer_variance.flush()
         #self.myExplained_variance.reset()
         self.last_metric_value = self.metric_list[-1]
         self.last_epoch = epoch
 
-        # riporto su cpu gli embedding per epoca
-        #print("Take to cpu the embedding array ")
-        #self.graph_embedding_per_epoch = [a.squeeze().cpu().detach().numpy() for a in self.graph_embedding_per_epoch]
-        #self.node_embedding_per_epoch = [a.squeeze().cpu().detach().numpy() for a in self.node_embedding_per_epoch]
-        #self.output_per_epoch = [a.squeeze().cpu().detach().numpy() for a in self.output_per_epoch]
+        # aspetto per sicurezza che tutti i processi di salvataggio immagini siano finiti
+        for p in parallel_processes_save_images:
+            p.join()
+
+        # salvo le animazioni
+        if self.conf['training'].get('every_epoch_embedding'):
+            nomefile = self.unique_train_name
+            ims = [imageio.imread(f) for f in animation_files]
+            imageio.mimwrite(nomefile + ".gif", ims, duration=0.1)
+
+            # salvo video in mp4
+            # devo rinominare i file in modo sequenziale altrimenti si blocca
+            radice = "scatter_epoch"
+            mapping = {old: new for new, old in enumerate(epochs_list)}
+            new_files = []
+            for i, f in enumerate(animation_files):
+               old = f.replace(radice, '').split('.')[0]
+               new_file = f"{radice}{mapping[int(old)]}.png"
+               new_files.append(new_file)
+               os.rename(f, new_file)
+
+            save_ffmpeg(radice, nomefile)
+            # files = new_files
+
+            for f in animation_files:
+                os.remove(f)
+
         return
+
+    def save_image_at_epoch(self, embedding_arrays, model_weights_and_labels, epoch, epochs_list):
+        # DEVO SEPARARE LA RACCOLTA DEGLI EMBEDDING DAL MULTIPROCESSING
+        if self.config_class.autoencoding:
+            embedding_class = Embedding_autoencoder(embedding_arrays, config_c=self.config_class, dataset=self.dataset)
+            #metriche = Metrics(embeddings_per_graph=emb_autoenc)
+            #embedding_class = metriche.get_metric("embeddings_per_graph")
+
+            embedding_class.get_metrics(self.embedding_dimension)
+            data = DataAutoenc2Plot(embedding_class, dim=self.embedding_dimension,
+                                    config_class=self.config_class, metric_name=self.name_of_metric)
+        else:
+            graph_embeddings_array, node_embeddings_array, final_output = embedding_arrays
+            embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, self.dataset, self.config_class, final_output)
+            embedding_class.get_emb_per_graph()  # riempie node_emb_pergraph
+            embedding_class.separate_embedding_by_classes()  # riempie node_emb_perclass e graph_emb_perclass
+            embedding_class.get_metrics(self.embedding_dimension)
+            data = Data2Plot(embedding_class.emb_perclass, dim=self.embedding_dimension, config_class=self.exp_config)
+
+        # prendo pure i weights del modello
+        model_pars, param_labels = model_weights_and_labels
+
+        # node_emb_dims = embedding_class.node_emb_dims
+        # graph_emb_dims = embedding_class.graph_emb_dims
+        node_intrinsic_dimensions_total = embedding_class.total_node_emb_dim
+        graph_intrinsic_dimensions_total = embedding_class.total_graph_emb_dim
+        node_correlation = embedding_class.total_node_correlation  # node_correlation_per_class
+        graph_correlation = embedding_class.total_graph_correlation  # graph_correlation_per_class
+        # costruisco e salvo l'immagine: per ora sincrono, poi lancerò un thread asincrono
+
+        try:
+            fig = plot_metrics(data, self.embedding_dimension,
+                               self.test_loss_list[:epoch], self.metric_list[:epoch], range(epoch),
+                               node_intrinsic_dimensions_total, graph_intrinsic_dimensions_total,
+                               model_pars, param_labels,
+                               node_correlation, graph_correlation, sequential_colors=True,
+                               showplot=False, last_epoch=epochs_list[-1], metric_name=self.name_of_metric,
+                               long_string_experiment=self.config_class.long_string_experiment)
+            file_name = f"scatter_epoch{epoch}"
+            plt.savefig(file_name)
+            fig.clf()
+            plt.cla()
+            plt.clf()
+            #file_path = f"{file_name}.png"
+        except Exception as e:
+            print(f"Immagine {epoch} non completata")
+            print(e)
+            # traceback.print_stack()
+            # print(traceback.format_exc())
+            print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+
+        return #file_path
 
 

@@ -1,7 +1,8 @@
 import numpy as np
 from enum import Enum
 import torch
-from torch.nn import Linear, BatchNorm1d, LeakyReLU
+from torch.nn import Linear, BatchNorm1d
+from torch.nn import ReLU, LeakyReLU, Hardsigmoid, Tanh, ELU, Hardtanh
 from torch_geometric.nn import GCNConv, GAE, VGAE, TopKPooling
 #from torch_geometric.nn import global_mean_pool
 from torch_geometric import nn
@@ -14,7 +15,6 @@ from config_valid import Inits
 
 # region myGCN
 class GCN(torch.nn.Module):
-    #def __init__(self, neurons_per_layer, node_features=1, num_classes=2, autoencoder=False, put_batchnorm=False, mode='classification'):
     def __init__(self, config_class):
         super(GCN, self).__init__()
         # torch.manual_seed(12345)
@@ -33,7 +33,7 @@ class GCN(torch.nn.Module):
         self.final_pool_aggregator = self.conf['model']['final_pool_aggregator']
 
         self.convs = torch.nn.ModuleList()
-        self.leakys = torch.nn.ModuleList()
+        self.act_func = torch.nn.ModuleList()
         if self.last_linear:
             self.linears = torch.nn.ModuleList()
         else:
@@ -44,12 +44,27 @@ class GCN(torch.nn.Module):
         if self.put_batchnorm:
             self.batchnorms = torch.nn.ModuleList()
 
+        activation_function_string = self.conf.get('activation', 'LeakyRELU')
+        if activation_function_string == 'ELU':
+            activation_function = ELU()
+        elif activation_function_string == "RELU":
+            activation_function = ReLU()
+        elif activation_function_string == "Hardtanh":
+            activation_function = Hardtanh(0, 1)
+        elif activation_function_string == "Tanh":
+            activation_function = Tanh()
+        elif activation_function_string == "LeakyRELU":
+            activation_function = LeakyReLU(0.05)
+        else:
+            raise "Errore nella funzione di attivazione specificata nel config."
+
+
         ###########   COSTRUISCO L'ARCHITETTURA      ###############
         ############################################################
         rangeconv_layers = range(len(self.GCNneurons_per_layer) - 1)
         for i in rangeconv_layers:
             self.convs.append(GCNConv(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1]))
-            self.leakys.append(LeakyReLU(0.03))
+            self.act_func.append(activation_function)
             #self.pools.append( TopKPooling(neurons_per_layer[i+1], ratio=0.8) )
             #i += 1
 
@@ -71,8 +86,7 @@ class GCN(torch.nn.Module):
                 lin = Linear(self.neurons_last_linear[j], self.neurons_last_linear[j + 1])
                 self.linears.append(lin)
 
-
-            self.last_relu = LeakyReLU(0.03)
+            self.last_activation = activation_function
 
         if self.freezeGCNlayers:
             self.freeze_gcn_layers()
@@ -87,13 +101,19 @@ class GCN(torch.nn.Module):
 
 
     def n_layers_gcn(self, x, edge_index):
-        for i, layer in enumerate(self.convs):
+        for i, layer in enumerate(self.convs[:-1]):
             x = layer(x, edge_index)
             # print(f"Gconv{i}")
-            x = self.leakys[i](x)
+            x = self.act_func[i](x)
             # print(f"leakyrelu{i}")
             # x, edge_index, _, batch, _, _ = self.pools[i](x, edge_index, None, batch)
-        return x
+        x = self.convs[-1](x, edge_index)
+        # così tolgo l'ultima activation per l'autoencoder o per quando non ho il Linear
+        if self.autoencoder or self.last_linear:
+            return x
+        else:
+            x = self.act_func[-1](x)
+            return x
 
     def n_layers_linear(self, x):
 
@@ -103,7 +123,7 @@ class GCN(torch.nn.Module):
             if self.put_dropout:
                 x = self.dropouts[i](x)
             x = layer(x)
-            x = self.last_relu(x)
+            x = self.last_activation(x)
 
         return x
 
@@ -199,6 +219,14 @@ def get_param_labels(model_layers):
         labels.append(f"{lin.__class__.__name__}_{i}")
     return labels
 
+def view_weights_gradients(model):
+    gradients = []
+    for m in model.modules():
+        if isinstance(m, nn.GCNConv):
+            ##m.lin.weight.retain_grad()
+            gradients.append(m.lin.weight.grad)
+    return gradients
+
 def new_parameters(model, method=Inits.xavier_uniform, const_value=1.0):
     new_par = []
 
@@ -221,7 +249,7 @@ def get_weights_from_init_method(custom_weight, method, const_value=1.0):
     elif method == Inits.uniform:
         torch.nn.init.uniform_(custom_weight, a=0, b=1)  # a: lower_bound, b: upper_bound
     elif method == Inits.normal:
-        torch.nn.init.normal_(custom_weight, mean=0, std=1)
+        torch.nn.init.normal_(custom_weight, mean=0.0, std=0.4)
     elif method == Inits.constant:
         torch.nn.init.constant_(custom_weight, value=const_value)
     elif method == Inits.eye:
@@ -376,8 +404,8 @@ class AutoencoderGCN(GCN):
         return self.decoder.test(z, pos_edge_label_index, neg_edge_label_index)
     def recon_loss(self, z, pos_edge_label_index, neg_edge_index=None):
         return self.decoder.recon_loss(z, pos_edge_label_index, neg_edge_index)
-    def forward_all(self, z, sigmoid: bool = True):
-        return self.decoder.decoder.forward_all(z)
+    def forward_all(self, z, sigmoid: bool = False):
+        return self.decoder.decoder.forward_all(z, sigmoid=sigmoid)
 
     @classmethod
     def from_parent_instance(cls, dic_attr, parent_instance):
@@ -385,20 +413,40 @@ class AutoencoderGCN(GCN):
         return cls(encoder=parent_instance, config_class=parent_instance.config_class)
 
 
+
 class ConfModelDecoder(InnerProductDecoder):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        # ATTIVAZIONE NECESSARIA  NECESSARIA PERCHÉ POSSO COMUNQUE SEMPRE AVERE VALORI NEGATIVI
+        # CHE DEVO RIPORTARE AL MINIMO A ZERO
+        self.activation = ReLU()
 
-    def forward(self, z, edge_index, sigmoid=True):
+    def forward(self, z, edge_index, sigmoid=False):
         value = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
+        value = self.activation(value)
         value = value / (1 + value)
-        return torch.sigmoid(value) if sigmoid else value
+        return value
 
-    def forward_all(self, z, sigmoid=True):
+    def forward_all(self, z, sigmoid=False):
         adj = torch.matmul(z, z.t())
+        adj = self.activation(adj)
         value = adj / (1 + adj)
-        return torch.sigmoid(value) if sigmoid else value
+        #check_nans(value, z)
+        return value
 
+def check_nans(input_array, embedding_z):
+    nans = torch.isnan(input_array).any()
+    if nans:
+        print("NANNNNNNS")
+    non_finiti = torch.logical_not(torch.isfinite(input_array))
+    if non_finiti.any():
+        print("non finiti")
+        print(input_array)
+        print(f"Embedding z chi erano  {embedding_z}")
+        print(non_finiti.sum().item() / input_array.numel())
+        # adjusted_pred_adj[adjusted_pred_adj != adjusted_pred_adj] = 0.5
+        # print(adjusted_pred_adj)
+        print("\n")
 
 
 
