@@ -1,34 +1,42 @@
+import traceback
+import time
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.metrics import roc_auc_score, average_precision_score, f1_score
 from sklearn.utils import class_weight, compute_class_weight
 
 import torch
 import torch.nn as nn
 from torch_geometric.utils import to_dense_adj
 import torch.nn.functional as F
-from torch.nn import Linear, BatchNorm1d, LeakyReLU, Hardsigmoid, Tanh, ELU, Hardtanh
+from torch.nn import Linear, BatchNorm1d, LeakyReLU, Hardsigmoid, Tanh, ELU, Hardtanh, ReLU
 
 from train import Trainer
 from models import GCN, AutoencoderGCN, ConfModelDecoder, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear, view_weights_gradients
 from Dataset_autoencoder import DatasetAutoencoder
 from embedding import Embedding_autoencoder_per_graph, Embedding_autoencoder
 from Metrics import Metrics
+from torchmetrics import HammingDistance
 
 class Trainer_Autoencoder(Trainer):
-    def __init__(self, config_class, verbose=False):
+    def __init__(self, config_class, verbose=False, rootsave="."):
         super().__init__(config_class, verbose)
-        self.name_of_metric = "pr_auc"
+        self.rootsave = rootsave
+        self.name_of_metric = ["auc", "pr_auc", "f1_score", "hamming_distance"]
         # TODO.... poi posso impostare il criterion dentro il config
         self.criterion_MSE = nn.MSELoss()
+        self.criterion_MSE_weighted = nn.MSELoss(reduction='none')
         self.criterion_BCELoss_weighted = torch.nn.BCELoss(reduction='none')
         self.criterion_BCELoss_unweighted = torch.nn.BCELoss()
 
+        self.HD = HammingDistance(task="binary")
+
+        # la devo lasciare perche devo poter sistemare loutput dopo il prodotto scalare Z.Zt
         self.loss_activation = None
         if self.conf['model']['autoencoder']:
             self.loss_activation = torch.sigmoid
         elif self.conf['model'].get('autoencoder_confmodel'):
-            self.loss_activation = Hardtanh(0.01, 0.99)
+            self.loss_activation = ReLU()    #nn.Identity()    # Hardtanh(0.01, 0.99)
 
         #self.num_graphs = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo'] * self.config_class.num_classes
         #print(f"nodi per grafo e num grafi: {self.num_nodes_per_graph} {self.num_graphs}")
@@ -36,6 +44,13 @@ class Trainer_Autoencoder(Trainer):
             
     #def reinit_conf(self, config_class):
     #    super().reinit_conf(config_class)
+
+
+    def set_optimizer(self, model):
+        if self.conf['training'].get('optimizer') == "SGD":
+            self.optimizer = torch.optim.SGD(model.parameters(), lr=float(self.lr), momentum=0.9)
+        else:
+            super().set_optimizer(model)
 
     def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False):
         """
@@ -239,7 +254,7 @@ class Trainer_Autoencoder(Trainer):
 
             ##print(f"adjusted_pred_adj_t shape: {adjusted_pred_adj_t.shape}")
             ##print(f"input_adj_t shape_t: {input_adj_t.shape}")
-            loss = self.calc_loss(adjusted_pred_adj_r, input_adj_r, is_weighted=False)
+            loss = self.calc_loss(adjusted_pred_adj_r, input_adj_r, is_weighted=True)
             ##loss = self.criterion_autoenc(adjusted_pred_adj_r, input_adj_r)
 
             ##view_weights_gradients(self.model)
@@ -285,7 +300,7 @@ class Trainer_Autoencoder(Trainer):
                 adjusted_pred_adj_r = adjusted_pred_adj.ravel()
                 input_adj_r = input_adj.ravel()
 
-                loss = self.calc_loss(adjusted_pred_adj_r, input_adj_r, is_weighted=False)
+                loss = self.calc_loss(adjusted_pred_adj_r, input_adj_r, is_weighted=True)
 
                 running_loss += loss.item()
                 i += loader.batch_size
@@ -293,15 +308,15 @@ class Trainer_Autoencoder(Trainer):
         return running_loss / self.dataset.test_len
 
     def calc_loss(self, adjusted_pred_adj_r, input_adj_r, is_weighted=False):
-        pred_activated = self.loss_activation(adjusted_pred_adj_r)
+        #pred_activated = self.loss_activation(adjusted_pred_adj_r)
         if is_weighted:
             unreduced_loss = self.criterion_BCELoss_weighted(
-                pred_activated,
+                adjusted_pred_adj_r,
                 input_adj_r)
             all_weights = self.get_all_weights_for_loss(input_adj_r)
             loss = (unreduced_loss.squeeze() * all_weights).mean()
         else:
-            loss = self.criterion_BCELoss_unweighted(pred_activated, input_adj_r)
+            loss = self.criterion_BCELoss_unweighted(adjusted_pred_adj_r, input_adj_r)
         return loss
 
     def get_embedding(self, loader, type_embedding='both'):
@@ -398,14 +413,13 @@ class Trainer_Autoencoder(Trainer):
         # TODO: però vorrei ricontrollare se posso trovare un altro modo per posticipare queste operazioni
         #  e farle fare in parallelo mentre il training va avanti
         # calcolo il z.zT e la matrice di adiacenza binaria
-        for e in epg:
+        for e in embeddings_per_graph:
             e.calc_decoder_output(self.model.forward_all, activation_func=self.loss_activation)
             e.to_cpu()
-            e.calc_thresholded_values()
+            e.calc_degree_sequence()
 
 
         return embeddings_per_graph
-
 
 
     def calc_metric(self, loader):
@@ -418,33 +432,47 @@ class Trainer_Autoencoder(Trainer):
         num_nodes_batch = [len(data.x) for data in loader.dataset]
         with torch.no_grad():
             i = 0
+            inputs = []
+            predictions = []
             for data in loader:
                 total_batch_z, adjusted_pred_adj, input_adj = self.encode_decode_inputadj(
                     data, i, loader.batch_size, num_nodes_batch)
                 input_adj_flat = input_adj.detach().cpu().numpy().ravel()
                 pred_adj_flat = adjusted_pred_adj.detach().cpu().numpy().ravel()
-
-                try:
-                    auc = roc_auc_score(input_adj_flat, pred_adj_flat)
-                    # average_precision è la PR_AUC
-                    average_precision = average_precision_score(input_adj_flat, pred_adj_flat)
-                    #plt.hist((input_adj_flat, pred_adj_flat), bins=50);
-                    #plt.show()
-                except Exception as e:
-                    auc = 0
-                    average_precision = 0
-                    print(f"Eccezione data dalla AUC...")
-                    print(e)
-                    #print(f"nan elements: {np.count_nonzero(np.isnan(input_adj_flat))} su totale: {input_adj_flat.size}")
-                    print(f"nan elements: {np.count_nonzero(np.isnan(pred_adj_flat))} su totale: {pred_adj_flat.size}")
-
-                #print(f"auc_{i}: {auc}", end=', ')
+                #non posso sommare o mediare le metriche, devo accumumlare gli array
+                predictions.append(pred_adj_flat)
+                inputs.append(input_adj_flat)
                 i += loader.batch_size
 
-                #................comunque non posso sommare o mediare le AUC
+            inputs = np.concatenate(inputs)
+            predictions = np.concatenate(predictions)
 
-                #auc, ap = self.model.test(z, data.pos_edge_label_index, data.neg_edge_label_index)
+            try:
+                auc = roc_auc_score(inputs, predictions)
+                # average_precision è la PR_AUC
+                average_precision = average_precision_score(inputs, predictions)
+                # f1 score per il calcolo della threshold migliore
+                thresholds = np.linspace(0.35, 0.7, 5)
+                start = time.time()
+                f1scores = [f1_score(inputs, (predictions >= t).astype('int'), average="binary") for t in thresholds]
+                end = time.time()
+                ix = np.argmax(f1scores)
+                best_threshold, f1 = thresholds[ix], f1scores[ix]
+                #print(f"durata calcolo soglie: {round(end - start, 2)} - valore: {best_threshold}")
+                hamming_dist = self.HD(torch.tensor(predictions), torch.tensor(inputs, dtype=torch.uint8))
+            except Exception as e:
+                auc = -1
+                average_precision = -1
+                f1 = -1
+                hamming_dist = -1
+                print(f"Eccezione data dalle metriche...")
+                print(e)
+                print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+                #print(f"nan elements: {np.count_nonzero(np.isnan(input_adj_flat))} su totale: {input_adj_flat.size}")
+                print(f"nan elements: {np.count_nonzero(np.isnan(predictions))} su totale: {predictions.size}")
 
-            metriche = Metrics(auc=auc, pr_auc=average_precision)
+                #print(f"auc_{i}: {auc}", end=', ')
+
+            metriche = Metrics(auc=auc, pr_auc=average_precision, f1_score=f1, soglia=best_threshold, hamming_distance=hamming_dist)
 
         return metriche

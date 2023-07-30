@@ -10,10 +10,16 @@ from config_valid import TrainingMode, GraphType
 import umap
 from matplotlib import ticker
 from cycler import cycler
-from utils_embednet import array_wo_outliers
+from utils_embednet import array_wo_outliers, adjust_lightness
 formatter = ticker.ScalarFormatter(useMathText=True)
 formatter.set_scientific(True)
 formatter.set_powerlimits((-1,1))
+
+font_for_text = {'family': 'serif',
+        'color':  'darkred',
+        'weight': 'normal',
+        'size': 12,
+        }
 
 sc1 = None
 class Data2Plot():
@@ -34,6 +40,8 @@ class Data2Plot():
         self.class_labels = []
         self.unique_class_labels = []
         self.dim = dim
+        self.threshold_for_binary_prediction = None
+        self.threshold_for_binary_prediction2 = None
 
         try:
             self.allgraph_class_labels = [[emb.scalar_label for emb in emb_per_graph] for emb_per_graph in self.input_obj]
@@ -109,14 +117,13 @@ class Data2Plot():
 
 
         if datatype == 'adj_entries':
-            self.plot_adj_entries_hist(ax)
+            self.plot_adj_entries_hist(ax, self.threshold_for_binary_prediction, self.threshold_for_binary_prediction2)
 
         else:
             ## caso in cui devo fare un umap e cmq devo plottare tutte le dimensioni dell'embedding
             if self.dim > 2:
                 #print(f"shape array:  {self.array2plot.shape}")
-                # voglio appiattire ma mantenere la suddivisione per classe
-                # array2plotflattened = self.array2plot.reshape(-1, self.array2plot.shape[-1])
+                # appiattisco mantenendo la dimnensione sulle classi e sul vettore di embedding
                 array2plotflattened = self.array2plot.reshape(self.array2plot.shape[0], -1, self.array2plot.shape[-1])
                 #emb_data = self.calc_umap(array2plotflattened)
                 #if datatype == 'node_embedding':
@@ -132,15 +139,15 @@ class Data2Plot():
                 #ax.scatter(emb_data[:, 0], emb_data[:, 1], c=labels_ripetute_pergraph, cmap=cmap, alpha=alpha_value) #'gist_rainbow');
 
                 # lascio stare l'UMAP al momento e uso il parallel coord plot
-                custom_lines = []
+                #custom_lines = []
                 for i, classe in enumerate(array2plotflattened):
-                    color = self.get_color(i, True)
-                    custom_lines.append(Line2D([0], [0], color=color, lw=3))
+                    #color = self.get_color(i, True)
+                    #custom_lines.append(Line2D([0], [0], color=color, lw=3))
                     label = str(self.unique_class_labels[i])
                     alpha_value = self.get_alpha_value(datatype, i)
-                    parallel_coord(classe, ax, title, color=color, label=label, alpha_value=alpha_value)
+                    parallel_coord(classe, ax, title, color=self.colors[label], label=label, alpha_value=alpha_value)
 
-                ax.legend(custom_lines, [f"class {e}" for e in self.unique_class_labels])
+                ax.legend(self.custom_legend_lines, [f"class {e}" for e in self.unique_class_labels])
 
             ## devo plottare:
             ## node emb come scatter
@@ -154,6 +161,7 @@ class Data2Plot():
                     color = self.get_color(i, sequential_colors)
                     custom_lines.append(Line2D([0], [0], color=color, lw=3))
                     label = str(self.unique_class_labels[i])
+                    alpha_value = self.get_alpha_value(datatype, i)
                     if type == 'histogram':
                         self.plot_hist(ax, classe, color, label)
                     elif type == 'plot':
@@ -231,23 +239,34 @@ class DataAutoenc2Plot(Data2Plot):
     """
 
     """
-    def __init__(self, wrapper_obj, dim, config_class=None, sequential_colors=False, metric_name='da_impostare'):
+    def __init__(self, wrapper_obj, dim, config_class=None, sequential_colors=False, **kwargs):  #, metric_name='da_impostare'):
         self.config_class = config_class
         self.wrapper_obj = wrapper_obj
         self.input_obj = wrapper_obj.list_emb_autoenc_per_graph
         self.array2plot = []
+        # oggetti embedding separati per train e test
+        self.emb_pergraph_train = kwargs.get("emb_pergraph_train")
+        self.emb_pergraph_test = kwargs.get("emb_pergraph_test")
+        self.array2plot_train = []
+        self.array2plot_test = []
         ## la label di classe è prodotta nel training set
         self.class_labels = [graph.scalar_label for graph in self.input_obj]
-        self.unique_class_labels = list(set(self.class_labels))
+        self.unique_class_labels = sorted(list(set(self.class_labels)))
         ## la label di nodo può essere diversa per ogni nodo (actual node degree  oppure original node label)
         ## oppure posso voler associare a ogni nodo la label del grafo a cui il nodo appartiene
         self.allnode_labels = None ## [graph.node_label_from_dataset for graph in self.input_obj]
         self.all_node_degree = None
         self.dim = dim
+        if self.emb_pergraph_train is None and self.emb_pergraph_test is None:
+            self.threshold_for_binary_prediction = wrapper_obj.list_emb_autoenc_per_graph[0].threshold_for_binary_prediction
+            self.threshold_for_binary_prediction2 = 0
+        else:
+            self.threshold_for_binary_prediction = self.emb_pergraph_train[0].threshold_for_binary_prediction
+            self.threshold_for_binary_prediction2 = self.emb_pergraph_test[0].threshold_for_binary_prediction
         self.colors = None
         self.custom_legend_lines = None
         self.sequential_colors = sequential_colors
-        self.metric_name = metric_name
+        #self.metric_name = metric_name
         #super().__init__(input_obj, dim, config_class)
         #print("Chiamo DataAutoenc2Plot: inizializzato correttamente.")
 
@@ -255,32 +274,101 @@ class DataAutoenc2Plot(Data2Plot):
         self.array2plot = []
 
         if type == 'adj_entries':
-            outputs = []
-            inputs = []
-            adj_01 = []
-            for graph in self.input_obj:
-                outputs.append(graph.decoder_output.ravel())
-                inputs.append(graph.input_adj_mat.ravel())
-                adj_01.append(graph.thresholded.ravel())
-            self.array2plot = (np.array(inputs), np.array(outputs), np.array(adj_01))
+            if self.emb_pergraph_train is None and self.emb_pergraph_test is None:
+                outputs = []
+                inputs = []
+                adj_01 = []
+                for graph in self.input_obj:
+                    outputs.append(graph.decoder_output.ravel())
+                    inputs.append(graph.input_adj_mat.ravel())
+                    adj_01.append(graph.thresholded.ravel())
+                self.array2plot = (np.array(inputs), np.array(outputs), np.array(adj_01))
+            else:
+                self.array2plot_train = (
+                    np.array([graph.input_adj_mat.ravel() for graph in self.emb_pergraph_train]),
+                    np.array([graph.decoder_output.ravel() for graph in self.emb_pergraph_train]),
+                    np.array([graph.thresholded.ravel() for graph in self.emb_pergraph_train])
+                )
+                self.array2plot_test = (
+                    np.array([graph.input_adj_mat.ravel() for graph in self.emb_pergraph_test]),
+                    np.array([graph.decoder_output.ravel() for graph in self.emb_pergraph_test]),
+                    np.array([graph.thresholded.ravel() for graph in self.emb_pergraph_test])
+                )
 
         elif type == 'node_embedding':
             self.array2plot = np.array([[graph.node_embedding.squeeze() for graph in self.input_obj if graph.scalar_label == classe] for classe in self.unique_class_labels])
             self.allnode_labels = [[graph.node_label_from_dataset for graph in self.input_obj if graph.scalar_label == classe] for classe in self.unique_class_labels]
             self.all_node_degree = [[graph.node_degree for graph in self.input_obj if graph.scalar_label == classe] for classe in self.unique_class_labels]
-            self.colors = {self.unique_class_labels[c]: self.get_color(c, self.sequential_colors) for c in range(len(self.unique_class_labels))}
+            self.colors = {str(self.unique_class_labels[c]): self.get_color(c, sequential_colors=True) for c in range(len(self.unique_class_labels))}
             self.custom_legend_lines = [(Line2D([0], [0], color=color, lw=3)) for color in self.colors.values()]
-
         elif type == 'graph_embedding':
             for graph in self.input_obj:
                 graph.calc_graph_emb()
             self.array2plot = np.array([[graph.graph_embedding.squeeze() for graph in self.input_obj if graph.scalar_label == classe] for classe in self.unique_class_labels])
+            self.colors = {str(self.unique_class_labels[c]): self.get_color(c, sequential_colors=True) for c in range(len(self.unique_class_labels))}
+            self.custom_legend_lines = [(Line2D([0], [0], color=color, lw=3)) for color in self.colors.values()]
+        #print(f"len di ar2p: {len(self.array2plot)}, type: {type}")
 
-    def plot_adj_entries_hist(self, ax):
-        input_adj_flat, pred_adj_flat, pred_after_sigm = self.array2plot
-        # input_adj_flat, pred_adj_flat = input_adj_flat[0], pred_adj_flat[0]
-        input_adj_flat, pred_adj_flat, pred_after_sigm_flat = input_adj_flat.ravel(), pred_adj_flat.ravel(), pred_after_sigm.ravel()
-        ax.hist((input_adj_flat, pred_adj_flat, pred_after_sigm_flat), bins=50, range=[-0.25, 1.25]);
+    def plot_adj_entries_hist(self, ax1, threshold=None, threshold2=None):
+        if self.array2plot_test is None and self.array2plot_train is None:
+            input_adj_flat, pred_adj_flat, pred_after_sigm = self.array2plot
+            # input_adj_flat, pred_adj_flat = input_adj_flat[0], pred_adj_flat[0]
+            input_adj_flat, pred_adj_flat, pred_after_sigm_flat = input_adj_flat.ravel(), pred_adj_flat.ravel(), pred_after_sigm.ravel()
+            ax1.hist((input_adj_flat, pred_adj_flat, pred_after_sigm_flat), bins=50, range=[-0.25, 1.25]);
+            if threshold:
+                ax1.text(1.2, 1.0, f"soglia {round(threshold, 2)}", fontdict=font_for_text)
+        else:
+            input_adj_flat, pred_adj_flat, pred_after_sigm = self.array2plot_train
+            input_adj_flat_train, pred_adj_flat_train, pred_after_sigm_flat_train = input_adj_flat.ravel(), pred_adj_flat.ravel(), pred_after_sigm.ravel()
+            input_adj_flat, pred_adj_flat, pred_after_sigm = self.array2plot_test
+            input_adj_flat_test, pred_adj_flat_test, pred_after_sigm_flat_test = input_adj_flat.ravel(), pred_adj_flat.ravel(), pred_after_sigm.ravel()
+
+            fig = plt.gcf()
+            axes = [ax1]
+            ax1.hist((input_adj_flat_test, pred_adj_flat_test, pred_after_sigm_flat_test), bins=50, range=[-0.25, 1.25], label="Test set");
+            if threshold:
+                ax1.text(1.2, 1.0, f"soglia {round(threshold2, 2)}", fontdict=font_for_text)
+            # secondo asse del test
+            asse = fig.add_subplot(233, sharex=ax1, sharey=ax1, label=f"ax2")
+            axes.append(asse)
+            asse.hist((input_adj_flat_train, pred_adj_flat_train, pred_after_sigm_flat_train), bins=50, range=[-0.25, 1.25], label="Train set");
+            if threshold2:
+                asse.text(1.2, 1.0, f"soglia {round(threshold,2)}", fontdict=font_for_text)
+
+            ax1.legend()
+            asse.legend()
+
+            xshift = 0.06;
+            yshift = 0.06
+            for i, ax in enumerate(axes[::-1]):
+                ax.patch.set_visible(False)
+                pos = ax.get_position()
+                newpos = Bbox.from_bounds(pos.x0 + i * xshift, pos.y0 + i * yshift, pos.width, pos.height)
+                ax.set_position(newpos)
+                for sp in ["top", "right"]:
+                    ax.spines[sp].set_visible(False)
+
+                if i > 0:
+                    ax.spines["left"].set_visible(False)
+                    ax.tick_params(labelleft=False, left=False, labelbottom=False)
+
+    def plot_output_degree_sequence(self, filename_save=None):
+        # voglio plottare anche altre cose tipo la sequenza di grado
+        # prendo la seq grado delloutput
+        pred_degrees = np.array([g.out_degree_seq for g in self.input_obj]).ravel().squeeze()
+        input_degree = np.array(self.wrapper_obj.node_degree).ravel().squeeze()
+        # print(pred_degrees.shape, input_degree.shape)
+        plt.scatter(input_degree, pred_degrees)
+        plt.ylim(0, max(pred_degrees))
+        if filename_save:
+            plt.savefig(filename_save)
+        # fig = plt.gcf()
+        # fig.clf()
+        # plt.cla()
+        # plt.clf()
+
+
+
 
     def get_color(self, i, sequential_colors=False):
         if sequential_colors:
@@ -386,32 +474,49 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, current_metric_list
 
     if kwargs['showplot']:
         plt.show()
+
     return fig
 
 
 def plot_test_loss_and_metric(axes, current_metric_list, test_loss_list, epochs_list, **kwargs):
+    metric_obj_list = kwargs.get("metric_obj_list")
+    metric_names = kwargs.get("metric_name")
     x_max = kwargs.get("last_epoch")
+    train_loss_list = kwargs.get("train_loss_list")
+
     # test loss
     loss_list_min, loss_list_max = min(array_wo_outliers(test_loss_list)), max(array_wo_outliers(test_loss_list))
-    #loss_list_min, loss_list_max = min(test_loss_list), max(test_loss_list)
+    train_loss_list_min, train_loss_list_max = min(array_wo_outliers(train_loss_list)), max(array_wo_outliers(train_loss_list))
+    minimo = min(loss_list_min, train_loss_list_min)
+    massimo = max(loss_list_max, train_loss_list_max)
     ploss, = axes[1][0].plot(epochs_list, test_loss_list, color='black', label='Test Loss')
-    axes[1][0].set_ylim(loss_list_min, loss_list_max)
+    # train loss
+    axes[1][0].plot(epochs_list, train_loss_list, color='darkgray', label='Train Loss')
+
+    axes[1][0].set_ylim(minimo - (0.1*minimo), massimo + (0.1*massimo))
     axes[1][0].set_xlim(0, x_max)
     # axes[1][0].set_ylabel('Test Loss', fontsize=12);
-    axes[1][0].legend(loc='lower left')
+    axes[1][0].legend(loc='upper left')
     # axes[1][0].yaxis.label.set_color(ploss.get_color())
+
+
 
     # plot accuracy
     # if not (data.config_class.conf['model'].get('autoencoder') or data.config_class.conf['model'].get('autoencoder_confmodel')):
     axt = axes[1][0].twinx()
-    pmetric, = axt.plot(epochs_list, current_metric_list, color='blue', label=kwargs.get("metric_name"))
-    axt.set_ylim(0, 1)
-    # axt.set_ylabel('Test metric', fontsize=12);
-    axt.set_xlim(0, x_max)
-    #    axt.set_yticklabels([0.0,1.0])
-    axt.legend(loc='upper right')
-    # axt.yaxis.label.set_color(pmetric.get_color())
-    axt.tick_params(axis='y', colors=pmetric.get_color())
+
+    #metriche = []  # sar una lista di liste
+    for i, metric_name in enumerate(metric_names):
+        metrica = [m.get_metric(metric_name) for m in metric_obj_list]
+        color = get_colors_to_cycle_rainbow8()[i % 8]
+        pmetric, = axt.plot(epochs_list, metrica, color=color, label=metric_name)
+        axt.set_ylim(0, 1)
+        # axt.set_ylabel('Test metric', fontsize=12);
+        axt.set_xlim(0, x_max)
+        #    axt.set_yticklabels([0.0,1.0])
+        axt.legend(loc='upper right')
+        # axt.yaxis.label.set_color(pmetric.get_color())
+        axt.tick_params(axis='y', colors=pmetric.get_color())
 
 
 def plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs):
@@ -508,6 +613,55 @@ def parallel_coord(ys, host, titolo_grafico, **kwargs):
     #            ncol=len(iris.target_names), fancybox=True, shadow=True)
     #plt.tight_layout()
     return
+
+
+def plot_weights_multiple_hist(layers, labels, ax1, absmin, absmax, sequential_colors=False, subplot=236):
+    assert len(layers) == len(labels), f"ci sono {len(layers)} layers e {len(labels)} labels"
+    #absmin, absmax = np.min([np.min(par) for par in layers]), np.max([np.max(par) for par in layers])
+    bins = np.linspace(absmin, absmax, 40)
+    alphavalue = 0.7
+    #fig, ax1 = plt.subplots()
+    fig = plt.gcf()
+    #ax1.set(xlim=(0, 10), ylim=(0, 25))
+
+    # primo grafico con l'asse che ho passato da fuori
+    i = 0
+    axes = [ax1]
+    custom_lines = []
+    color = get_colors_to_cycle_rainbow8()[i % 8]
+    if sequential_colors:
+        color = get_colors_to_cycle_sequential(len(layers))[i]
+    custom_lines.append(Line2D([0], [0], color=color, lw=3))
+    ax1.hist(layers[0], bins, density=True, label=labels[i], stacked=True, alpha=alphavalue, color=color)
+    ax1.set_ylim(0,3)
+    for i, lay in enumerate(layers[1:]):
+        asse = fig.add_subplot(subplot, sharex=ax1, sharey=ax1, label=f"ax{i+1}")
+        axes.append(asse)
+        color = get_colors_to_cycle_rainbow8()[i+1 % 8]
+        if sequential_colors:
+            color = get_colors_to_cycle_sequential(len(layers))[i+1]
+        asse.hist(lay, bins, density=True, label=labels[i+1], stacked=True, alpha=alphavalue, color=color)
+        asse.set_ylim(0,3)
+        custom_lines.append(Line2D([0], [0], color=color, lw=3))
+
+    ax1.legend(custom_lines, [f"{e}" for e in labels], loc='upper right')
+
+
+    xshift=0.02; yshift=0.02
+    for i, ax in enumerate(axes[::-1]):
+        ax.patch.set_visible(False)
+        pos = ax.get_position()
+        newpos = Bbox.from_bounds(pos.x0+i*xshift, pos.y0+i*yshift, pos.width, pos.height)
+        ax.set_position(newpos)
+        for sp in ["top", "right"]:
+            ax.spines[sp].set_visible(False)
+
+        if i > 0:
+            ax.spines["left"].set_visible(False)
+            ax.tick_params(labelleft=False, left=False, labelbottom=False)
+
+    #fig.savefig("trial01.pdf", transparent=True)
+    #plt.show()
 
 # endregion
 
@@ -1065,52 +1219,5 @@ def plot_onlyloss_ripetizioni_stesso_trial_superimposed(xp, dot_key, ylim=None, 
 
 
 
-def plot_weights_multiple_hist(layers, labels, ax1, absmin, absmax, sequential_colors=False, subplot=236):
-    assert len(layers) == len(labels), f"ci sono {len(layers)} layers e {len(labels)} labels"
-    #absmin, absmax = np.min([np.min(par) for par in layers]), np.max([np.max(par) for par in layers])
-    bins = np.linspace(absmin, absmax, 40)
-    alphavalue = 0.7
-    #fig, ax1 = plt.subplots()
-    fig = plt.gcf()
-    #ax1.set(xlim=(0, 10), ylim=(0, 25))
-
-    # primo grafico con l'asse che ho passato da fuori
-    i = 0
-    axes = [ax1]
-    custom_lines = []
-    color = get_colors_to_cycle_rainbow8()[i % 8]
-    if sequential_colors:
-        color = get_colors_to_cycle_sequential(len(layers))[i]
-    custom_lines.append(Line2D([0], [0], color=color, lw=3))
-    ax1.hist(layers[0], bins, density=True, label=labels[i], stacked=True, alpha=alphavalue, color=color)
-    ax1.set_ylim(0,3)
-    for i, lay in enumerate(layers[1:]):
-        asse = fig.add_subplot(subplot, sharex=ax1, sharey=ax1, label=f"ax{i+1}")
-        axes.append(asse)
-        color = get_colors_to_cycle_rainbow8()[i+1 % 8]
-        if sequential_colors:
-            color = get_colors_to_cycle_sequential(len(layers))[i+1]
-        asse.hist(lay, bins, density=True, label=labels[i+1], stacked=True, alpha=alphavalue, color=color)
-        asse.set_ylim(0,3)
-        custom_lines.append(Line2D([0], [0], color=color, lw=3))
-
-    ax1.legend(custom_lines, [f"{e}" for e in labels], loc='upper right')
-
-
-    xshift=0.02; yshift=0.02
-    for i, ax in enumerate(axes[::-1]):
-        ax.patch.set_visible(False)
-        pos = ax.get_position()
-        newpos = Bbox.from_bounds(pos.x0+i*xshift, pos.y0+i*yshift, pos.width, pos.height)
-        ax.set_position(newpos)
-        for sp in ["top", "right"]:
-            ax.spines[sp].set_visible(False)
-
-        if i > 0:
-            ax.spines["left"].set_visible(False)
-            ax.tick_params(labelleft=False, left=False, labelbottom=False)
-
-    #fig.savefig("trial01.pdf", transparent=True)
-    #plt.show()
 
 # endregion

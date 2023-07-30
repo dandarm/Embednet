@@ -11,7 +11,7 @@ graph_dataset:
     range_p: [0.01, 0.5]
     community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]], [[0.4, 0.01], [0.01, 0.1]]]  # num nodi * num classi * num comunità
     Num_nodes: [200, 200, 200, 200] # , 200]
-    Num_grafi_per_tipo: 10
+    Num_grafi_per_tipo: 3
     Num_grafi_totali: 1000
     list_degree: [4, 50]
     list_exponents: [-2.2, -2.5, -2.8, -3.0, -3.2, -3.5, -3.7]
@@ -23,8 +23,8 @@ training:
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
-    learning_rate: 0.0005
-    epochs: 40000
+    learning_rate: 0.001
+    epochs: 200
     batch_size: 200
     percentage_train: 0.7
     earlystop_patience: 500
@@ -32,6 +32,8 @@ training:
     save_best_model: False
     every_epoch_embedding: True
     shuffle_dataset: False
+    calculate_metrics: True
+    optimizer: SGD
     
 model:
     last_layer_dense: False
@@ -45,8 +47,9 @@ model:
     final_pool_aggregator: True
     put_dropout: False
     node_features_dim: 1
-    init_weights: 'normal'    # 'xavier_normal' #  'kaiming_uniform'
-    activation: 'Tanh'  #RELU, LeakyRELU , Hardtanh, 'ELU'
+    init_weights:  'xavier_normal' #  'kaiming_uniform'  'normal'
+    activation: 'ELU'   # LeakyRELU , Hardtanh, 'RELU' Tanh'
+    last_layer_activation: 'RELU'
     
 graph_ae_model:
     num_kernels: 2

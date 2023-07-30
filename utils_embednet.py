@@ -118,7 +118,7 @@ def findMinDiff(arr):
     return diff
 
 
-def is_outlier(points, thresh=3.5):
+def is_outlier(points, thresh=7.5):
     """
     Returns a boolean array with True if points are outliers and False
     otherwise.
@@ -155,3 +155,19 @@ def array_wo_outliers(x_array):
     x_array = np.array(x_array)
     filtered = x_array[~is_outlier(x_array)]
     return filtered
+
+def adjust_lightness(color, amount=0.5):
+    """
+    Per modificare la luminosità di un colore
+    :param color: colore originale
+    :param amount: se < 1 schiarisce, se > 1 scurisce
+    :return:
+    """
+    import matplotlib.colors as mc
+    import colorsys
+    try:
+        c = mc.cnames[color]
+    except:
+        c = color
+    c = colorsys.rgb_to_hls(*mc.to_rgb(c))
+    return colorsys.hls_to_rgb(c[0], max(0, min(1, amount * c[1])), c[2])

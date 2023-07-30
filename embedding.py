@@ -471,10 +471,13 @@ class Embedding_autoencoder_per_graph():
         self.decoder_output_after_activation = None
         self.thresholded = None
         self.hamming_distance = None
+        self.threshold_for_binary_prediction = None
 
         self.scalar_label = None
         self.node_label_from_dataset = None
-        self.node_degree = None
+        self.node_degree = None  # viene dai grafi di input
+
+        self.out_degree_seq = None  # viene dai grafi di output
 
 
     def calc_decoder_output(self, model_decoder, activation_func, **kwargs):
@@ -485,10 +488,14 @@ class Embedding_autoencoder_per_graph():
         ##print(torch.allclose(self.decoder_output, res))
         self.decoder_output_after_activation = activation_func(self.decoder_output)
 
-    def calc_thresholded_values(self):
-        self.thresholded = (self.decoder_output_after_activation > 0.5).astype(np.uint8)
+    def calc_thresholded_values(self, threshold=0.5):
+        self.thresholded = (self.decoder_output_after_activation > threshold).astype(np.uint8)
+        # salvo questa soglia anche dentro la classe
+        self.threshold_for_binary_prediction = threshold
         # calcolo subito anche la distanza di hamming
 
+    def calc_degree_sequence(self):
+        self.out_degree_seq = self.decoder_output.sum(axis=1)
 
     def calc_graph_emb(self):
         self.graph_embedding = np.mean(self.node_embedding, axis=-2)   # perch
@@ -535,9 +542,9 @@ class Embedding_autoencoder(Embedding):
         for graph_emb in self.list_emb_autoenc_per_graph:
             graph_emb.calc_decoder_output(model_decoder, activation_func, **kwargs)
 
-    def calc_thresholded_values(self):
-        for graph_emb in self.list_emb_autoenc_per_graph:
-            graph_emb.calc_thresholded_values()
+    # def calc_thresholded_values(self):
+    #     for graph_emb in self.list_emb_autoenc_per_graph:
+    #         graph_emb.calc_thresholded_values()
 
     def calc_instrinsic_dimension(self, num_emb_neurons, calc_per_graph=False):
         metodo = skdim.id.TwoNN()

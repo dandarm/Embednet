@@ -116,16 +116,16 @@ class Experiments():
     def init_trainer(self):
         if self.config_class.conf['model']['autoencoder']:
             print("Autoencoder model")
-            self.trainer = Trainer_Autoencoder(self.config_class)
+            self.trainer = Trainer_Autoencoder(self.config_class, rootsave=self.rootsave)
         elif self.config_class.conf['model']['autoencoder_confmodel']:
             print("Autoencoder model con decoder CM")
-            self.trainer = Trainer_Autoencoder(self.config_class)
+            self.trainer = Trainer_Autoencoder(self.config_class, rootsave=self.rootsave)
         elif self.config_class.conf['model']['autoencoder_graph_ae']:
             print("Autoencoder MIAGAE")
-            self.trainer = Trainer_AutoencoderMIAGAE(self.config_class)
+            self.trainer = Trainer_AutoencoderMIAGAE(self.config_class, rootsave=self.rootsave)
             # DEBUG #self.trainer = Trainer_AutoencoderMIAGAE_DEBUG(self.config_class)
         else:
-            self.trainer = Trainer(self.config_class)
+            self.trainer = Trainer(self.config_class, rootsave=self.rootsave)
 
     def GS_simple_experiments(self, parallel_take_result=True, do_plot=True, **kwargs):
         global graph_embedding_per_epoch
@@ -153,54 +153,35 @@ class Experiments():
             self.just_train()
 
 
-#             if self.config_class.conf['training']['every_epoch_embedding']:
-#                 dataset = self.trainer.dataset
-#                 exp_config = self.trainer.config_class
-#                 if self.config_class.autoencoding:
-#                     # autoencoder_embedding_per_epoch (static) serve perché ho bisogno delle info per ogni epoca
-#                     # per calcolare correlation e intrinsic dimension
-#                     autoencoder_embedding_per_epoch = self.trainer.autoencoder_embedding_per_epoch
-#                 else:
-#                     graph_embedding_per_epoch = self.trainer.graph_embedding_per_epoch
-#                     node_embedding_per_epoch = self.trainer.node_embedding_per_epoch
-#                     output_per_epoch = self.trainer.output_per_epoch
-#
-#                 #               if num_emb_neurons == 1:
-# #                   avg_corr_classes, avg_tau_classes = self.get_corrs_per_epoch(parallel=parallel_take_result)
-# #                   avg_corr_classes = np.array(avg_corr_classes).T
-# #                   avg_tau_classes = np.array(avg_tau_classes).T
-#                 with Pool(processes=30) as pool:
-#                     if self.config_class.autoencoding:
-#                         d4v_e_ids_e_corrs = pool.map(take_results_each_epoch_autoencoder, range(len(self.epochs_list)))
-#                     else:
-#                         d4v_e_ids_e_corrs = pool.map(take_results_each_epoch, self.epochs_list)  #TODO: anche qui? range(len(epochs_list))
-#                         self.divide_lists_results_for_epochlist(d4v_e_ids_e_corrs, self.epochs_list)  # riempie le variabili globali...un giorno riuscirò a togliere il metodo static
-#
-#                 #fill_df_with_results(self.gc.config_dataframe, k, None, None, self.trainer.test_loss_list, self.trainer.accuracy_list, embedding_class)
             if not self.config_class.conf['training']['every_epoch_embedding']:
-                # raccolgo gli embedding e imposto la classe per i plot finali
-                embedding_dimension = self.trainer.embedding_dimension
-                if self.config_class.autoencoding:
-                    self.embedding_autoencoder = self.trainer.autoencoder_embedding_per_epoch[-1]
-                    data = DataAutoenc2Plot(self.embedding_autoencoder, dim=embedding_dimension,
-                                            config_class=self.embedding_autoencoder.config_class)  # , metric_name=self.trainer.name_of_metric)
-                else:
-                    self.embedding_class = self.embedding()
-                    data = Data2Plot(self.embedding_class.emb_perclass, dim=embedding_dimension,
-                                     config_class=self.embedding_class.config_class)
+                if self.config_class.conf['training'].get('calculate_metrics'):
+                    metric_object = self.trainer.calc_metric(self.trainer.dataset.all_data_loader)
+                    metric_object_train = self.trainer.calc_metric(self.trainer.dataset.train_loader)
+                    metric_object_test = self.trainer.calc_metric(self.trainer.dataset.test_loader)
+                emb_pergraph_test, emb_pergraph_train, embeddings_arrays = \
+                    self.trainer.provide_all_embeddings(give_emb_train=True, give_emb_test=True,
+                                                metric_object=metric_object,
+                                                metric_object_test=metric_object_test,
+                                                metric_object_train=metric_object_train)
+                model_weights = self.trainer.provide_model_weights()
 
-                loss_list = np.array(self.trainer.test_loss_list)[self.epochs_list]
-                metric_list = np.array(self.trainer.metric_list)[self.epochs_list]
-                if do_plot:
-                    plot_metrics(data, embedding_dimension,
-                                 loss_list, metric_list,
-                                 self.epochs_list,
-                                 # questi 4 li prendo con divide_lists_results_for_epochlist
-                                 node_intrinsic_dimensions_total,
-                                 graph_intrinsic_dimensions_total,
-                                 node_correlation,
-                                 graph_correlation,
-                                 sequential_colors=False, log=False, showplot=True, **kwargs)
+                # si ricava anche gli oggetti Embedding e Data2Plot
+                self.trainer.save_image_at_epoch(embeddings_arrays, model_weights, self.trainer.last_epoch,
+                                                self.epochs_list, emb_pergraph_train, emb_pergraph_test,
+                                                 rootsave=self.rootsave)
+
+                # loss_list = np.array(self.trainer.test_loss_list)[self.epochs_list]
+                # metric_list = np.array(self.trainer.metric_list)[self.epochs_list]
+                # if do_plot:
+                #     plot_metrics(data, embedding_dimension,
+                #                  loss_list, metric_list,
+                #                  self.epochs_list,
+                #                  # questi 4 li prendo con divide_lists_results_for_epochlist
+                #                  node_intrinsic_dimensions_total,
+                #                  graph_intrinsic_dimensions_total,
+                #                  node_correlation,
+                #                  graph_correlation,
+                #                  sequential_colors=False, log=False, showplot=True, **kwargs)
 
             k += 1
 
@@ -543,13 +524,15 @@ class Experiments():
 
 
 # region save video or gif
-    def save_many_images_embedding(self, trainer, config_c, node_embeddings_array_id=[0]):
-        for i in range(trainer.epochs):
-            graph_embeddings_array = trainer.graph_embedding_per_epoch[i]
-            node_embeddings_array = trainer.node_embedding_per_epoch[i]
-            emb_perclass0, emb_perclass1 = self.elaborate_embeddings(config_c, graph_embeddings_array, trainer.model, node_embeddings_array, node_embeddings_array_id, trainer.test_loss_list, trainer)
-            scatter_node_emb(emb_perclass0, emb_perclass1, trainer.metric_list[i], f"scatter_epoch{i}", show=False, close=True)
-            # plot_graph_emb_1D(emb_perclass0, emb_perclass1, trainer.last_accuracy)
+
+
+#     def save_many_images_embedding(self, trainer, config_c, node_embeddings_array_id=[0]):
+#         for i in range(trainer.epochs):
+#             graph_embeddings_array = trainer.graph_embedding_per_epoch[i]
+#             node_embeddings_array = trainer.node_embedding_per_epoch[i]
+#             emb_perclass0, emb_perclass1 = self.elaborate_embeddings(config_c, graph_embeddings_array, trainer.model, node_embeddings_array, node_embeddings_array_id, trainer.test_loss_list, trainer)
+#             scatter_node_emb(emb_perclass0, emb_perclass1, trainer.metric_list[i], f"scatter_epoch{i}", show=False, close=True)
+#             # plot_graph_emb_1D(emb_perclass0, emb_perclass1, trainer.last_accuracy)
 
     def parallel_save_many_images_embedding(self, lista):
         with Pool(processes=4) as pool:

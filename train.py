@@ -40,13 +40,15 @@ from embedding import Embedding, Embedding_autoencoder
 
 class Trainer():
 
-    def __init__(self, config_class, verbose=False):
+    def __init__(self, config_class, verbose=False, rootsave="."):
         self.config_class = config_class
         self.config_class.valid_conf()
         self.conf = None
         self.model = None
         self.model_checkpoint = None
         self.best_model = None
+
+        self.rootsave = rootsave
 
         self.percentage_train = None
         self.lr = None
@@ -79,6 +81,7 @@ class Trainer():
         #self.myExplained_variance = ExplainedVarianceMetric(dimension=self.last_layer_neurons)
         self.last_metric_value = None
         self.metric_list = None
+        self.metric_obj_list = None
         self.f1score_list = None
         #self.auc_score_list = None
         self.test_loss_list = None
@@ -161,6 +164,7 @@ class Trainer():
         #self.model.to(self.device)
         self.set_optimizer(self.model)
         self.embedding_dimension = self.model.convs[-1].out_channels
+        print(f"Optimizer: {self.optimizer}")
 
     def init_dataset(self, parallel=True, verbose=False):
         """
@@ -364,7 +368,7 @@ class Trainer():
             else:
                 correct += self.binary_accuracy(target, out.flatten())
 
-            #f1 = self.calc_f1score(target.detach().cpu(), out.detach().cpu())  TODO:  riprovare a chiamare prima detach e poi cpu
+            #f1 = self.calc_f1score(target.detach().cpu(), out.detach().cpu())
 
 
             out2 = out.to(torch.device('cuda'))
@@ -378,10 +382,10 @@ class Trainer():
         metriche = Metrics(accuracy=correct / len(loader.dataset))
         return metriche
 
-    def binary_accuracy(self, y_true, y_prob):
+    def binary_accuracy(self, y_true, y_prob, threshold=0.5):
         assert y_true.ndim == 1, "dim not 1"
         assert y_true.size() == y_prob.size(), "size non equal"
-        y_prob = y_prob > 0.5
+        y_prob = y_prob > threshold
         return (y_true == y_prob).sum().item()# / y_true.size(0)
 
     def calc_f1score(self, y_true, y_pred):
@@ -402,6 +406,7 @@ class Trainer():
         self.train_loss_list = []
         self.test_loss_list = []
         self.metric_list = []
+        self.metric_obj_list = []
         self.f1score_list = []
         self.graph_embedding_per_epoch = []
         self.node_embedding_per_epoch = []
@@ -419,19 +424,22 @@ class Trainer():
 
         # Calcola la metrica (accuracy o auc etc...)
         #if self.config_class.modo != TrainingMode.mode3:  # and not self.config_class.conf['model']['autoencoder']:
-        metric_object = self.calc_metric(self.dataset.test_loader)
-        all_metric_object = self.calc_metric(self.dataset.all_data_loader)
+        metric_object = self.calc_metric(self.dataset.all_data_loader)
+        metric_object_train = self.calc_metric(self.dataset.train_loader)
+        metric_object_test = self.calc_metric(self.dataset.test_loader)
 
         if verbose > 1:
             print(f'Before training Test loss: {test_loss}')
-            print(f"Test {self.name_of_metric} iniziale: {metric_object.get_metric(self.name_of_metric)}")
+            for name in self.name_of_metric:
+                print(f"Test {name} iniziale: {metric_object.get_metric(name)}")
             print(f'Before training Training + Test loss: {alldata_loss}')
 
         self.train_loss_list.append(0)
         self.test_loss_list.append(test_loss)
-        self.metric_list.append(metric_object.get_metric(self.name_of_metric))
+        #self.metric_list.append(metric_object.get_metric(self.name_of_metric))
+        self.metric_obj_list.append(metric_object)
         #self.f1score_list.append(test_f1score)
-        self.last_metric_value = self.metric_list[-1]
+        #self.last_metric_value = self.metric_list[-1]
         self.last_epoch = 0
 
         self.graph_embedding_per_epoch.append(all_graph_embeddings_array)
@@ -488,9 +496,6 @@ class Trainer():
             if epoch % 100 == 0:
                 test_loss = self.test(self.dataset.test_loader)
                 writer.add_scalar("Test Loss", test_loss, epoch)
-
-                #if self.config_class.modo != TrainingMode.mode3:
-                metric_object = self.calc_metric(self.dataset.test_loader)
                 #writer.add_scalar(f"Test {self.name_of_metric}", metric_object.get_metric(self.name_of_metric), epoch)
 
             #for i, v in enumerate(test_f1score):
@@ -501,33 +506,33 @@ class Trainer():
             # print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')
             self.train_loss_list.append(train_loss)
             self.test_loss_list.append(test_loss)
-            self.metric_list.append(metric_object.get_metric(self.name_of_metric))
+            #self.metric_list.append(metric_object.get_metric(self.name_of_metric))
+            self.metric_obj_list.append(metric_object)
             #self.f1score_list.append(test_f1score)
 
             if self.conf['training'].get('every_epoch_embedding'):
                 if epoch in epochs_list:
-                    if self.config_class.autoencoding:
-                        embeddings_per_graph = self.get_embedding_autoencoder(self.dataset.all_data_loader)
-                        embeddings_arrays = embeddings_per_graph
-                    else:
-                        graph_embeddings_array, node_embeddings_array, _, final_output = self.get_embedding(all_data_loader)
-                        embeddings_arrays = graph_embeddings_array, node_embeddings_array, final_output
+                    if self.conf['training'].get('calculate_metrics'):
+                        metric_object = self.calc_metric(self.dataset.all_data_loader)
+                        metric_object_train = self.calc_metric(self.dataset.train_loader)
+                        metric_object_test = self.calc_metric(self.dataset.test_loader)
 
-                    if self.conf['model']['last_layer_dense']:
-                        model_pars = get_parameters(self.model.convs) + get_parameters(self.model.linears)
-                        param_labels = get_param_labels(self.model.convs) + get_param_labels(self.model.linears)
-                    else:
-                        model_pars = get_parameters(self.model.convs)
-                        param_labels = get_param_labels(self.model.convs)
-                    model_weights = model_pars, param_labels
+                    emb_pergraph_test, emb_pergraph_train, embeddings_arrays = \
+                        self.provide_all_embeddings(give_emb_train=True, give_emb_test=True,
+                                                    metric_object=metric_object,
+                                                    metric_object_test=metric_object_test,
+                                                    metric_object_train=metric_object_train)
+                    model_weights = self.provide_model_weights()
 
                     p = multiprocessing.Process(target=self.save_image_at_epoch,
-                                                args=(embeddings_arrays, model_weights, epoch, epochs_list))
+                                                args=(embeddings_arrays, model_weights, epoch, epochs_list,
+                                                      emb_pergraph_train, emb_pergraph_test,
+                                                      self.rootsave))
                     p.start()
                     parallel_processes_save_images.append(p)
                     #self.save_image_at_epoch(embeddings_arrays,model_weights, epoch, epochs_list)
 
-                    file_path = f"scatter_epoch{epoch}.png"
+                    file_path = self.rootsave / f"_epoch{epoch}.png"
                     animation_files.append(file_path)
 
 
@@ -558,12 +563,12 @@ class Trainer():
 
         if verbose > 0:
             print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\tBest test loss: {best_loss} FINE TRAINING')
-            print(f"Test {self.name_of_metric} finale: {round(metric_object.get_metric(self.name_of_metric), 5)}")
+            #print(f"Test {self.name_of_metric} finale: {round(metric_object.get_metric(self.name_of_metric), 5)}")
 
         writer.flush()
         #writer_variance.flush()
         #self.myExplained_variance.reset()
-        self.last_metric_value = self.metric_list[-1]
+        #self.last_metric_value = self.metric_list[-1]
         self.last_epoch = epoch
 
         # aspetto per sicurezza che tutti i processi di salvataggio immagini siano finiti
@@ -572,39 +577,95 @@ class Trainer():
 
         # salvo le animazioni
         if self.conf['training'].get('every_epoch_embedding'):
-            nomefile = self.unique_train_name
-            ims = [imageio.imread(f) for f in animation_files]
-            imageio.mimwrite(nomefile + ".gif", ims, duration=0.1)
+            nomefile = self.rootsave / str(self.unique_train_name)
+            ims = []
+            try:
+                for f in animation_files:
+                    ims.append(imageio.imread(f))
+            except FileNotFoundError as e:
+                print(e)
+            imageio.mimwrite(nomefile.with_suffix(".gif"), ims, duration=0.1)
+
+            # degree seq
+            degims = []
+            degree_files = [self.rootsave / f"Degree_seq.{self.unique_train_name}_{epoch}.png" for epoch in epochs_list]
+            for f in degree_files:
+                degims.append(imageio.imread(f))
+            imageio.mimwrite(self.rootsave / f"Degree_seq.{self.unique_train_name}.gif", degims, duration=0.1)
+            for f in degree_files:
+                os.remove(f)
 
             # salvo video in mp4
             # devo rinominare i file in modo sequenziale altrimenti si blocca
-            radice = "scatter_epoch"
+            radice = "_epoch"   # TODO: cambiare in "nomefile"
             mapping = {old: new for new, old in enumerate(epochs_list)}
             new_files = []
             for i, f in enumerate(animation_files):
-               old = f.replace(radice, '').split('.')[0]
-               new_file = f"{radice}{mapping[int(old)]}.png"
-               new_files.append(new_file)
-               os.rename(f, new_file)
+                old = str(f).split('.')[0].split('/')[-1].replace(radice, '')
+                #print(f"file: {str(f)}, old: {old}")
+                new_file = self.rootsave / f"{radice}{mapping[int(old)]}.png"
+                #print(new_file)
+                try:
+                    os.rename(f, new_file)
+                    new_files.append(new_file)
+                except FileNotFoundError as e:
+                    print(e)
 
-            save_ffmpeg(radice, nomefile)
+            save_ffmpeg(self.rootsave / radice, nomefile)
             # files = new_files
 
-            for f in animation_files:
+            for f in new_files:
                 os.remove(f)
 
         return
 
-    def save_image_at_epoch(self, embedding_arrays, model_weights_and_labels, epoch, epochs_list):
+    def provide_model_weights(self):
+        if self.conf['model']['last_layer_dense']:
+            model_pars = get_parameters(self.model.convs) + get_parameters(self.model.linears)
+            param_labels = get_param_labels(self.model.convs) + get_param_labels(self.model.linears)
+        else:
+            model_pars = get_parameters(self.model.convs)
+            param_labels = get_param_labels(self.model.convs)
+        model_weights = model_pars, param_labels
+        return model_weights
+
+    def provide_all_embeddings(self, give_emb_train=False, give_emb_test=False, metric_object=None, metric_object_test=None, metric_object_train=None):
+        if self.config_class.autoencoding:
+            embeddings_arrays = self.get_embedding_autoencoder(self.dataset.all_data_loader)
+            if metric_object is not None:
+                [e.calc_thresholded_values(threshold=metric_object.get_metric("soglia")) for e in embeddings_arrays]
+            else:
+                [e.calc_thresholded_values(threshold=0.5) for e in embeddings_arrays]
+
+            if give_emb_train:
+                emb_pergraph_train = self.get_embedding_autoencoder(self.dataset.train_loader)
+            if give_emb_test:
+                emb_pergraph_test = self.get_embedding_autoencoder(self.dataset.test_loader)
+
+            if metric_object_train is not None:
+                [e.calc_thresholded_values(threshold=metric_object_train.get_metric("soglia")) for e in emb_pergraph_train]
+            else:
+                [e.calc_thresholded_values(threshold=0.5) for e in emb_pergraph_train]
+            if metric_object_test is not None:
+                [e.calc_thresholded_values(threshold=metric_object_test.get_metric("soglia")) for e in emb_pergraph_test]
+            else:
+                [e.calc_thresholded_values(threshold=0.5) for e in emb_pergraph_test]
+
+        else:
+            graph_embeddings_array, node_embeddings_array, _, final_output = self.get_embedding(self.dataset.all_data_loader)
+            embeddings_arrays = graph_embeddings_array, node_embeddings_array, final_output
+        return emb_pergraph_test, emb_pergraph_train, embeddings_arrays
+
+    def save_image_at_epoch(self, embedding_arrays, model_weights_and_labels, epoch, epochs_list,
+                            emb_pergraph_train=None, emb_pergraph_test=None, rootsave="."):
         # DEVO SEPARARE LA RACCOLTA DEGLI EMBEDDING DAL MULTIPROCESSING
         if self.config_class.autoencoding:
             embedding_class = Embedding_autoencoder(embedding_arrays, config_c=self.config_class, dataset=self.dataset)
-            #metriche = Metrics(embeddings_per_graph=emb_autoenc)
-            #embedding_class = metriche.get_metric("embeddings_per_graph")
-
             embedding_class.get_metrics(self.embedding_dimension)
             data = DataAutoenc2Plot(embedding_class, dim=self.embedding_dimension,
-                                    config_class=self.config_class, metric_name=self.name_of_metric)
+                                    config_class=self.config_class,
+                                    emb_pergraph_train=emb_pergraph_train,
+                                    emb_pergraph_test=emb_pergraph_test)
         else:
             graph_embeddings_array, node_embeddings_array, final_output = embedding_arrays
             embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, self.dataset, self.config_class, final_output)
@@ -631,13 +692,21 @@ class Trainer():
                                model_pars, param_labels,
                                node_correlation, graph_correlation, sequential_colors=True,
                                showplot=False, last_epoch=epochs_list[-1], metric_name=self.name_of_metric,
-                               long_string_experiment=self.config_class.long_string_experiment)
-            file_name = f"scatter_epoch{epoch}"
+                               long_string_experiment=self.config_class.long_string_experiment,
+                               metric_obj_list=self.metric_obj_list[:epoch],
+                               train_loss_list=self.train_loss_list[:epoch])
+            file_name = self.rootsave / f"_epoch{epoch}"
             plt.savefig(file_name)
             fig.clf()
             plt.cla()
             plt.clf()
-            #file_path = f"{file_name}.png"
+            if not self.conf['training']['every_epoch_embedding']:
+                # salvo solo lultima immagine e la rinomino:
+                os.rename(f"{file_name}.png", self.rootsave / f"{self.unique_train_name}.png")
+
+            # salvo la sequneza di grado
+            data.plot_output_degree_sequence(self.rootsave / f"Degree_seq.{self.unique_train_name}_{epoch}.png")
+
         except Exception as e:
             print(f"Immagine {epoch} non completata")
             print(e)

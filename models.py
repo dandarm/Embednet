@@ -44,19 +44,8 @@ class GCN(torch.nn.Module):
         if self.put_batchnorm:
             self.batchnorms = torch.nn.ModuleList()
 
-        activation_function_string = self.conf.get('activation', 'LeakyRELU')
-        if activation_function_string == 'ELU':
-            activation_function = ELU()
-        elif activation_function_string == "RELU":
-            activation_function = ReLU()
-        elif activation_function_string == "Hardtanh":
-            activation_function = Hardtanh(0, 1)
-        elif activation_function_string == "Tanh":
-            activation_function = Tanh()
-        elif activation_function_string == "LeakyRELU":
-            activation_function = LeakyReLU(0.05)
-        else:
-            raise "Errore nella funzione di attivazione specificata nel config."
+        activation_function = self.get_activ_func_from_config(self.conf['model'].get('activation'))
+        self.last_act_func = self.get_activ_func_from_config(self.conf['model'].get('last_layer_activation'))
 
 
         ###########   COSTRUISCO L'ARCHITETTURA      ###############
@@ -86,10 +75,25 @@ class GCN(torch.nn.Module):
                 lin = Linear(self.neurons_last_linear[j], self.neurons_last_linear[j + 1])
                 self.linears.append(lin)
 
-            self.last_activation = activation_function
+            self.last_linears__activation = activation_function
 
         if self.freezeGCNlayers:
             self.freeze_gcn_layers()
+
+    def get_activ_func_from_config(self, activation_function_string):
+        if activation_function_string == 'ELU':
+            activation_function = ELU()
+        elif activation_function_string == "RELU":
+            activation_function = ReLU()
+        elif activation_function_string == "Hardtanh":
+            activation_function = Hardtanh(0, 1)
+        elif activation_function_string == "Tanh":
+            activation_function = Tanh()
+        elif activation_function_string == "LeakyRELU":
+            activation_function = LeakyReLU(0.05)
+        else:
+            raise "Errore nella funzione di attivazione specificata nel config."
+        return activation_function
 
     def freeze_gcn_layers(self):
         #for param in self.parameters():
@@ -108,12 +112,9 @@ class GCN(torch.nn.Module):
             # print(f"leakyrelu{i}")
             # x, edge_index, _, batch, _, _ = self.pools[i](x, edge_index, None, batch)
         x = self.convs[-1](x, edge_index)
-        # così tolgo l'ultima activation per l'autoencoder o per quando non ho il Linear
-        if self.autoencoder or self.last_linear:
-            return x
-        else:
-            x = self.act_func[-1](x)
-            return x
+        # così tolgo posso specificare una activation func specifica per l'ultimo layer
+        x = self.last_act_func(x)
+        return x
 
     def n_layers_linear(self, x):
 
@@ -123,7 +124,7 @@ class GCN(torch.nn.Module):
             if self.put_dropout:
                 x = self.dropouts[i](x)
             x = layer(x)
-            x = self.last_activation(x)
+            x = self.last_linears__activation(x)
 
         return x
 
@@ -419,17 +420,17 @@ class ConfModelDecoder(InnerProductDecoder):
         super().__init__(**kwargs)
         # ATTIVAZIONE NECESSARIA  NECESSARIA PERCHÉ POSSO COMUNQUE SEMPRE AVERE VALORI NEGATIVI
         # CHE DEVO RIPORTARE AL MINIMO A ZERO
-        self.activation = ReLU()
+        #self.activation = ReLU()
 
     def forward(self, z, edge_index, sigmoid=False):
         value = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
-        value = self.activation(value)
+        #value = self.activation(value)
         value = value / (1 + value)
         return value
 
     def forward_all(self, z, sigmoid=False):
         adj = torch.matmul(z, z.t())
-        adj = self.activation(adj)
+        #adj = self.activation(adj)
         value = adj / (1 + adj)
         #check_nans(value, z)
         return value

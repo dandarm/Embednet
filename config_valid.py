@@ -206,7 +206,7 @@ class Config():
     def create_unique_train_name(self):
         tipo_grafo = ""
         if self.graphtype != GraphType.REAL:
-            tipo_grafo = "GraphType-"
+            tipo_grafo = "Grafi-"
             numnodi = self.conf['graph_dataset']['Num_nodes']
             if isinstance(numnodi, list):
                 numnodi = numnodi[0]
@@ -244,14 +244,17 @@ class Config():
         if not self.conf['model']['autoencoder_graph_ae']:
             init_weights = self.conf['model']['init_weights']
         else:
-            init_weights = ""            
+            init_weights = ""
 
-        nome = f"{tipo_grafo.ljust(15, '_')}_Classi{self.num_classes}_nodi{str(numnodi).ljust(13, '_')}_grafiXtipo{str(numgrafi).ljust(4, '_')}_{modo.ljust(6, '_')}_layers{layer_neuron_string}_initw-{init_weights.ljust(10, '_')}_lr{lr}_GCNfreezed{freezed}"
+        activation_type = self.conf['model'].get('activation')
+        optim = self.conf['training'].get('optimizer')
+
+        nome = f"{tipo_grafo.ljust(15, '_')}_Classi{self.num_classes}_nodi{str(numnodi).ljust(10, '_')}_grafiXtipo{str(numgrafi).ljust(4, '_')}_{modo.ljust(6, '_')}_layers{layer_neuron_string}__{activation_type}__-{init_weights.ljust(10, '_')}_lr{str(lr).replace('.','')}_{optim}"  # _GCNfreezed{freezed}
         nome = nome.replace(', ', '_')
 
         # creo stringa lunga
         #print(f"{sensori_eolici_rt.get(sensore[0]):<20}  -  Totale record: {df.shape[0]:<6} \t Record mancanti: {gaps.shape[0]:<6} ({round(gaps.shape[0] / df.shape[0], 2) * 100}%) \t vento calmo: {righe_ventocalmo}")
-        long_string = f"{self.longstring_graphtype} - {numnodi} nodi - {numgrafi} grafi per classe \n {layer_neuron_string} - {init_weights} - lr:{lr} - GCNfreezed:{freezed}"
+        long_string = f"{self.longstring_graphtype} - {numnodi} nodi - {numgrafi} grafi per classe \n {layer_neuron_string} - {activation_type} - {init_weights} - lr{str(lr).replace('.','')}"  #  - GCNfreezed{freezed}"
             
     
         return nome, long_string

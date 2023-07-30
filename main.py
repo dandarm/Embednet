@@ -1,6 +1,7 @@
 import itertools
 from scipy import stats
 import yaml
+import sys
 import ctypes
 import pandas as pd
 import numpy as np
@@ -17,6 +18,7 @@ import experiments
 from experiments import Experiments
 from graph_generation import GenerateGraph
 from config_valid import Config, TrainingMode
+from dictionary_of_trials import get_diz_trials, modify_some_trials, load_trials_edits
 
 import torch
 from torch_geometric.loader import DataLoader
@@ -34,6 +36,7 @@ pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 10)
 pd.set_option('display.width', 400)
 
+sys.path.append("../")
 rootsave = Path("output_plots/")
 
 # region exps
@@ -87,12 +90,27 @@ def simple():
     xp.just_train(parallel=True)
     embedding_class = xp.embedding()
 
-def simple_grid_search():
-    config_file = "configurations/Final1.yml"
-    #c = Config(config_file)
-    xp = Experiments(config_file, diz_trials=None, rootsave=rootsave)  # , config_class=c)
-    xp.trainer.gg = GenerateGraph(xp.trainer.config_class)
-    xp.trainer.gg.initialize_dataset(parallel=True)
+def simple_grid_search(argv):
+    c, diz_trials = get_diz_trials("configurations/Final1.yml")
+
+    try:
+        modification_file = argv[1]
+        edits = load_trials_edits(modification_file)
+    except Exception as e:
+        print(e)
+        print("Nessuna modifica ai trials")
+        edits = None
+
+    path_to_save = Path(str(argv[0]))
+    print(f"Salvo plot in {rootsave / path_to_save} ")
+
+    if edits is not None:
+        diz_trials = modify_some_trials(diz_trials, **edits)
+
+    xp = Experiments(diz_trials=diz_trials, list_points=50,
+                     rootsave=rootsave / path_to_save, config_class=c,
+                     reset_all_seeds=False, verbose=False)
+    xp.GS_simple_experiments()
 
 # endregion
 
@@ -138,55 +156,23 @@ def count_non_iso_motif_up_to_n(n):
 
 
 
-def get_config():
-    config_file = "configurations/Final1.yml"
-    num_nodi = 200
-    c = Config(config_file)
-    # c.conf['graph_dataset']['Num_nodes'] = [num_nodi]
-    #c.conf['graph_dataset']['list_exponents'] = [-2.2, -2.9]
-    c.conf['model']['autoencoder'] = True
-    c.conf['model']['autoencoder_confmodel'] = False   # quando inserisco confmodel serve anche RELU
-    #c.conf['model']['activation'] = "ELU"
-    c.conf['model']['autoencoder_graph_ae'] = False
-    diz_trials = {'graph_dataset.ERmodel': [False],
-                  'graph_dataset.confmodel': [True],
-                  'graph_dataset.sbm': [False],
-                  'graph_dataset.real_dataset': [False],
-                  'graph_dataset.Num_nodes': [[num_nodi] * 4, [num_nodi] * 7, [[num_nodi, int(num_nodi / 2)]] * 3],  # per lo SBM: num nodi * num classi * num comunità
-                  'model.GCNneurons_per_layer': [  # [1, 32, 16, len(c.conf['graph_dataset']['list_exponents'])],
-                      # [1, 32, 16, len(c.conf['graph_dataset']['list_p'])],
-                      # [1, 32, 16, len(c.conf['graph_dataset']['community_probs'])],
-
-
-                      #[1, 16, 16, 16, 16, 16],
-                      #[1, 256, 256, 128, 64],
-                      [1, 64, 32, 16, 16],
-                  ],
-                  #'model.init_weights': ['xavier_normal', 'eye'],
-                  #'model.freezeGCNlayers': [False],
-                  #'model.last_layer_dense': [False],
-                  #'training.learning_rate': [0.001, 0.0001, 0.00001]
-                  }
-    return c, diz_trials
-
-
-def run_grid_w_gif(xp):
-    nomifilesgif = []
-    k = 0
-    for c in xp.gc.configs:
-        print(f'Run {k + 1}\t\t exp name: {c.unique_train_name}')
-        # all_seeds()
-        xp.trainer.reinit_conf(c)
-        xp.just_train()
-        #embedding_class = xp.embedding()
-        #num_emb_neurons = xp.trainer.embedding_dimension
-        #trainmode = xp.trainer.config_class.modo
-        #embedding_class.get_metrics(num_emb_neurons)  #, trainmode)
-
-        nomefile = xp.make_video(skip=1, fromfiles=True, seq_colors=False)
-        nomifilesgif.append(nomefile)
-        k += 1
-    return nomifilesgif
+# def run_grid_w_gif(xp):
+#     nomifilesgif = []
+#     k = 0
+#     for c in xp.gc.configs:
+#         print(f'Run {k + 1}\t\t exp name: {c.unique_train_name}')
+#         # all_seeds()
+#         xp.trainer.reinit_conf(c)
+#         xp.just_train()
+#         #embedding_class = xp.embedding()
+#         #num_emb_neurons = xp.trainer.embedding_dimension
+#         #trainmode = xp.trainer.config_class.modo
+#         #embedding_class.get_metrics(num_emb_neurons)  #, trainmode)
+#
+#         nomefile = xp.make_video(skip=1, fromfiles=True, seq_colors=False)
+#         nomifilesgif.append(nomefile)
+#         k += 1
+#     return nomifilesgif
 
 
 if __name__ == "__main__":
@@ -210,9 +196,9 @@ if __name__ == "__main__":
 
     #count_non_iso_motif_up_to_n(4)
 
-    c, diz_trials = get_config()
-    xp = Experiments(diz_trials=diz_trials, list_points=200, rootsave=rootsave, config_class=c, reset_all_seeds=False, verbose=False)
-    xp.GS_simple_experiments()
-    #run_grid_w_gif(xp)
+    simple_grid_search(sys.argv[1:])
+
+
+
 
 
