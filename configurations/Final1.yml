@@ -24,7 +24,7 @@ training:
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
     learning_rate: 0.001
-    epochs: 200
+    epochs: 2000000
     batch_size: 200
     percentage_train: 0.7
     earlystop_patience: 500
@@ -33,7 +33,7 @@ training:
     every_epoch_embedding: True
     shuffle_dataset: False
     calculate_metrics: True
-    optimizer: SGD
+    optimizer: ADAM
     
 model:
     last_layer_dense: False
