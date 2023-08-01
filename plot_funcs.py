@@ -434,8 +434,7 @@ class DataAutoenc2Plot(Data2Plot):
 
 
 # region plot functions
-def plot_metrics(data, num_emb_neurons, test_loss_list=None, current_metric_list=None,
-                 epochs_list=None,
+def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
                  node_intrinsic_dimensions_total=None, graph_intrinsic_dimensions_total=None,
                  model_pars=None, param_labels=None,
                  node_correlation=None, graph_correlation=None,
@@ -466,7 +465,7 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, current_metric_list
         data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
 
 
-    plot_test_loss_and_metric(axes, current_metric_list, test_loss_list, epochs_list, **kwargs)
+    plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs)
 
     plot_weights_multiple_hist(model_pars, param_labels, axes[1][2], absmin=-2, absmax=2, sequential_colors=False)
 
@@ -478,8 +477,9 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, current_metric_list
     return fig
 
 
-def plot_test_loss_and_metric(axes, current_metric_list, test_loss_list, epochs_list, **kwargs):
-    metric_obj_list = kwargs.get("metric_obj_list")
+def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
+    metric_obj_list_train = kwargs.get("metric_obj_list_train")
+    metric_obj_list_test = kwargs.get("metric_obj_list_test")
     metric_names = kwargs.get("metric_name")
     x_max = kwargs.get("last_epoch")
     train_loss_list = kwargs.get("train_loss_list")
@@ -507,9 +507,11 @@ def plot_test_loss_and_metric(axes, current_metric_list, test_loss_list, epochs_
 
     #metriche = []  # sar una lista di liste
     for i, metric_name in enumerate(metric_names):
-        metrica = [m.get_metric(metric_name) for m in metric_obj_list]
+        metricatrain = [m.get_metric(metric_name) for m in metric_obj_list_train]
+        metricatest = [m.get_metric(metric_name) for m in metric_obj_list_test]
         color = get_colors_to_cycle_rainbow8()[i % 8]
-        pmetric, = axt.plot(epochs_list, metrica, color=color, label=metric_name)
+        pmetric, = axt.plot(epochs_list, metricatest, color=color, label=metric_name)
+        pmetric_train, = axt.plot(epochs_list, metricatrain, color=adjust_lightness(color, 0.5), label=metric_name)
         axt.set_ylim(0, 1)
         # axt.set_ylabel('Test metric', fontsize=12);
         axt.set_xlim(0, x_max)

@@ -107,7 +107,7 @@ def simple_grid_search(argv):
     if edits is not None:
         diz_trials = modify_some_trials(diz_trials, **edits)
 
-    xp = Experiments(diz_trials=diz_trials, list_points=50,
+    xp = Experiments(diz_trials=diz_trials, list_points=5,
                      rootsave=rootsave / path_to_save, config_class=c,
                      reset_all_seeds=False, verbose=False)
     xp.GS_simple_experiments()

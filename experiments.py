@@ -4,7 +4,9 @@ import os
 import time
 import traceback
 
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.use('Agg')
 from cycler import cycler
 from matplotlib import animation
 import numpy as np
@@ -158,30 +160,18 @@ class Experiments():
                     metric_object = self.trainer.calc_metric(self.trainer.dataset.all_data_loader)
                     metric_object_train = self.trainer.calc_metric(self.trainer.dataset.train_loader)
                     metric_object_test = self.trainer.calc_metric(self.trainer.dataset.test_loader)
+
                 emb_pergraph_test, emb_pergraph_train, embeddings_arrays = \
-                    self.trainer.provide_all_embeddings(give_emb_train=True, give_emb_test=True,
-                                                metric_object=metric_object,
-                                                metric_object_test=metric_object_test,
-                                                metric_object_train=metric_object_train)
+                    self.trainer.provide_all_embeddings_and_metrics(give_emb_train=True, give_emb_test=True,
+                                                                    metric_object=metric_object,
+                                                                    metric_object_test=metric_object_test,
+                                                                    metric_object_train=metric_object_train)
                 model_weights = self.trainer.provide_model_weights()
 
                 # si ricava anche gli oggetti Embedding e Data2Plot
                 self.trainer.save_image_at_epoch(embeddings_arrays, model_weights, self.trainer.last_epoch,
                                                 self.epochs_list, emb_pergraph_train, emb_pergraph_test,
                                                  rootsave=self.rootsave)
-
-                # loss_list = np.array(self.trainer.test_loss_list)[self.epochs_list]
-                # metric_list = np.array(self.trainer.metric_list)[self.epochs_list]
-                # if do_plot:
-                #     plot_metrics(data, embedding_dimension,
-                #                  loss_list, metric_list,
-                #                  self.epochs_list,
-                #                  # questi 4 li prendo con divide_lists_results_for_epochlist
-                #                  node_intrinsic_dimensions_total,
-                #                  graph_intrinsic_dimensions_total,
-                #                  node_correlation,
-                #                  graph_correlation,
-                #                  sequential_colors=False, log=False, showplot=True, **kwargs)
 
             k += 1
 
