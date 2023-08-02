@@ -6,7 +6,7 @@ import traceback
 
 import matplotlib
 import matplotlib.pyplot as plt
-matplotlib.use('Agg')
+
 from cycler import cycler
 from matplotlib import animation
 import numpy as np
@@ -30,6 +30,8 @@ from config_valid import Config
 from GridConfigurations import GridConfigurations
 from graph_generation import GraphType
 from utils_embednet import array_wo_outliers
+
+matplotlib.use('Agg')
 
 # per usare il trainer e il config nei processi paralleli
 graph_embedding_per_epoch = []
@@ -83,7 +85,7 @@ def all_seeds():
 
 
 class Experiments():
-    def __init__(self, config_file=None, diz_trials=None, list_points=100, rootsave=None, config_class=None, reset_all_seeds=True, verbose=False):
+    def __init__(self, config_file=None, diz_trials=None, rootsave=None, config_class=None, reset_all_seeds=True, verbose=False):
         self.verbose = verbose
         self.config_file = config_file
         if config_class:
@@ -106,8 +108,7 @@ class Experiments():
             self.gc = GridConfigurations(self.config_class, self.diz_trials, self.verbose)
             self.gc.make_configs()
 
-        # scrivo la lista delle epoche sulla quale esegui i calcoli
-        self.epochs_list = self.make_epochs_list_for_embedding_tracing(list_points)
+
 
         # risultati
         self.embedding_class = None
@@ -117,13 +118,13 @@ class Experiments():
 
     def init_trainer(self):
         if self.config_class.conf['model']['autoencoder']:
-            print("Autoencoder model")
+            if self.verbose: print("Autoencoder model")
             self.trainer = Trainer_Autoencoder(self.config_class, rootsave=self.rootsave)
         elif self.config_class.conf['model']['autoencoder_confmodel']:
-            print("Autoencoder model con decoder CM")
+            if self.verbose: print("Autoencoder model con decoder CM")
             self.trainer = Trainer_Autoencoder(self.config_class, rootsave=self.rootsave)
         elif self.config_class.conf['model']['autoencoder_graph_ae']:
-            print("Autoencoder MIAGAE")
+            if self.verbose: print("Autoencoder MIAGAE")
             self.trainer = Trainer_AutoencoderMIAGAE(self.config_class, rootsave=self.rootsave)
             # DEBUG #self.trainer = Trainer_AutoencoderMIAGAE_DEBUG(self.config_class)
         else:
@@ -175,29 +176,6 @@ class Experiments():
 
             k += 1
 
-    def make_epochs_list_for_embedding_tracing(self, list_points):
-        """
-        Restituisce una lista di valori interi che non può avere num elementi = a list_points
-        perché la sequenza logaritmica che va arrotondata all'intero produce dei duplicati
-        :param list_points: numero di punti per la sequenza logaritmica
-        :return: Una lista di interi che si riferiscono alle epoche alle quali salvare gli embedding.
-        Può avere una lunghezza inferiore a list_points
-        """
-        endlog = np.log2(self.trainer.epochs)
-        end3 = np.cbrt(self.trainer.epochs)
-        end2 = np.sqrt(self.trainer.epochs)
-        if list_points > self.trainer.epochs:
-            raise Exception('Chiesto un numero di epochs_list maggiore del numero di epoche da config')
-        #list_points = min(list_points, self.trainer.epochs)
-        logarray = np.round(np.logspace(1., endlog, num=list_points, base=2)).astype(int)
-        cubicarray = np.power(np.linspace(1., end3, num=list_points), 3)
-        squarearray = np.power(np.linspace(1., end2, num=list_points), 2)
-        #lista = np.unique(np.concatenate((np.arange(0, 10, 2), logarray)))[:-1]
-        #lista = np.unique(np.round(cubicarray)).astype(int)[:-1]
-        lista = np.unique(np.round(squarearray)).astype(int)[:-1]
-        if self.verbose:
-            print(f"epoch list {lista} ")
-        return lista
 
 # region tutti gli altri GS
     def stesso_init_diversi_dataset(self):
@@ -425,7 +403,7 @@ class Experiments():
             # i parametri linear ora sono sempre diversi perché sto prendendo un numero sempre diverso di neuroni e layers
             model = self.trainer.init_GCN(saved_initial_weights_gcn)  # , saved_initial_weights_lin)
             self.trainer.load_model(model)
-            self.trainer.launch_training(self.epochs_list)
+            self.trainer.launch_training()
             embedding_class = self.embedding()
 
             fill_df_with_results(self.gc.config_dataframe, k, None, None, self.trainer.test_loss_list, self.trainer.metric_list, embedding_class)
@@ -435,7 +413,7 @@ class Experiments():
 
     def just_train(self, parallel=True, verbose=False):
         self.trainer.init_all(parallel=parallel, verbose=verbose)
-        self.trainer.launch_training(self.epochs_list)
+        self.trainer.launch_training()
         
     def embedding(self):
         if self.config_class.conf['training']['save_best_model']:

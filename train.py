@@ -49,6 +49,7 @@ class Trainer():
         self.best_model = None
 
         self.rootsave = rootsave
+        self.verbose = verbose
 
         self.percentage_train = None
         self.lr = None
@@ -88,6 +89,38 @@ class Trainer():
 
         self.reinit_conf(config_class)
 
+        # scrivo la lista delle epoche sulla quale esegui i calcoli
+        self.epochs_list_points = self.conf["training"].get("epochs_list_points")
+        self.epochs_list = self.make_epochs_list_for_embedding_tracing(self.epochs_list_points)
+
+        self.total_node_emb_dim = multiprocessing.Array
+        self.total_graph_emb_dim = multiprocessing.Array
+
+    def make_epochs_list_for_embedding_tracing(self, list_points):
+        """
+        Restituisce una lista di valori interi che non può avere num elementi = a list_points
+        perché la sequenza logaritmica che va arrotondata all'intero produce dei duplicati
+        :param list_points: numero di punti per la sequenza logaritmica
+        :return: Una lista di interi che si riferiscono alle epoche alle quali salvare gli embedding.
+        Può avere una lunghezza inferiore a list_points
+        """
+        if self.epochs == 0:
+            return [0]
+        endlog = np.log2(self.epochs)
+        end3 = np.cbrt(self.epochs)
+        end2 = np.sqrt(self.epochs)
+        if list_points > self.epochs:
+            raise Exception('Chiesto un numero di epochs_list maggiore del numero di epoche da config')
+        #list_points = min(list_points, self.trainer.epochs)
+        logarray = np.round(np.logspace(1., endlog, num=list_points, base=2)).astype(int)
+        cubicarray = np.power(np.linspace(1., end3, num=list_points), 3)
+        squarearray = np.power(np.linspace(1., end2, num=list_points), 2)
+        #lista = np.unique(np.concatenate((np.arange(0, 10, 2), logarray)))[:-1]
+        #lista = np.unique(np.round(cubicarray)).astype(int)[:-1]
+        lista = np.unique(np.round(squarearray)).astype(int)#[:-1]
+        if self.verbose:
+            print(f"epoch list {lista} ")
+        return lista
 
     def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False):
         """
@@ -155,7 +188,7 @@ class Trainer():
         #self.model.to(self.device)
         self.set_optimizer(self.model)
         self.embedding_dimension = self.model.convs[-1].out_channels
-        print(f"Optimizer: {self.optimizer}")
+        if self.verbose: print(f"Optimizer: {self.optimizer}")
 
     def init_dataset(self, parallel=True, verbose=False):
         """
@@ -166,18 +199,18 @@ class Trainer():
         :return:
         """
         if not self.config_class.conf['graph_dataset'].get('real_dataset'):
-            self.gg = GenerateGraph(self.config_class)
+            self.gg = GenerateGraph(self.config_class, self.verbose)
             self.gg.initialize_dataset(parallel=parallel)  # instanzia il dataset networkx
         else:
             # TakeRealDataset si occupa di ottenere il dataset reale
-            real_dataset_taker = TakeRealDataset(self.config_class, verbose)
+            real_dataset_taker = TakeRealDataset(self.config_class, self.verbose)
             real_dataset_taker.get_dataset()  # imposta gg.dataset
             self.gg = real_dataset_taker.gg
 
     def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
         print("Loading Dataset...")
         if not self.config_class.conf['graph_dataset'].get('real_dataset'):            
-            self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
+            self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset, verbose=self.verbose)
             self.dataset.prepare(self.shuffle_dataset, parallel)
         else:
             if self.config_class.conf['graph_dataset']['real_data_name'] == 'REDDIT-BINARY':
@@ -186,9 +219,6 @@ class Trainer():
             elif self.config_class.conf['graph_dataset']['real_data_name'] == 'BACI':
                 self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
                 self.dataset.prepare(self.shuffle_dataset, parallel)
-
-
-
 
     def init_all(self, parallel=True, verbose=False):
         """
@@ -209,7 +239,6 @@ class Trainer():
             batch = self.dataset.sample_dummy_data()
             plot = plot_model(self.model, batch)
             return plot
-
 
 
     def correct_shape(self, y):
@@ -393,12 +422,15 @@ class Trainer():
         return f1
 
 
-    def launch_training(self, epochs_list=None, verbose=0):
+    def launch_training(self, verbose=0):
         self.train_loss_list = []
         self.test_loss_list = []
         #self.metric_obj_list = []
         self.metric_obj_list_train = []
         self.metric_obj_list_test = []
+
+        self.total_node_emb_dim = []
+        self.total_graph_emb_dim = []
 
         animation_files = []
 
@@ -411,7 +443,7 @@ class Trainer():
         self.train_loss_list.append(0)
         self.test_loss_list.append(test_loss)
 
-        self.produce_traning_snapshot(0, self.epochs if self.epochs > 0 else 1, False, [])
+        metric_object_train, metric_object_test = self.produce_traning_snapshot(0, self.epochs if self.epochs > 0 else 1, False, [])
         file_path = self.rootsave / f"_epoch0.png"
         animation_files.append(file_path)
 
@@ -458,7 +490,7 @@ class Trainer():
 
         parallel_processes_save_images = []
 
-        for epoch in tqdm(range(1, self.epochs), total=self.epochs):
+        for epoch in tqdm(range(1, self.epochs+1), total=self.epochs):
             train_loss = self.train()
             writer.add_scalar("Train Loss", train_loss, epoch)
 
@@ -477,12 +509,17 @@ class Trainer():
             self.test_loss_list.append(test_loss)
 
             if self.conf['training'].get('every_epoch_embedding'):
-                if epoch in epochs_list:
+                if epoch in self.epochs_list:
                     parallel = True
-                    self.produce_traning_snapshot(epoch, epochs_list[-1],
+                    metric_object_train, metric_object_test = self.produce_traning_snapshot(epoch, self.epochs_list[-1],
                                                 parallel, parallel_processes_save_images)
                     file_path = self.rootsave / f"_epoch{epoch}.png"
                     animation_files.append(file_path)
+                else:
+                    # devo aggiungere comunque i vecchi valori di metriche  alla lista
+                    # per ottenere liste della stessa llungjhezza rispetto a range(epoca)
+                    self.metric_obj_list_train.append(metric_object_train)
+                    self.metric_obj_list_test.append(metric_object_test)
 
 
             #expvar = self.myExplained_variance.compute()
@@ -528,7 +565,8 @@ class Trainer():
 
         # salvo le animazioni
         if self.conf['training'].get('every_epoch_embedding') and self.epochs != 0:
-            self.save_all_animations(animation_files, epochs_list)
+            self.epochs_list = np.insert(self.epochs_list, 0, 0)
+            self.save_all_animations(animation_files, self.epochs_list)
 
         if not self.config_class.conf['training']['every_epoch_embedding']:
             self.produce_traning_snapshot(self.last_epoch, self.last_epoch, False, [])
@@ -560,7 +598,7 @@ class Trainer():
             self.save_image_at_epoch(all_embeddings_arrays, model_weights, epoch, last_epoch,
                                      emb_pergraph_train, emb_pergraph_test,
                                      self.rootsave)
-        return  # metric_object_train, metric_object_test
+        return metric_object_train, metric_object_test
 
     def save_all_animations(self, animation_files, epochs_list):
         nomefile = self.rootsave / str(self.unique_train_name)
@@ -569,7 +607,7 @@ class Trainer():
             for f in animation_files:
                 ims.append(imageio.imread(f))
         except FileNotFoundError as e:
-            print(e)
+            print(f"Errore in save animations: {e}")
         imageio.mimwrite(nomefile.with_suffix(".gif"), ims, duration=0.1)
 
         # degree seq
@@ -651,7 +689,7 @@ class Trainer():
 
     def save_image_at_epoch(self, embedding_arrays, model_weights_and_labels, epoch, last_epoch,
                             emb_pergraph_train=None, emb_pergraph_test=None,
-                            metric_obj_list_train=None, metric_obj_list_test=None,  rootsave="."):
+                            rootsave="."):
         # DEVO SEPARARE LA RACCOLTA DEGLI EMBEDDING DAL MULTIPROCESSING
         if self.config_class.autoencoding:
             embedding_class = Embedding_autoencoder(embedding_arrays, config_c=self.config_class, dataset=self.dataset)
@@ -677,25 +715,36 @@ class Trainer():
         graph_intrinsic_dimensions_total = embedding_class.total_graph_emb_dim
         node_correlation = embedding_class.total_node_correlation  # node_correlation_per_class
         graph_correlation = embedding_class.total_graph_correlation  # graph_correlation_per_class
-        # costruisco e salvo l'immagine: per ora sincrono, poi lancerò un thread asincrono
 
         try:
+            if epoch == 0:
+                testll = [self.test_loss_list[0]]
+                trainll = [self.train_loss_list[0]]
+                all_range_epochs_list = [0]
+                metric_obj_list_train = [self.metric_obj_list_train[0]]
+                metric_obj_list_test = [self.metric_obj_list_test[0]]
+            else:
+                testll = self.test_loss_list[:epoch]
+                trainll = self.train_loss_list[:epoch]
+                all_range_epochs_list = range(epoch)
+                metric_obj_list_train = self.metric_obj_list_train[:epoch]
+                metric_obj_list_test = self.metric_obj_list_test[:epoch]
             fig = plot_metrics(data, self.embedding_dimension,
-                               self.test_loss_list[:epoch], range(epoch),
+                               testll, all_range_epochs_list,
                                node_intrinsic_dimensions_total, graph_intrinsic_dimensions_total,
                                model_pars, param_labels,
                                node_correlation, graph_correlation, sequential_colors=True,
                                showplot=False, last_epoch=last_epoch, metric_name=self.name_of_metric,
                                long_string_experiment=self.config_class.long_string_experiment,
-                               metric_obj_list_train=self.metric_obj_list_train[:epoch],
-                               metric_obj_list_test=self.metric_obj_list_test[:epoch],
-                               train_loss_list=self.train_loss_list[:epoch])
+                               metric_obj_list_train=metric_obj_list_train,
+                               metric_obj_list_test=metric_obj_list_test,
+                               train_loss_list=trainll)
             file_name = self.rootsave / f"_epoch{epoch}"
             plt.savefig(file_name)
             fig.clf()
             plt.cla()
             plt.clf()
-            if not self.conf['training']['every_epoch_embedding']:
+            if not self.conf['training']['every_epoch_embedding']: # TODO: verificare cosa volevo fare quì
                 # salvo solo lultima immagine e la rinomino:
                 os.rename(f"{file_name}.png", self.rootsave / f"{self.unique_train_name}.png")
 

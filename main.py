@@ -102,15 +102,15 @@ def simple_grid_search(argv):
         edits = None
 
     path_to_save = Path(str(argv[0]))
-    print(f"Salvo plot in {rootsave / path_to_save} ")
+    #print(f"Salvo plot in {rootsave / path_to_save} ")
 
     if edits is not None:
         diz_trials = modify_some_trials(diz_trials, **edits)
 
-    xp = Experiments(diz_trials=diz_trials, list_points=5,
+    xp = Experiments(diz_trials=diz_trials,
                      rootsave=rootsave / path_to_save, config_class=c,
                      reset_all_seeds=False, verbose=False)
-    xp.GS_simple_experiments()
+    xp.GS_simple_experiments(verbose=True)
 
 # endregion
 
@@ -125,10 +125,12 @@ def shared_array(shape):
     shared_array = shared_array.reshape(*shape)
     return shared_array
 
-n = 4
-permutations = build_permutation_complete_graph(n)
-valid_permutations = shared_array((1, len(permutations)))
+
 def count_non_iso_motif_up_to_n(n):
+    n = 4
+    permutations = build_permutation_complete_graph(n)
+    valid_permutations = shared_array((1, len(permutations)))
+
     shared_queue = SimpleQueue()
 
     with Pool(processes=16, initializer=init_worker, initargs=(shared_queue,)) as pool:
@@ -195,7 +197,6 @@ if __name__ == "__main__":
     #simple_grid_search()
 
     #count_non_iso_motif_up_to_n(4)
-
     simple_grid_search(sys.argv[1:])
 
 

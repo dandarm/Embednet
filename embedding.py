@@ -408,9 +408,8 @@ class Embedding():
             #if training_mode == TrainingMode.mode3:
             #    self.calc_regression_error()
         else:
-            pass
             #self.calc_distances(num_emb_neurons)  # calcola self.difference_of_means
-            #self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_graph_emb_dim = self.calc_instrinsic_dimension(num_emb_neurons)
+            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_graph_emb_dim = self.calc_instrinsic_dimension(num_emb_neurons)
 
 
 class Embedding_per_graph():
@@ -498,7 +497,9 @@ class Embedding_autoencoder_per_graph():
         self.out_degree_seq = self.decoder_output.sum(axis=1)
 
     def calc_graph_emb(self):
-        self.graph_embedding = np.mean(self.node_embedding, axis=-2)   # perch
+        #print(f"shape di node embedding: {self.node_embedding.shape}")
+        self.graph_embedding = np.mean(self.node_embedding, axis=-2).squeeze()   # perch
+        #print(f"graph emb mediato dal node emb: {self.graph_embedding}")
 
     def to_cpu(self):
         self.node_embedding = self.node_embedding.detach().cpu().numpy()
@@ -531,6 +532,9 @@ class Embedding_autoencoder(Embedding):
         self.node_degree = dataset.actual_node_class
         self.scalar_label = dataset.scalar_label
         self.tidy_embeddings_with_labels()
+
+        for graph in self.list_emb_autoenc_per_graph:
+            graph.calc_graph_emb()
 
     def tidy_embeddings_with_labels(self):
         for i, graph in enumerate(self.list_emb_autoenc_per_graph):
@@ -567,8 +571,10 @@ class Embedding_autoencoder(Embedding):
             #     graph_emb_dims.append(dim)
 
         total_node_emb_array = np.array([graph_emb.node_embedding for graph_emb in self.list_emb_autoenc_per_graph])
-
-        total_graph_emb_dim = None  # metodo.fit(self.graph_embedding_array).dimension_
+        total_node_emb_array = total_node_emb_array.reshape(-1, total_node_emb_array.shape[-1])
+        total_graph_emb_array = np.array([graph_emb.graph_embedding for graph_emb in self.list_emb_autoenc_per_graph])
+        #print(f"shape di graph emb array: {total_graph_emb_array.shape}")
+        total_graph_emb_dim = metodo.fit(total_graph_emb_array).dimension_
         total_node_emb_dim = metodo.fit(total_node_emb_array).dimension_
 
         return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_graph_emb_dim

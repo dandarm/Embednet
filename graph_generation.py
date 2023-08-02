@@ -11,9 +11,10 @@ from Dataset import Dataset, GeneralDataset
 
 
 class GenerateGraph():
-    def __init__(self, config_class):
+    def __init__(self, config_class, verbose):
         self.config_class = config_class
         self.conf = self.config_class.conf
+        self.verbose = verbose
         self.N = self.conf['graph_dataset']['Num_nodes']
         #print(f"Num nodi conf: {self.N}")
         if isinstance(self.N, list):
@@ -108,7 +109,7 @@ class GenerateGraph():
             actual_probs.append(actual_p)
             actual_degrees.append(gr.degree())
 
-        self.info_connectivity(grafi, p)
+        if self.verbose: self.info_connectivity(grafi, p)
 
         return grafi, actual_probs, actual_degrees
 
@@ -134,7 +135,7 @@ class GenerateGraph():
                 gr = nx.random_regular_graph(d=d, n=Num_nodes)
                 grafi.append(gr)
 
-        self.info_connectivity(grafi, d)
+        if self.verbose: self.info_connectivity(grafi, d)
         return grafi
 
     def dummy_nx_random_reg_graph(self, d_n):

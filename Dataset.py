@@ -37,7 +37,7 @@ class GeneralDataset:
 
 class Dataset(GeneralDataset):
 
-    def __init__(self, percentage_train, batch_size, device, config_class, dataset_list, labels, original_node_class, exponent, actual_node_class, scalar_label,_num_nodes_per_graph):
+    def __init__(self, percentage_train, batch_size, device, config_class, dataset_list, labels, original_node_class, exponent, actual_node_class, scalar_label,_num_nodes_per_graph, verbose):
         super().__init__(dataset_list, labels,
                          original_node_class=original_node_class,
                          exponent=exponent,
@@ -62,10 +62,12 @@ class Dataset(GeneralDataset):
         self.last_neurons = self.config_class.lastneuron
         self.all_data_loader = None
 
+        self.verbose = verbose
+
 
     @classmethod
-    def from_super_instance(cls, percentage_train, batch_size, device, config_class, super_instance):
-        return cls(percentage_train, batch_size, device, config_class, **super_instance.__dict__)
+    def from_super_instance(cls, percentage_train, batch_size, device, config_class, super_instance, verbose):
+        return cls(percentage_train, batch_size, device, config_class, **super_instance.__dict__, verbose=verbose)
 
     def convert_G(self, g_i):
         g, i = g_i
@@ -175,7 +177,7 @@ class Dataset(GeneralDataset):
         starttime = time()
         self.dataset_pyg = self.nx2pyg(self.dataset_list, parallel)
         durata = time() - starttime
-        print(f"Tempo impiegato: {durata}")
+        if self.verbose: print(f"Tempo impiegato: {round(durata, 3)}")
 
         # shuffle before train test split
         if shuffle:

@@ -302,8 +302,8 @@ class DataAutoenc2Plot(Data2Plot):
             self.colors = {str(self.unique_class_labels[c]): self.get_color(c, sequential_colors=True) for c in range(len(self.unique_class_labels))}
             self.custom_legend_lines = [(Line2D([0], [0], color=color, lw=3)) for color in self.colors.values()]
         elif type == 'graph_embedding':
-            for graph in self.input_obj:
-                graph.calc_graph_emb()
+            #for graph in self.input_obj:
+            #    graph.calc_graph_emb()
             self.array2plot = np.array([[graph.graph_embedding.squeeze() for graph in self.input_obj if graph.scalar_label == classe] for classe in self.unique_class_labels])
             self.colors = {str(self.unique_class_labels[c]): self.get_color(c, sequential_colors=True) for c in range(len(self.unique_class_labels))}
             self.custom_legend_lines = [(Line2D([0], [0], color=color, lw=3)) for color in self.colors.values()]
@@ -457,7 +457,7 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
         if node_intrinsic_dimensions_total is not None and graph_intrinsic_dimensions_total is not None:
             pass
             # TODO: rimettere
-            #plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs)
+            plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs)
 
     if data.config_class.autoencoding:
         data.plot(datatype='adj_entries', type='hist', ax=axes[0][2], sequential_colors=sequential_colors, title="Adj matrix entries")
@@ -511,7 +511,7 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
         metricatest = [m.get_metric(metric_name) for m in metric_obj_list_test]
         color = get_colors_to_cycle_rainbow8()[i % 8]
         pmetric, = axt.plot(epochs_list, metricatest, color=color, label=metric_name)
-        pmetric_train, = axt.plot(epochs_list, metricatrain, color=adjust_lightness(color, 0.5), label=metric_name)
+        pmetric_train, = axt.plot(epochs_list, metricatrain, color=adjust_lightness(color, 1.5), label=metric_name)
         axt.set_ylim(0, 1)
         # axt.set_ylabel('Test metric', fontsize=12);
         axt.set_xlim(0, x_max)
