@@ -92,9 +92,14 @@ class Trainer():
         # scrivo la lista delle epoche sulla quale esegui i calcoli
         self.epochs_list_points = self.conf["training"].get("epochs_list_points")
         self.epochs_list = self.make_epochs_list_for_embedding_tracing(self.epochs_list_points)
+        #self.mapping_of_snap_epochs = {snapshot_epochs: sequential_epochs for
+        #                sequential_epochs, snapshot_epochs in enumerate(self.epochs_list)}
 
-        self.total_node_emb_dim = multiprocessing.Array
-        self.total_graph_emb_dim = multiprocessing.Array
+        self.total_node_emb_dim = multiprocessing.Array('d', range(self.epochs+1))
+        self.total_graph_emb_dim = multiprocessing.Array('d', range(self.epochs+1))
+        for i in range(self.epochs):
+            self.total_node_emb_dim[i] = -1.0
+            self.total_graph_emb_dim[i] = -1.0
 
     def make_epochs_list_for_embedding_tracing(self, list_points):
         """
@@ -429,9 +434,6 @@ class Trainer():
         self.metric_obj_list_train = []
         self.metric_obj_list_test = []
 
-        self.total_node_emb_dim = []
-        self.total_graph_emb_dim = []
-
         animation_files = []
 
         test_loss = self.test(self.dataset.test_loader)
@@ -711,8 +713,9 @@ class Trainer():
 
         # node_emb_dims = embedding_class.node_emb_dims
         # graph_emb_dims = embedding_class.graph_emb_dims
-        node_intrinsic_dimensions_total = embedding_class.total_node_emb_dim
-        graph_intrinsic_dimensions_total = embedding_class.total_graph_emb_dim
+        #p = self.mapping_of_snap_epochs[epoch]
+        self.total_node_emb_dim[epoch] = embedding_class.total_node_emb_dim
+        self.total_graph_emb_dim[epoch] = embedding_class.total_graph_emb_dim
         node_correlation = embedding_class.total_node_correlation  # node_correlation_per_class
         graph_correlation = embedding_class.total_graph_correlation  # graph_correlation_per_class
 
@@ -723,15 +726,19 @@ class Trainer():
                 all_range_epochs_list = [0]
                 metric_obj_list_train = [self.metric_obj_list_train[0]]
                 metric_obj_list_test = [self.metric_obj_list_test[0]]
+                total_node_emb_dim = [self.total_node_emb_dim[0]]
+                total_graph_emb_dim = [self.total_graph_emb_dim[0]]
             else:
                 testll = self.test_loss_list[:epoch]
                 trainll = self.train_loss_list[:epoch]
                 all_range_epochs_list = range(epoch)
                 metric_obj_list_train = self.metric_obj_list_train[:epoch]
                 metric_obj_list_test = self.metric_obj_list_test[:epoch]
+                total_node_emb_dim = self.total_node_emb_dim[:epoch]
+                total_graph_emb_dim = self.total_graph_emb_dim[:epoch]
             fig = plot_metrics(data, self.embedding_dimension,
                                testll, all_range_epochs_list,
-                               node_intrinsic_dimensions_total, graph_intrinsic_dimensions_total,
+                               total_node_emb_dim, total_graph_emb_dim,
                                model_pars, param_labels,
                                node_correlation, graph_correlation, sequential_colors=True,
                                showplot=False, last_epoch=last_epoch, metric_name=self.name_of_metric,

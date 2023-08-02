@@ -36,6 +36,7 @@ class Embedding():
         self.node_correlation_per_class = None
         self.total_node_correlation = None
         self.regression_error = None
+
         self.node_emb_dims = None
         self.graph_emb_dims = None
         self.total_node_emb_dim = None

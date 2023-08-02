@@ -24,8 +24,8 @@ training:
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
     learning_rate: 0.001
-    epochs: 500
-    epochs_list_points: 5
+    epochs: 2000000
+    epochs_list_points: 50
     batch_size: 200
     percentage_train: 0.7
     earlystop_patience: 500
