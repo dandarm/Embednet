@@ -22,7 +22,7 @@ class Trainer_Autoencoder(Trainer):
     def __init__(self, config_class, verbose=False, rootsave="."):
         super().__init__(config_class, verbose)
         self.rootsave = rootsave
-        self.name_of_metric = ["auc", "pr_auc", "f1_score", "hamming_distance"]
+        self.name_of_metric = ["auc", "pr_auc", "f1_score", "hamming"]
         # TODO.... poi posso impostare il criterion dentro il config
         self.criterion_MSE = nn.MSELoss()
         self.criterion_MSE_weighted = nn.MSELoss(reduction='none')
@@ -473,6 +473,6 @@ class Trainer_Autoencoder(Trainer):
 
                 #print(f"auc_{i}: {auc}", end=', ')
 
-            metriche = Metrics(auc=auc, pr_auc=average_precision, f1_score=f1, soglia=best_threshold, hamming_distance=hamming_dist)
+            metriche = Metrics(auc=auc, pr_auc=average_precision, f1_score=f1, soglia=best_threshold, hamming=hamming_dist)
 
         return metriche

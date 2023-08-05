@@ -1,5 +1,6 @@
 import datetime
 import os
+import sys
 import traceback
 import copy
 from time import time
@@ -564,6 +565,7 @@ class Trainer():
         # aspetto per sicurezza che tutti i processi di salvataggio immagini siano finiti
         for p in parallel_processes_save_images:
             p.join()
+        sys.stdout.flush()
 
         # salvo le animazioni
         if self.conf['training'].get('every_epoch_embedding') and self.epochs != 0:
@@ -745,7 +747,8 @@ class Trainer():
                                long_string_experiment=self.config_class.long_string_experiment,
                                metric_obj_list_train=metric_obj_list_train,
                                metric_obj_list_test=metric_obj_list_test,
-                               train_loss_list=trainll)
+                               train_loss_list=trainll,
+                               x_axis_log=self.conf.get("plot").get("x_axis_log"))
             file_name = self.rootsave / f"_epoch{epoch}"
             plt.savefig(file_name)
             fig.clf()

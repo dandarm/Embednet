@@ -1,3 +1,4 @@
+import sys
 import itertools
 import numpy as np
 from numpy import dot
@@ -577,6 +578,8 @@ class Embedding_autoencoder(Embedding):
         #print(f"shape di graph emb array: {total_graph_emb_array.shape}")
         total_graph_emb_dim = metodo.fit(total_graph_emb_array).dimension_
         total_node_emb_dim = metodo.fit(total_node_emb_array).dimension_
+        #print(f"total_node_emb_dim {total_node_emb_dim}")
+        #sys.stdout.flush()
 
         return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_graph_emb_dim
 

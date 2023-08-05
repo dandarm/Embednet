@@ -42,6 +42,7 @@ class GCN(torch.nn.Module):
             self.dropouts = torch.nn.ModuleList()
         #self.pools = torch.nn.ModuleList()
         if self.put_batchnorm:
+            self.GCNbatchnorms = torch.nn.ModuleList()
             self.batchnorms = torch.nn.ModuleList()
 
         activation_function = self.get_activ_func_from_config(self.conf['model'].get('activation'))
@@ -53,12 +54,15 @@ class GCN(torch.nn.Module):
         rangeconv_layers = range(len(self.GCNneurons_per_layer) - 1)
         for i in rangeconv_layers:
             self.convs.append(GCNConv(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1]))
+            if self.put_batchnorm:
+                self.GCNbatchnorms.append(BatchNorm1d(self.GCNneurons_per_layer[i]))
             self.act_func.append(activation_function)
             #self.pools.append( TopKPooling(neurons_per_layer[i+1], ratio=0.8) )
             #i += 1
 
         if self.final_pool_aggregator:
             self.mean_pool = MeanAggregation()
+
 
         if self.last_linear:
             if self.put_batchnorm:
@@ -107,23 +111,24 @@ class GCN(torch.nn.Module):
     def n_layers_gcn(self, x, edge_index):
         for i, layer in enumerate(self.convs[:-1]):
             x = layer(x, edge_index)
-            # print(f"Gconv{i}")
+            if self.put_batchnorm and i > 1:
+                x = self.GCNbatchnorms[i](x)
             x = self.act_func[i](x)
-            # print(f"leakyrelu{i}")
             # x, edge_index, _, batch, _, _ = self.pools[i](x, edge_index, None, batch)
         x = self.convs[-1](x, edge_index)
-        # così tolgo posso specificare una activation func specifica per l'ultimo layer
+        # così posso specificare una activation func specifica per l'ultimo layer
         x = self.last_act_func(x)
         return x
 
     def n_layers_linear(self, x):
 
         for i, layer in enumerate(self.linears):
+            x = layer(x)  # spostando questo prima dei batchnorm potrei avere un errore per come son odefiniti i batchnorm,
+            # cioè con il numero dei neuroni all' i-esimo batchnorm
             if self.put_batchnorm and i < (len(self.batchnorms) - 1):
                 x = self.batchnorms[i](x)
             if self.put_dropout:
                 x = self.dropouts[i](x)
-            x = layer(x)
             x = self.last_linears__activation(x)
 
         return x
@@ -144,7 +149,6 @@ class GCN(torch.nn.Module):
         if graph_embedding or not self.last_linear:
             return x
 
-        # 3. Apply a final classifier
         if self.last_linear:
             x = self.n_layers_linear(x)
         #print(f"after linear: {x.shape}")

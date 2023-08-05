@@ -158,7 +158,7 @@ class Data2Plot():
                     fig, ax = plt.subplots(figsize=(12, 6))
                 custom_lines = []
                 for i, classe in enumerate(self.array2plot):
-                    color = self.get_color(i, sequential_colors)
+                    color = self.get_color(i)
                     custom_lines.append(Line2D([0], [0], color=color, lw=3))
                     label = str(self.unique_class_labels[i])
                     alpha_value = self.get_alpha_value(datatype, i)
@@ -252,6 +252,7 @@ class DataAutoenc2Plot(Data2Plot):
         ## la label di classe è prodotta nel training set
         self.class_labels = [graph.scalar_label for graph in self.input_obj]
         self.unique_class_labels = sorted(list(set(self.class_labels)))
+        self.total_class_colors = len(self.unique_class_labels)
         ## la label di nodo può essere diversa per ogni nodo (actual node degree  oppure original node label)
         ## oppure posso voler associare a ogni nodo la label del grafo a cui il nodo appartiene
         self.allnode_labels = None ## [graph.node_label_from_dataset for graph in self.input_obj]
@@ -299,13 +300,13 @@ class DataAutoenc2Plot(Data2Plot):
             self.array2plot = np.array([[graph.node_embedding.squeeze() for graph in self.input_obj if graph.scalar_label == classe] for classe in self.unique_class_labels])
             self.allnode_labels = [[graph.node_label_from_dataset for graph in self.input_obj if graph.scalar_label == classe] for classe in self.unique_class_labels]
             self.all_node_degree = [[graph.node_degree for graph in self.input_obj if graph.scalar_label == classe] for classe in self.unique_class_labels]
-            self.colors = {str(self.unique_class_labels[c]): self.get_color(c, sequential_colors=True) for c in range(len(self.unique_class_labels))}
+            self.colors = {str(self.unique_class_labels[c]): self.get_color(c) for c in range(len(self.unique_class_labels))}
             self.custom_legend_lines = [(Line2D([0], [0], color=color, lw=3)) for color in self.colors.values()]
         elif type == 'graph_embedding':
             #for graph in self.input_obj:
             #    graph.calc_graph_emb()
             self.array2plot = np.array([[graph.graph_embedding.squeeze() for graph in self.input_obj if graph.scalar_label == classe] for classe in self.unique_class_labels])
-            self.colors = {str(self.unique_class_labels[c]): self.get_color(c, sequential_colors=True) for c in range(len(self.unique_class_labels))}
+            self.colors = {str(self.unique_class_labels[c]): self.get_color(c) for c in range(len(self.unique_class_labels))}
             self.custom_legend_lines = [(Line2D([0], [0], color=color, lw=3)) for color in self.colors.values()]
         #print(f"len di ar2p: {len(self.array2plot)}, type: {type}")
 
@@ -370,8 +371,8 @@ class DataAutoenc2Plot(Data2Plot):
 
 
 
-    def get_color(self, i, sequential_colors=False):
-        if sequential_colors:
+    def get_color(self, i):
+        if self.total_class_colors > 8:
             color = get_colors_to_cycle_sequential(len(self.array2plot))[i]
         else:
             color = get_colors_to_cycle_rainbow8()[i % 8]
@@ -384,10 +385,10 @@ class DataAutoenc2Plot(Data2Plot):
             num_tot = len(self.input_obj)
         elif type == 'adj_entries':
             num_tot = len(self.input_obj)# * len(self.input_obj[0])
-        alpha_value = min(1, 500 / num_tot)
+        alpha_value = min(0.3, 500 / num_tot)
         if i is not None:
             arr = [3000, 2000, 1000, 500, 200, 100, 50]
-            alpha_value = min(1, arr[min(6,i)] / num_tot)
+            alpha_value = min(0.3, arr[min(6,i)] / num_tot)
         #print(f"num_tot per alpha value: {num_tot}  - alpha: {alpha_value}")
         return alpha_value
 
@@ -455,8 +456,6 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
         data.plot(datatype='node_embedding', type='plot', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
         data.plot(datatype='graph_embedding', type='plot', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
         if node_intrinsic_dimensions_total is not None and graph_intrinsic_dimensions_total is not None:
-            pass
-            # TODO: rimettere
             plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs)
 
     if data.config_class.autoencoding:
@@ -483,15 +482,23 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
     metric_names = kwargs.get("metric_name")
     x_max = kwargs.get("last_epoch")
     train_loss_list = kwargs.get("train_loss_list")
+    is_x_axis_log = kwargs.get("x_axis_log")
 
     # test loss
     loss_list_min, loss_list_max = min(array_wo_outliers(test_loss_list)), max(array_wo_outliers(test_loss_list))
     train_loss_list_min, train_loss_list_max = min(array_wo_outliers(train_loss_list)), max(array_wo_outliers(train_loss_list))
     minimo = min(loss_list_min, train_loss_list_min)
     massimo = max(loss_list_max, train_loss_list_max)
-    ploss, = axes[1][0].plot(epochs_list, test_loss_list, color='black', label='Test Loss')
+    if is_x_axis_log:
+        ploss, = axes[1][0].semilogx(epochs_list, test_loss_list, color='black', label='Test Loss')
+    else:
+        ploss, = axes[1][0].plot(epochs_list, test_loss_list, color='black', label='Test Loss')
+
     # train loss
-    axes[1][0].plot(epochs_list, train_loss_list, color='darkgray', label='Train Loss')
+    if is_x_axis_log:
+        axes[1][0].semilogx(epochs_list, train_loss_list, color='darkgray', label='Train Loss')
+    else:
+        axes[1][0].plot(epochs_list, train_loss_list, color='darkgray', label='Train Loss')
 
     axes[1][0].set_ylim(minimo - (0.1*minimo), massimo + (0.1*massimo))
     axes[1][0].set_xlim(0, x_max)
@@ -499,19 +506,19 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
     axes[1][0].legend(loc='upper left')
     # axes[1][0].yaxis.label.set_color(ploss.get_color())
 
-
-
-    # plot accuracy
-    # if not (data.config_class.conf['model'].get('autoencoder') or data.config_class.conf['model'].get('autoencoder_confmodel')):
     axt = axes[1][0].twinx()
 
-    #metriche = []  # sar una lista di liste
+    # Plot metriche
     for i, metric_name in enumerate(metric_names):
         metricatrain = [m.get_metric(metric_name) for m in metric_obj_list_train]
         metricatest = [m.get_metric(metric_name) for m in metric_obj_list_test]
         color = get_colors_to_cycle_rainbow8()[i % 8]
-        pmetric, = axt.plot(epochs_list, metricatest, color=color, label=metric_name)
-        pmetric_train, = axt.plot(epochs_list, metricatrain, color=adjust_lightness(color, 1.5), label=metric_name)
+        if is_x_axis_log:
+            pmetric, = axt.semilogx(epochs_list, metricatest, color=color, label=metric_name)
+            pmetric_train, = axt.semilogx(epochs_list, metricatrain, color=adjust_lightness(color, 1.5), label=metric_name)
+        else:
+            pmetric, = axt.plot(epochs_list, metricatest, color=color, label=metric_name)
+            pmetric_train, = axt.plot(epochs_list, metricatrain, color=adjust_lightness(color, 1.5), label=metric_name)
         axt.set_ylim(0, 1)
         # axt.set_ylabel('Test metric', fontsize=12);
         axt.set_xlim(0, x_max)
@@ -523,8 +530,13 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
 
 def plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs):
     x_max = kwargs.get("last_epoch")
-    axes[1][1].plot(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
-    axes[1][1].plot(epochs_list, graph_intrinsic_dimensions_total, linestyle='None', marker='.', color='blue', label='graph id')
+    is_x_axis_log = kwargs.get("x_axis_log")
+    if is_x_axis_log:
+        axes[1][1].semilogx(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
+        axes[1][1].semilogx(epochs_list, graph_intrinsic_dimensions_total, linestyle='None', marker='.', color='blue', label='graph id')
+    else:
+        axes[1][1].plot(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
+        axes[1][1].plot(epochs_list, graph_intrinsic_dimensions_total, linestyle='None', marker='.', color='blue', label='graph id')
     axes[1][1].set_xlim(0, x_max)
     axes[1][1].set_ylim(0, 3.0)
     axes[1][1].set_title(f"Intrinsic Dimensionality")
@@ -1039,7 +1051,7 @@ def plot_corr_epoch(avg_corr_classes, config_c, ax=None):
 
 def save_ffmpeg(filenameroot, outputfile):
     suppress_output = ">/dev/null 2>&1"
-    os.system(f"ffmpeg -r 30 -i {filenameroot}%01d.png -vcodec mpeg4 -y {outputfile}.mp4 {suppress_output}")
+    os.system(f"ffmpeg -r 25 -i {filenameroot}%01d.png -vcodec mpeg4 -b:v 5000k -c:a copy  -y {outputfile}.mp4 {suppress_output}")  # -c:v libx264
 
 
 # region plot results of grid search

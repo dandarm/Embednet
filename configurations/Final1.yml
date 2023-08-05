@@ -23,9 +23,9 @@ training:
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
-    learning_rate: 0.001
+    learning_rate: 0.0001
     epochs: 2000000
-    epochs_list_points: 50
+    epochs_list_points: 200
     batch_size: 200
     percentage_train: 0.7
     earlystop_patience: 500
@@ -35,6 +35,9 @@ training:
     shuffle_dataset: False
     calculate_metrics: True
     optimizer: SGD
+
+plot:
+    x_axis_log: False
     
 model:
     last_layer_dense: False
