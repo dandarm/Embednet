@@ -248,8 +248,11 @@ class Config():
 
         activation_type = self.conf['model'].get('activation')
         optim = self.conf['training'].get('optimizer')
+        btchnrm = "btchnrmSI" if self.conf['model']['put_batchnorm'] else "btchnrmNO"
+        if self.conf['model'].get('put_graphnorm'):
+            btchnrm = "grphnorm"
 
-        nome = f"{tipo_grafo.ljust(15, '_')}_Classi{self.num_classes}_nodi{str(numnodi).ljust(10, '_')}_grafiXtipo{str(numgrafi).ljust(4, '_')}_{modo.ljust(6, '_')}_layers{layer_neuron_string}__{activation_type}__-{init_weights.ljust(10, '_')}_lr{str(lr).replace('.','')}_{optim}"  # _GCNfreezed{freezed}
+        nome = f"{tipo_grafo.ljust(15, '_')}_Classi{self.num_classes}_nodi{str(numnodi).ljust(10, '_')}_grafiXtipo{str(numgrafi).ljust(4, '_')}_{modo.ljust(6, '_')}_layers{layer_neuron_string}__{activation_type}__{btchnrm}__-{init_weights.ljust(10, '_')}_lr{str(lr).replace('.','')}_{optim}"  # _GCNfreezed{freezed}
         nome = nome.replace(', ', '_')
 
         # creo stringa lunga

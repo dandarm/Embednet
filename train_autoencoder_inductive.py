@@ -20,8 +20,7 @@ from torchmetrics import HammingDistance
 
 class Trainer_Autoencoder(Trainer):
     def __init__(self, config_class, verbose=False, rootsave="."):
-        super().__init__(config_class, verbose)
-        self.rootsave = rootsave
+        super().__init__(config_class, verbose, rootsave)
         self.name_of_metric = ["auc", "pr_auc", "f1_score", "hamming"]
         # TODO.... poi posso impostare il criterion dentro il config
         self.criterion_MSE = nn.MSELoss()
@@ -105,12 +104,12 @@ class Trainer_Autoencoder(Trainer):
         return diag_block
     
     def calc_decoder_for_batches(self, total_z, num_nodes):
-        """
+        """Necessario nel caso dei batch per togliere dal prodotto scalare i nodi di grafi diversi
         :param total_z: embedding complessivo di tutti i nodi del batch
         :param num_nodes: lista che rappresenta i nodi per ciascun grafo
         :return:
         """
-        #
+        #print(f"{len(total_z)} - {sum(num_nodes)}")
         assert len(total_z) == sum(num_nodes), f"Num_nodes totali non torna con i node embedding di total_z, {len(total_z)} != {sum(num_nodes)}"
         # devo fare un padding: prendo il max tra i num nodi
         max_nodes = max(num_nodes)
@@ -118,7 +117,7 @@ class Trainer_Autoencoder(Trainer):
             need_padding = False  # l'array è tutto costante
         else:
             need_padding = True  # va reso costante col padding
-        start_out = torch.empty((1, max_nodes, max_nodes), device=torch.device('cuda'))
+        start_out = torch.empty((1, max_nodes, max_nodes), device=torch.device(self.device))
 
         #for i in range(0, len(total_z), num_nodes):
         i = 0
@@ -235,6 +234,7 @@ class Trainer_Autoencoder(Trainer):
         running_loss = 0
         num_nodes_batch = [len(data.x) for data in self.dataset.train_loader.dataset]
         i = 0
+        num_batches = 0
         for data in self.dataset.train_loader:
             total_batch_z, adjusted_pred_adj, input_adj = self.encode_decode_inputadj(
                 data, i, self.dataset.train_loader.batch_size, num_nodes_batch)
@@ -284,14 +284,17 @@ class Trainer_Autoencoder(Trainer):
             # self.scheduler.step()
             running_loss += loss.item()
             i += self.dataset.train_loader.batch_size
+            num_batches += 1
+            print(f"batch numbers: {i}")
 
-        return running_loss / self.dataset.train_len
+        return running_loss / num_batches
 
     def test(self, loader):
         self.model.eval()
         running_loss = 0
         num_nodes_batch = [len(data.x) for data in loader.dataset]
         i = 0
+        num_batches = 0
         with torch.no_grad():
             for data in loader:
                 total_batch_z, adjusted_pred_adj, input_adj = self.encode_decode_inputadj(
@@ -304,8 +307,9 @@ class Trainer_Autoencoder(Trainer):
 
                 running_loss += loss.item()
                 i += loader.batch_size
+                num_batches += 1
 
-        return running_loss / self.dataset.test_len
+        return running_loss / num_batches
 
     def calc_loss(self, adjusted_pred_adj_r, input_adj_r, is_weighted=False):
         #pred_activated = self.loss_activation(adjusted_pred_adj_r)

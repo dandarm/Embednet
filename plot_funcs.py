@@ -363,6 +363,8 @@ class DataAutoenc2Plot(Data2Plot):
         plt.ylim(0, max(pred_degrees))
         if filename_save:
             plt.savefig(filename_save)
+        else:
+            plt.show()
         # fig = plt.gcf()
         # fig.clf()
         # plt.cla()
@@ -483,6 +485,14 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
     x_max = kwargs.get("last_epoch")
     train_loss_list = kwargs.get("train_loss_list")
     is_x_axis_log = kwargs.get("x_axis_log")
+    metric_epoch_list = kwargs.get("metric_epoch_list")
+    unico_plot = kwargs.get("unico_plot")
+    if unico_plot:
+        marker = 'o'
+        #mtest = metric_obj_list_test[0].get_metric(metric_names[0])
+        #print(epochs_list, mtest, marker)
+    else:
+        marker = None
 
     # test loss
     loss_list_min, loss_list_max = min(array_wo_outliers(test_loss_list)), max(array_wo_outliers(test_loss_list))
@@ -490,15 +500,15 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
     minimo = min(loss_list_min, train_loss_list_min)
     massimo = max(loss_list_max, train_loss_list_max)
     if is_x_axis_log:
-        ploss, = axes[1][0].semilogx(epochs_list, test_loss_list, color='black', label='Test Loss')
+        ploss, = axes[1][0].semilogx(epochs_list, test_loss_list, marker=marker, color='black', label='Test Loss')
     else:
-        ploss, = axes[1][0].plot(epochs_list, test_loss_list, color='black', label='Test Loss')
+        ploss, = axes[1][0].plot(epochs_list, test_loss_list, marker=marker,color='black', label='Test Loss')
 
     # train loss
     if is_x_axis_log:
-        axes[1][0].semilogx(epochs_list, train_loss_list, color='darkgray', label='Train Loss')
+        axes[1][0].semilogx(epochs_list, train_loss_list, marker=marker,color='darkgray', label='Train Loss')
     else:
-        axes[1][0].plot(epochs_list, train_loss_list, color='darkgray', label='Train Loss')
+        axes[1][0].plot(epochs_list, train_loss_list, marker=marker,color='darkgray', label='Train Loss')
 
     axes[1][0].set_ylim(minimo - (0.1*minimo), massimo + (0.1*massimo))
     axes[1][0].set_xlim(0, x_max)
@@ -513,12 +523,14 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
         metricatrain = [m.get_metric(metric_name) for m in metric_obj_list_train]
         metricatest = [m.get_metric(metric_name) for m in metric_obj_list_test]
         color = get_colors_to_cycle_rainbow8()[i % 8]
+        if metric_epoch_list:
+            epochs_list = metric_epoch_list
         if is_x_axis_log:
-            pmetric, = axt.semilogx(epochs_list, metricatest, color=color, label=metric_name)
-            pmetric_train, = axt.semilogx(epochs_list, metricatrain, color=adjust_lightness(color, 1.5), label=metric_name)
+            pmetric, = axt.semilogx(epochs_list, metricatest, marker=marker,color=color, label=metric_name)
+            pmetric_train, = axt.semilogx(epochs_list, metricatrain, marker=marker,color=adjust_lightness(color, 1.5), label=metric_name)
         else:
-            pmetric, = axt.plot(epochs_list, metricatest, color=color, label=metric_name)
-            pmetric_train, = axt.plot(epochs_list, metricatrain, color=adjust_lightness(color, 1.5), label=metric_name)
+            pmetric, = axt.plot(epochs_list, metricatest, marker=marker,color=color, label=metric_name)
+            pmetric_train, = axt.plot(epochs_list, metricatrain, marker=marker,color=adjust_lightness(color, 1.5), label=metric_name)
         axt.set_ylim(0, 1)
         # axt.set_ylabel('Test metric', fontsize=12);
         axt.set_xlim(0, x_max)
@@ -531,6 +543,9 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
 def plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs):
     x_max = kwargs.get("last_epoch")
     is_x_axis_log = kwargs.get("x_axis_log")
+    metric_epoch_list = kwargs.get("metric_epoch_list")
+    if metric_epoch_list:
+        epochs_list = metric_epoch_list
     if is_x_axis_log:
         axes[1][1].semilogx(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
         axes[1][1].semilogx(epochs_list, graph_intrinsic_dimensions_total, linestyle='None', marker='.', color='blue', label='graph id')
@@ -629,7 +644,7 @@ def parallel_coord(ys, host, titolo_grafico, **kwargs):
     return
 
 
-def plot_weights_multiple_hist(layers, labels, ax1, absmin, absmax, sequential_colors=False, subplot=236):
+def plot_weights_multiple_hist(layers, labels, ax1, absmin, absmax, sequential_colors=False, subplot=236, **kwargs):
     assert len(layers) == len(labels), f"ci sono {len(layers)} layers e {len(labels)} labels"
     #absmin, absmax = np.min([np.min(par) for par in layers]), np.max([np.max(par) for par in layers])
     bins = np.linspace(absmin, absmax, 40)

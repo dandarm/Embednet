@@ -34,36 +34,36 @@ from utils_embednet import array_wo_outliers
 matplotlib.use('Agg')
 
 # per usare il trainer e il config nei processi paralleli
-graph_embedding_per_epoch = []
-node_embedding_per_epoch = []
-autoencoder_embedding_per_epoch = []
-model_linear_pars_per_epoch = []
-model_gconv_pars_per_epoch = []
-param_labels = []
-absmin = 1000000
-absmax = -1000000
-dataset = None
-loss_list = []
-exp_config = None
-output_per_epoch = []
-accuracy_list = []
-epochs_list = []
-dataset_type = None
-embedding_dimension = None
-#trainmode = None
-sequential_colors = False
-bounds_for_plot = []
-node_intrinsic_dimensions_perclass = []
-graph_intrinsic_dimensions_perclass = []
-node_intrinsic_dimensions_total = []
-graph_intrinsic_dimensions_total = []
-graph_correlation = []
-node_correlation = []
+# graph_embedding_per_epoch = []
+# node_embedding_per_epoch = []
+# autoencoder_embedding_per_epoch = []
+# model_linear_pars_per_epoch = []
+# model_gconv_pars_per_epoch = []
+# param_labels = []
+# absmin = 1000000
+# absmax = -1000000
+# dataset = None
+# loss_list = []
+# exp_config = None
+# output_per_epoch = []
+# accuracy_list = []
+# epochs_list = []
+# dataset_type = None
+# embedding_dimension = None
+# #trainmode = None
+# sequential_colors = False
+# bounds_for_plot = []
+# node_intrinsic_dimensions_perclass = []
+# graph_intrinsic_dimensions_perclass = []
+# node_intrinsic_dimensions_total = []
+# graph_intrinsic_dimensions_total = []
+# graph_correlation = []
+# node_correlation = []
 
 #num_classes = None
-data4video = []
-long_string_experiment = "Nostring"
-name_of_training_metric = "metrica_da_impostare"
+# data4video = []
+# long_string_experiment = "Nostring"
+# name_of_training_metric = "metrica_da_impostare"
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = str(1)
 
@@ -96,7 +96,7 @@ class Experiments():
             assert False, "Inserire almeno uno tra un file di Configurazione o una classe di Configurazione"
 
         self.rootsave = rootsave
-        self.init_trainer()  # serve Prima del make configs????
+
         self.gc = None
         self.diz_trials = diz_trials
         self.epochs_list = None
@@ -108,7 +108,7 @@ class Experiments():
             self.gc = GridConfigurations(self.config_class, self.diz_trials, self.verbose)
             self.gc.make_configs()
 
-
+        self.init_trainer()  # serve Prima del make configs????
 
         # risultati
         self.embedding_class = None
@@ -131,18 +131,18 @@ class Experiments():
             self.trainer = Trainer(self.config_class, rootsave=self.rootsave)
 
     def GS_simple_experiments(self, parallel_take_result=True, do_plot=True, **kwargs):
-        global graph_embedding_per_epoch
-        global node_embedding_per_epoch
-        global output_per_epoch
-        global autoencoder_embedding_per_epoch
-        global dataset
-        global exp_config
-        global embedding_dimension
-        #global trainmode
-
-        global data4video
-        global node_intrinsic_dimensions_perclass
-        global graph_intrinsic_dimensions_perclass
+        # global graph_embedding_per_epoch
+        # global node_embedding_per_epoch
+        # global output_per_epoch
+        # global autoencoder_embedding_per_epoch
+        # global dataset
+        # global exp_config
+        # global embedding_dimension
+        # #global trainmode
+        #
+        # global data4video
+        # global node_intrinsic_dimensions_perclass
+        # global graph_intrinsic_dimensions_perclass
         #global node_intrinsic_dimensions_total
         #global graph_intrinsic_dimensions_total
         #global graph_correlation
@@ -154,25 +154,6 @@ class Experiments():
             # all_seeds()
             self.trainer.reinit_conf(c)            
             self.just_train()
-
-
-            if not self.config_class.conf['training']['every_epoch_embedding']:
-                if self.config_class.conf['training'].get('calculate_metrics'):
-                    metric_object = self.trainer.calc_metric(self.trainer.dataset.all_data_loader)
-                    metric_object_train = self.trainer.calc_metric(self.trainer.dataset.train_loader)
-                    metric_object_test = self.trainer.calc_metric(self.trainer.dataset.test_loader)
-
-                emb_pergraph_test, emb_pergraph_train, embeddings_arrays = \
-                    self.trainer.provide_all_embeddings_and_metrics(give_emb_train=True, give_emb_test=True,
-                                                                    metric_object=metric_object,
-                                                                    metric_object_test=metric_object_test,
-                                                                    metric_object_train=metric_object_train)
-                model_weights = self.trainer.provide_model_weights()
-
-                # si ricava anche gli oggetti Embedding e Data2Plot
-                self.trainer.save_image_at_epoch(embeddings_arrays, model_weights, self.trainer.last_epoch,
-                                                self.epochs_list, emb_pergraph_train, emb_pergraph_test,
-                                                 rootsave=self.rootsave)
 
             k += 1
 

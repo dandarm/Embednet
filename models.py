@@ -2,6 +2,7 @@ import numpy as np
 from enum import Enum
 import torch
 from torch.nn import Linear, BatchNorm1d
+from torch_geometric.nn.norm.graph_norm import GraphNorm
 from torch.nn import ReLU, LeakyReLU, Hardsigmoid, Tanh, ELU, Hardtanh
 from torch_geometric.nn import GCNConv, GAE, VGAE, TopKPooling
 #from torch_geometric.nn import global_mean_pool
@@ -28,6 +29,7 @@ class GCN(torch.nn.Module):
 
         self.autoencoder = self.conf['model']['autoencoder'] or self.conf['model'].get('autoencoder_confmodel')
         self.put_batchnorm = self.conf['model']['put_batchnorm']
+        self.put_graphnorm = self.conf['model'].get('put_graphnorm')
         self.put_dropout = self.conf['model'].get('put_dropout', False)
         self.last_linear = self.conf['model']['last_layer_dense']
         self.final_pool_aggregator = self.conf['model']['final_pool_aggregator']
@@ -41,7 +43,7 @@ class GCN(torch.nn.Module):
         if self.put_dropout:
             self.dropouts = torch.nn.ModuleList()
         #self.pools = torch.nn.ModuleList()
-        if self.put_batchnorm:
+        if self.put_batchnorm or self.put_graphnorm:
             self.GCNbatchnorms = torch.nn.ModuleList()
             self.batchnorms = torch.nn.ModuleList()
 
@@ -56,6 +58,8 @@ class GCN(torch.nn.Module):
             self.convs.append(GCNConv(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1]))
             if self.put_batchnorm:
                 self.GCNbatchnorms.append(BatchNorm1d(self.GCNneurons_per_layer[i]))
+            elif self.put_graphnorm:
+                self.GCNbatchnorms.append(GraphNorm(self.GCNneurons_per_layer[i]))
             self.act_func.append(activation_function)
             #self.pools.append( TopKPooling(neurons_per_layer[i+1], ratio=0.8) )
             #i += 1

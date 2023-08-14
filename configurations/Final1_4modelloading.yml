@@ -10,8 +10,8 @@ graph_dataset:
     list_p: [0.27] #, 0.2, 0.15, 0.1] #, 0.01]
     range_p: [0.01, 0.5]
     community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]], [[0.4, 0.01], [0.01, 0.1]]]  # num nodi * num classi * num comunità
-    Num_nodes: [500] #, 200, 200, 200] # , 200]
-    Num_grafi_per_tipo: 500
+    Num_nodes: [7] #, 200, 200, 200] # , 200]
+    Num_grafi_per_tipo: 50
     Num_grafi_totali: 1000
     list_degree: [4, 50]
     list_exponents: [-2.2, -2.5, -2.8, -3.0, -3.2, -3.5, -3.7]
@@ -23,8 +23,8 @@ training:
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
-    learning_rate: 0.002
-    epochs: 2600
+    learning_rate: 0.005
+    epochs: 600000
     epochs_list_points: 160
     batch_size: 500
     percentage_train: 0.7
@@ -34,7 +34,7 @@ training:
     every_epoch_embedding: True
     shuffle_dataset: False
     calculate_metrics: True
-    optimizer: ADAM
+    optimizer: SGD
 
 plot:
     x_axis_log: False
@@ -42,11 +42,11 @@ plot:
     
 model:
     last_layer_dense: False
-    GCNneurons_per_layer: [1, 32, 32, 32]
+    GCNneurons_per_layer: [1, 64, 64, 64, 32]
     neurons_last_linear: [16, 16, 2]
     freezeGCNlayers: False
-    autoencoder: True
-    autoencoder_confmodel: False
+    autoencoder: False
+    autoencoder_confmodel: True
     autoencoder_graph_ae: False
     put_batchnorm: False
     put_graphnorm: True
@@ -66,4 +66,4 @@ graph_ae_model:
 logging:
     train_step_print: 1000
     
-device: 'gpu'
+device: 'cpu'

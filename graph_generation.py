@@ -11,7 +11,7 @@ from Dataset import Dataset, GeneralDataset
 
 
 class GenerateGraph():
-    def __init__(self, config_class, verbose):
+    def __init__(self, config_class, verbose=False):
         self.config_class = config_class
         self.conf = self.config_class.conf
         self.verbose = verbose

@@ -165,7 +165,7 @@ class Trainer_AutoencoderMIAGAE(Trainer):
         return np.array(adjs_list), np.array(feats)
     
     def calc_inner_prod_for_batches(self, total_z, num_nodes):
-        start_out = torch.empty((1, num_nodes, num_nodes), device=torch.device('cuda'))
+        start_out = torch.empty((1, num_nodes, num_nodes), device=torch.device(self.device))
 
         for i in range(0, len(total_z), num_nodes):
             z = total_z[i:i+num_nodes]

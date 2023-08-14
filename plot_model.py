@@ -5,6 +5,22 @@
 import torch
 import graphviz
 
+def get_methods(object, spacing=20):
+  methodList = []
+  for method_name in dir(object):
+    try:
+        if callable(getattr(object, method_name)):
+            methodList.append(str(method_name))
+    except Exception:
+        methodList.append(str(method_name))
+  processFunc = (lambda s: ' '.join(s.split())) or (lambda s: s)
+  for method in methodList:
+    try:
+        print(str(method.ljust(spacing)) + ' ' +
+              processFunc(str(getattr(object, method).__doc__)[0:90]))
+    except Exception:
+        print(method.ljust(spacing) + ' ' + ' getattr() failed')
+
 def make_graph(mod, classes_to_visit=None, classes_found=None, dot=None, prefix="",
                input_preds=None,
                parent_dot=None):
@@ -23,7 +39,10 @@ def make_graph(mod, classes_to_visit=None, classes_found=None, dot=None, prefix=
     toshow = []
     # list(traced_model.graph.nodes())[0]
     self_input = next(gr.inputs())
+    # print(self_input)
+    get_methods(self_input)
     self_type = self_input.graphtype().str().split('.')[-1]
+    #print("non arriva qu=")
     preds[self_input] = (set(), set()) # inps, ops
 
     if dot is None:

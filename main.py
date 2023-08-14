@@ -84,11 +84,11 @@ def studioERp():
     xp = Experiments(config_file, diz_trials, rootsave)
     xp.GS_same_weight_inits_different_datasets()
 
-def simple():
-    config_file = "configurations/1layer_freezed.yml"
-    xp = Experiments(config_file, diz_trials=None, rootsave=rootsave)
-    xp.just_train(parallel=True)
-    embedding_class = xp.embedding()
+# def simple():
+#     config_file = "configurations/1layer_freezed.yml"
+#     xp = Experiments(config_file, diz_trials=None, rootsave=rootsave)
+#     xp.just_train(parallel=True)
+#     embedding_class = xp.embedding()
 
 def simple_grid_search(argv):
     c, diz_trials = get_diz_trials("configurations/Final1.yml")

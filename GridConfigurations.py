@@ -7,8 +7,6 @@ from ast import literal_eval
 from pandas import json_normalize
 
 from config_valid import Config
-import experiments
-#from experiments import get_corrs_training
 
 
 class GridConfigurations():
