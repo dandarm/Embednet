@@ -9,6 +9,7 @@ from config_valid import Config, TrainingMode
 #from graph_generation import GraphType
 from scipy.stats import kendalltau
 import skdim
+from torch.nn import Hardtanh
 
 import torch
 class Embedding():
@@ -469,10 +470,12 @@ class Embedding_autoencoder_per_graph():
         #self.calc_graph_emb()
         self.input_adj_mat = input_adj_mat
         self.decoder_output = None
-        self.decoder_output_after_activation = None
         self.thresholded = None
         self.hamming_distance = None
         self.threshold_for_binary_prediction = None
+
+        # valori binari estratti con sampling a partire dal decoder_output ( == p_ij)
+        self.sampled_adjs_from_output = None
 
         self.scalar_label = None
         self.node_label_from_dataset = None
@@ -480,20 +483,34 @@ class Embedding_autoencoder_per_graph():
 
         self.out_degree_seq = None  # viene dai grafi di output
 
+        self.HardTanh = Hardtanh(0, 1)
 
-    def calc_decoder_output(self, model_decoder, activation_func, **kwargs):
+
+    def calc_decoder_output(self, model_decoder, **kwargs):
+        """
+        Viene usato per calcolare l-output quando vogliamo studiare l'embedding con i plot
+        :param model_decoder: tipicamente z.zT
+        :param kwargs:  "se usare sigmoide oppure no"
+        :return:
+        """
         self.decoder_output = model_decoder(self.node_embedding, **kwargs)
         ##adj = torch.matmul(self.node_embedding, self.node_embedding.t())
         ##res = adj / (1 + adj)
         ##print("verifico decoder output", end=' ')
         ##print(torch.allclose(self.decoder_output, res))
-        self.decoder_output_after_activation = activation_func(self.decoder_output)
 
-    def calc_thresholded_values(self, threshold=0.5):
-        self.thresholded = (self.decoder_output_after_activation > threshold).astype(np.uint8)
-        # salvo questa soglia anche dentro la classe
-        self.threshold_for_binary_prediction = threshold
-        # calcolo subito anche la distanza di hamming
+
+    # def calc_thresholded_values(self, threshold=0.5):
+    #     self.thresholded = (self.decoder_output > threshold).astype(np.uint8)
+    #     # salvo questa soglia anche dentro la classe
+    #     self.threshold_for_binary_prediction = threshold
+    #     # calcolo subito anche la distanza di hamming
+
+    def sample_without_threshold(self):
+        self.sampled_adjs_from_output = []
+        p_ij = self.HardTanh(torch.Tensor(self.decoder_output))
+        self.sampled_adjs_from_output = self.sample_from_pij(p_ij)
+
 
     def calc_degree_sequence(self):
         self.out_degree_seq = self.decoder_output.sum(axis=1)
@@ -507,8 +524,12 @@ class Embedding_autoencoder_per_graph():
         self.node_embedding = self.node_embedding.detach().cpu().numpy()
         self.input_adj_mat = self.input_adj_mat.detach().cpu().numpy()
         self.decoder_output = self.decoder_output.detach().cpu().numpy()
-        self.decoder_output_after_activation = self.decoder_output_after_activation.detach().cpu().numpy()
 
+    def sample_from_pij(self, p_ij):
+        pij_shape = p_ij.shape
+        assert len(pij_shape) == 2,  f"Non e una matrice. p_ij shape: {pij_shape}"
+        adj = np.random.binomial(1, p_ij)
+        return adj
 
 
 
@@ -544,9 +565,9 @@ class Embedding_autoencoder(Embedding):
             graph.node_degree = self.node_degree[i]
             graph.scalar_label = self.scalar_label[i]
 
-    def calc_decoder_output(self, model_decoder, activation_func, **kwargs):
-        for graph_emb in self.list_emb_autoenc_per_graph:
-            graph_emb.calc_decoder_output(model_decoder, activation_func, **kwargs)
+    # def calc_decoder_output(self, model_decoder, activation_func, **kwargs):
+    #     for graph_emb in self.list_emb_autoenc_per_graph:
+    #         graph_emb.calc_decoder_output(model_decoder, activation_func, **kwargs)
 
     # def calc_thresholded_values(self):
     #     for graph_emb in self.list_emb_autoenc_per_graph:

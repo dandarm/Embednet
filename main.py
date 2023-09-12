@@ -107,10 +107,12 @@ def simple_grid_search(argv):
     if edits is not None:
         diz_trials = modify_some_trials(diz_trials, **edits)
 
+    is_verbose = argv[2] == "True"
+    print(f"verbose: {is_verbose}")
     xp = Experiments(diz_trials=diz_trials,
                      rootsave=rootsave / path_to_save, config_class=c,
-                     reset_all_seeds=False, verbose=False)
-    xp.GS_simple_experiments(verbose=True)
+                     reset_all_seeds=False, verbose=is_verbose)
+    xp.GS_simple_experiments(verbose=is_verbose)
 
 # endregion
 

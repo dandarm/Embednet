@@ -6,6 +6,8 @@ import torch
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils.convert import from_networkx
 from multiprocessing import Pool
+import itertools
+from torch_geometric.utils import to_dense_adj
 
 class SingleGraph():
     def __init__(self, nx_graph, graph_label, node_labels):
@@ -92,8 +94,6 @@ class Dataset(GeneralDataset):
         # if self.config['graph_dataset']['regular']:
 
         tipo = torch.float
-        # else:
-        #     tipo = torch.float
         pyg_graph.y = torch.tensor(np.array([type_graph]), dtype=tipo)
         #print(pyg_graph.y)
 
@@ -243,4 +243,42 @@ class Dataset(GeneralDataset):
         #worker_seed = torch.initial_seed() % 2 ** 32
         np.random.seed(0)  #worker_seed)
         random.seed(0)  #worker_seed)
+
+    def get_coppie_from_dataset(self, loader):
+        NN = len(loader.dataset)
+        coppie_numeric = list(itertools.combinations(range(NN), 2))
+
+        Adjs = self.get_concatenated_input_adjs(loader)
+        coppie = Adjs[coppie_numeric]
+
+        # print(f"Ci sono {len(coppie)} coppie")
+        return coppie
+
+    def get_concatenated_input_adjs(self, loader):
+        Adjs = []
+        for data in loader:
+            input_adj = to_dense_adj(data.edge_index, data.batch)
+            input_adj = input_adj.detach().cpu().numpy()
+            Adjs.append(input_adj)
+        Adjs = np.array(Adjs)
+        # alla fine devo appiattire lungo la dimensione dei batch, che no nserve
+        Adjs = Adjs.reshape(-1, Adjs.shape[-1], Adjs.shape[-1])
+        return torch.Tensor(Adjs)
+
+    def get_concatenated_constant_matrix(self, loader):
+        for data in loader:
+            input_adj = to_dense_adj(data.edge_index, data.batch)[0]  # loader mi ritorna un batch intero
+            break
+        out = []
+        for p in self.scalar_label:  # nel caso di ER questa l è la p_ER
+            m = self.matrix_constant_ER(input_adj, p)
+            out.append(m)
+        out = torch.Tensor(np.array(out))
+        return out
+    def matrix_constant_ER(self, input_matrix, p_ER):
+        # creo una matrice costante = p_ER
+        shape = input_matrix.shape
+        cost_adj = np.full(shape, p_ER)
+        # cost_adj e' la predicted (x) da confrontare con input (y)
+        return cost_adj
 

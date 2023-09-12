@@ -8,26 +8,25 @@ from time import time
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import imageio
-
 import multiprocessing
 
 import numpy as np
 import torch
 from torch.nn import Softmax
 from torch_geometric.loader import DataLoader
+from torch_geometric.utils import to_dense_adj
 from torch.utils.tensorboard import SummaryWriter
 from tensorboardX import SummaryWriter as WriterX
-
+from pytorchtools import EarlyStopping
 #import tensorflow as tf
 from torchmetrics import Accuracy
 from sklearn.metrics import f1_score
 
-from pytorchtools import EarlyStopping
 from metrics import ExplainedVarianceMetric
 from TorchPCA import PCA
 
 #from utils_tf import add_histogram
-from config_valid import Config, TrainingMode
+from config_valid import Config, TrainingMode, GraphType
 from models import GCN, view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear, get_param_labels
 from Dataset import Dataset, GeneralDataset
 from Dataset_autoencoder import DatasetReady
@@ -67,16 +66,7 @@ class Trainer():
 
         self.device = None
 
-        self.criterion = None
-        # if criterion == 'MSELoss':
-        #     self.criterion = torch.nn.MSELoss()
-        # elif criterion == 'CrossEntropy':
-        #     self.criterion = torch.nn.CrossEntropyLoss()
-        #if verbose:
-        #    print(self.criterion)
-
         self.name_of_metric = "accuracy"
-
         self.softmax = Softmax(dim=1)
 
         self.gg = None  # class generate_graph
@@ -91,10 +81,11 @@ class Trainer():
         self.train_loss_list = []
         self.last_epoch = None
 
-        self.reinit_conf(config_class)
+        self.init_conf(config_class)
+
+
+        # CONFIGURAZIONI BASE PER OGNI EVENTUALE TRIAL
         self.run_path = None
-
-
         # scrivo la lista delle epoche sulla quale esegui i calcoli
         self.epochs_list_points = self.conf["training"].get("epochs_list_points")
         self.epochs_list = self.make_epochs_list_for_embedding_tracing(self.epochs_list_points)
@@ -174,8 +165,8 @@ class Trainer():
 
     def reinit_conf_file(self, config_file):
         config_c = Config(config_file)
-        self.reinit_conf(config_c)
-    def reinit_conf(self, config_class):
+        self.init_conf(config_c)
+    def init_conf(self, config_class):
         self.config_class = config_class
         self.config_class.valid_conf()
         self.conf = self.config_class.conf
@@ -192,7 +183,15 @@ class Trainer():
         self.shuffle_dataset = self.conf['training']['shuffle_dataset']
         self.save_best_model = self.conf['training']['save_best_model']
 
-        self.criterion = self.config_class.get_mode()['criterion']
+        # CONFIGURA LA LOSS
+        self.criterion = self.config_class.get_loss()
+        if getattr(self.criterion, "reduction") == 'none':
+            self.is_weighted = True  # self.config_class.conf['training'].get('weigths4unbalanced_dataset')
+        else:
+            self.is_weighted = False
+        #if self.verbose:
+        print(self.criterion)
+        print(f"loss reduction: {getattr(self.criterion, 'reduction')}, -> is_weighted: {self.is_weighted}")
 
         if self.conf['device'] == 'gpu':
             self.device = torch.device('cuda')
@@ -274,7 +273,7 @@ class Trainer():
     def train(self):
         self.model.train()
         running_loss = 0
-
+        num_batches = 0
         for data in self.dataset.train_loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
             target = data.y
@@ -288,13 +287,15 @@ class Trainer():
             self.optimizer.zero_grad()  # Clear gradients.
             # self.scheduler.step()
             running_loss += loss.item()
+            num_batches += 1
             del loss
             del out
-        return running_loss / self.dataset.train_len
+        return running_loss / num_batches
 
     def test(self, loader):
         self.model.eval()
         running_loss = 0
+        num_batches = 0
         for data in loader:  # Iterate in batches over the training dataset.
             out = self.model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
             target = data.y
@@ -304,6 +305,7 @@ class Trainer():
             #print(f'out: shape {out.shape}')
             loss = self.criterion(out, target)  # Compute the loss.
             running_loss += loss.item()
+            num_batches += 1
             #print(f"out and target shape")
             #print(emb.shape, target.shape)
             del loss
@@ -317,7 +319,7 @@ class Trainer():
         #var_exp = torch.as_tensor(np.array(var_exp))
         #var_exp = self.myExplained_variance(emb, target)  # sul singolo batch
 
-        return running_loss / self.dataset.test_len#, var_exp#, graph_embeddings_array, node_embeddings_array
+        return running_loss / num_batches
 
     def take_embedding_all_data(self, type_embedding='both'):
         all_data_loader = self.dataset.get_all_data_loader()
@@ -333,6 +335,7 @@ class Trainer():
         node_embeddings_array = []
         node_embeddings_array_id = []
         final_output = []
+
         with torch.no_grad():
             for data in loader:
                 if type_embedding == 'graph':
@@ -343,13 +346,13 @@ class Trainer():
                     out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
                     to = out.detach().cpu().numpy()
                     node_embeddings_array.extend(to)
-                    #node_embeddings_array_id.extend(data.id) TODO: rimettere
+                    #node_embeddings_array_id.extend(data.id)
                 elif type_embedding == 'both':  # quì ho garantito che i graph embedding sono ordinati come i node_embedding
                     node_out = self.model(data.x, data.edge_index, data.batch, node_embedding=True)
                     to = node_out.detach().cpu().numpy()
                     #print(f"node emb size: {to.nbytes}")
                     node_embeddings_array.extend(to)
-                    #node_embeddings_array_id.extend(data.id) TODO: rimettere
+                    #node_embeddings_array_id.extend(data.id)
                     graph_out = self.model(data.x, data.edge_index, data.batch, graph_embedding=True)
                     to = graph_out.detach().cpu().numpy()
                     #print(f"graph emb size: {to.nbytes}")
@@ -445,15 +448,17 @@ class Trainer():
         return f1
 
 
+
+
     def launch_training(self, verbose=0):
         self.train_loss_list = []
         self.test_loss_list = []
         #self.metric_obj_list = []
         self.metric_obj_list_train = []
         self.metric_obj_list_test = []
-
         animation_files = []
 
+        print("Epoca 0...")
         test_loss = self.test(self.dataset.test_loader)
         # if self.dataset.all_data_loader is None:
         #     all_data_loader = DataLoader(self.dataset.dataset_pyg, batch_size=self.dataset.bs, shuffle=False)
@@ -462,7 +467,7 @@ class Trainer():
         #alldata_loss = self.test(all_data_loader)
         self.train_loss_list.append(0)
         self.test_loss_list.append(test_loss)
-
+        print("Prima snapshot...")
         metric_object_train, metric_object_test = self.produce_traning_snapshot(0, self.epochs if self.epochs > 0 else 1, False, [])
         file_path = self.run_path / f"_epoch0.png"
         animation_files.append(file_path)
@@ -490,6 +495,7 @@ class Trainer():
 
         # EARLY STOPPING SETUP
         best_loss = 100  # for model saving
+        best_epoch = 0
         early_stopping = EarlyStopping(patience=self.conf['training']['earlystop_patience'],
                                        delta=0.00001,
                                        initial_delta=0.0004,
@@ -514,7 +520,7 @@ class Trainer():
             train_loss = self.train()
             writer.add_scalar("Train Loss", train_loss, epoch)
 
-            if epoch % 50 == 0:
+            if epoch % 1 == 0:
                 test_loss = self.test(self.dataset.test_loader)
                 writer.add_scalar("Test Loss", test_loss, epoch)
                 #writer.add_scalar(f"Test {self.name_of_metric}", metric_object.get_metric(self.name_of_metric), epoch)
@@ -556,8 +562,11 @@ class Trainer():
                 self.model_checkpoint = copy.deepcopy(self.model)
             if test_loss < best_loss:  # check for save best model
                 best_loss = test_loss
-                if self.save_best_model:
-                    self.best_model = copy.deepcopy(self.model)
+                best_epoch = epoch
+                self.best_model = copy.deepcopy(self.model)
+            if epoch % 1000 == 0:
+                torch.save(self.best_model.state_dict(), self.run_path / "model")
+
             # endregion
 
             early_stopping(test_loss)
@@ -566,7 +575,7 @@ class Trainer():
                 print("Early stopping!!!")
                 break
 
-        print(f"best loss: {best_loss}")
+        print(f"best loss: {round(best_loss, 3)} at epoch {best_epoch}")
         if verbose > 0:
             print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\tBest test loss: {best_loss} FINE TRAINING')
 
@@ -637,7 +646,10 @@ class Trainer():
             degims.append(imageio.imread(f))
         imageio.mimwrite(self.run_path / f"Degree_seq.{self.unique_train_name}.gif", degims, duration=0.1)
         for f in degree_files:
-            os.remove(f)
+            try:
+                os.remove(f)
+            except FileNotFoundError as e:
+                print(f"Non è riuscito a rimuovere qualche file: {e}")
 
         # salvo video in mp4
         # devo rinominare i file in modo sequenziale altrimenti si blocca
@@ -659,7 +671,10 @@ class Trainer():
         # files = new_files
 
         for f in new_files:
-            os.remove(f)
+            try:
+                os.remove(f)
+            except FileNotFoundError as e:
+                print(f"Non è riuscito a rimuovere qualche file: {e}")
 
     def provide_model_weights(self):
         if self.conf['model']['last_layer_dense']:
@@ -683,24 +698,26 @@ class Trainer():
         """
         if self.config_class.autoencoding:
             all_embeddings_arrays = self.get_embedding_autoencoder(self.dataset.all_data_loader)
-            if metric_object is not None:
-                [e.calc_thresholded_values(threshold=metric_object.get_metric("soglia")) for e in all_embeddings_arrays]
-            else:
-                [e.calc_thresholded_values(threshold=0.5) for e in all_embeddings_arrays]
+
+            """NON devo piu calcolare i valori a soglia"""
+            # if metric_object is not None:
+            #     [e.calc_thresholded_values(threshold=metric_object.get_metric("soglia")) for e in all_embeddings_arrays]
+            # else:
+            #     [e.calc_thresholded_values(threshold=0.5) for e in all_embeddings_arrays]
 
             if give_emb_train:
                 emb_pergraph_train = self.get_embedding_autoencoder(self.dataset.train_loader)
             if give_emb_test:
                 emb_pergraph_test = self.get_embedding_autoencoder(self.dataset.test_loader)
 
-            if metric_object_train is not None:
-                [e.calc_thresholded_values(threshold=metric_object_train.get_metric("soglia")) for e in emb_pergraph_train]
-            else:
-                [e.calc_thresholded_values(threshold=0.5) for e in emb_pergraph_train]
-            if metric_object_test is not None:
-                [e.calc_thresholded_values(threshold=metric_object_test.get_metric("soglia")) for e in emb_pergraph_test]
-            else:
-                [e.calc_thresholded_values(threshold=0.5) for e in emb_pergraph_test]
+            # if metric_object_train is not None:
+            #     [e.calc_thresholded_values(threshold=metric_object_train.get_metric("soglia")) for e in emb_pergraph_train]
+            # else:
+            #     [e.calc_thresholded_values(threshold=0.5) for e in emb_pergraph_train]
+            # if metric_object_test is not None:
+            #     [e.calc_thresholded_values(threshold=metric_object_test.get_metric("soglia")) for e in emb_pergraph_test]
+            # else:
+            #     [e.calc_thresholded_values(threshold=0.5) for e in emb_pergraph_test]
 
         else:
             graph_embeddings_array, node_embeddings_array, _, final_output = self.get_embedding(self.dataset.all_data_loader)

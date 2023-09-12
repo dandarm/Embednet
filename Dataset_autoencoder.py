@@ -70,6 +70,7 @@ class DatasetAutoencoder(Dataset):
 
         # shuffle before train test split
         if shuffle:
+            print("Shuffling...")
             x = list(enumerate(self.dataset_pyg))
             random.shuffle(x)
             indices, self.dataset_pyg = zip(*x)

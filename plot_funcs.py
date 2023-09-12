@@ -35,7 +35,7 @@ class Data2Plot():
     def __init__(self, input_obj, dim, config_class=None):
         self.config_class = config_class
         self.input_obj = input_obj
-        print(f"Shape input object: {self.input_obj.shape}")
+        #print(f"Shape input object: {self.input_obj.shape}")
         self.array2plot = []
         self.class_labels = []
         self.unique_class_labels = []
@@ -117,7 +117,7 @@ class Data2Plot():
 
 
         if datatype == 'adj_entries':
-            self.plot_adj_entries_hist(ax, self.threshold_for_binary_prediction, self.threshold_for_binary_prediction2)
+            self.plot_adj_entries_hist(ax)  #, self.threshold_for_binary_prediction, self.threshold_for_binary_prediction2)
 
         else:
             ## caso in cui devo fare un umap e cmq devo plottare tutte le dimensioni dell'embedding
@@ -282,18 +282,18 @@ class DataAutoenc2Plot(Data2Plot):
                 for graph in self.input_obj:
                     outputs.append(graph.decoder_output.ravel())
                     inputs.append(graph.input_adj_mat.ravel())
-                    adj_01.append(graph.thresholded.ravel())
+                    adj_01.append(graph.sampled_adjs_from_output.ravel())
                 self.array2plot = (np.array(inputs), np.array(outputs), np.array(adj_01))
             else:
                 self.array2plot_train = (
                     np.array([graph.input_adj_mat.ravel() for graph in self.emb_pergraph_train]),
                     np.array([graph.decoder_output.ravel() for graph in self.emb_pergraph_train]),
-                    np.array([graph.thresholded.ravel() for graph in self.emb_pergraph_train])
+                    np.array([graph.sampled_adjs_from_output.ravel() for graph in self.emb_pergraph_train])
                 )
                 self.array2plot_test = (
                     np.array([graph.input_adj_mat.ravel() for graph in self.emb_pergraph_test]),
                     np.array([graph.decoder_output.ravel() for graph in self.emb_pergraph_test]),
-                    np.array([graph.thresholded.ravel() for graph in self.emb_pergraph_test])
+                    np.array([graph.sampled_adjs_from_output.ravel() for graph in self.emb_pergraph_test])
                 )
 
         elif type == 'node_embedding':
@@ -531,7 +531,7 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
         else:
             pmetric, = axt.plot(epochs_list, metricatest, marker=marker,color=color, label=metric_name)
             pmetric_train, = axt.plot(epochs_list, metricatrain, marker=marker,color=adjust_lightness(color, 1.5), label=metric_name)
-        axt.set_ylim(0, 1)
+        #axt.set_ylim(0, 1)
         # axt.set_ylabel('Test metric', fontsize=12);
         axt.set_xlim(0, x_max)
         #    axt.set_yticklabels([0.0,1.0])

@@ -3,6 +3,7 @@ from io import BytesIO
 import os
 import time
 import traceback
+import yaml
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -91,7 +92,7 @@ class Experiments():
         if config_class:
             self.config_class = config_class
         elif config_file is not None:
-            self.config_class = Config(self.config_file)                
+            self.config_class = Config(self.config_file)
         else:
             assert False, "Inserire almeno uno tra un file di Configurazione o una classe di Configurazione"
 
@@ -108,7 +109,7 @@ class Experiments():
             self.gc = GridConfigurations(self.config_class, self.diz_trials, self.verbose)
             self.gc.make_configs()
 
-        self.init_trainer()  # serve Prima del make configs????
+        self.trainer = None
 
         # risultati
         self.embedding_class = None
@@ -116,46 +117,35 @@ class Experiments():
         #self.graph_embedding_per_epoch = []
         #self.node_embedding_per_epoch = []
 
-    def init_trainer(self):
-        if self.config_class.conf['model']['autoencoder']:
+    def init_trainer(self, config_class):
+        if config_class.conf['model']['autoencoder']:
             if self.verbose: print("Autoencoder model")
-            self.trainer = Trainer_Autoencoder(self.config_class, rootsave=self.rootsave)
-        elif self.config_class.conf['model']['autoencoder_confmodel']:
+            self.trainer = Trainer_Autoencoder(config_class, rootsave=self.rootsave, verbose=self.verbose)
+        elif config_class.conf['model']['autoencoder_confmodel']:
             if self.verbose: print("Autoencoder model con decoder CM")
-            self.trainer = Trainer_Autoencoder(self.config_class, rootsave=self.rootsave)
-        elif self.config_class.conf['model']['autoencoder_graph_ae']:
+            self.trainer = Trainer_Autoencoder(config_class, rootsave=self.rootsave, verbose=self.verbose)
+        elif config_class.conf['model']['autoencoder_mlpdecoder']:
+            if self.verbose: print("Autoencoder model con decoder MLP")
+            self.trainer = Trainer_Autoencoder(config_class, rootsave=self.rootsave, verbose=self.verbose)
+        elif config_class.conf['model']['autoencoder_graph_ae']:
             if self.verbose: print("Autoencoder MIAGAE")
-            self.trainer = Trainer_AutoencoderMIAGAE(self.config_class, rootsave=self.rootsave)
+            self.trainer = Trainer_AutoencoderMIAGAE(config_class, rootsave=self.rootsave, verbose=self.verbose)
             # DEBUG #self.trainer = Trainer_AutoencoderMIAGAE_DEBUG(self.config_class)
         else:
-            self.trainer = Trainer(self.config_class, rootsave=self.rootsave)
+            self.trainer = Trainer(config_class, rootsave=self.rootsave)
 
     def GS_simple_experiments(self, parallel_take_result=True, do_plot=True, **kwargs):
-        # global graph_embedding_per_epoch
-        # global node_embedding_per_epoch
-        # global output_per_epoch
-        # global autoencoder_embedding_per_epoch
-        # global dataset
-        # global exp_config
-        # global embedding_dimension
-        # #global trainmode
-        #
-        # global data4video
-        # global node_intrinsic_dimensions_perclass
-        # global graph_intrinsic_dimensions_perclass
-        #global node_intrinsic_dimensions_total
-        #global graph_intrinsic_dimensions_total
-        #global graph_correlation
-        #global node_correlation
 
         k = 0
         for c in self.gc.configs:
+            self.init_trainer(c)
             print(f'Run {k + 1} \t\t exp name: {c.unique_train_name}')
             # all_seeds()
-            self.trainer.reinit_conf(c)            
             self.just_train()
+            self.save_config_to_path(c)
 
             k += 1
+            print("🥳")
 
 
 # region tutti gli altri GS
@@ -170,7 +160,7 @@ class Experiments():
         for i, c in enumerate(self.gc.configs):
             print(f'Run {i + 1}/{len(self.gc.configs)}')
             all_seeds()
-            self.trainer.reinit_conf(c)
+            self.trainer.init_conf(c)
 
             model = self.trainer.init_GCN(saved_initial_weights_gcn, saved_initial_weights_lin)
             self.trainer.load_model(model)
@@ -201,7 +191,7 @@ class Experiments():
             # devo comfigurare il trainer con uno di questi config per poter inizializzare il dataset
             # inoltre serve pure per il modello di base, per avere l'architettura dei parametri da impostare
             # per l'architettura del modello mi serve il numero delle classi, la prendo in uno dei config col dato dataset
-            self.trainer.reinit_conf(cs1[0][1])
+            self.trainer.init_conf(cs1[0][1])
 
             self.trainer.init_dataset()
             self.trainer.load_dataset(self.trainer.gg.dataset)
@@ -220,7 +210,7 @@ class Experiments():
 
                     init_weight_parameters = new_parameters(modello_base, method=c.init_weights_mode)
                     model = self.trainer.init_GCN(init_weight_parameters, saved_initial_weights_lin)
-                    self.trainer.reinit_conf(c)
+                    self.trainer.init_conf(c)
                     self.trainer.load_model(model)
                     self.trainer.launch_training()
                     embedding_class = self.embedding()
@@ -275,7 +265,7 @@ class Experiments():
                 i, c = ord_config
                 print(f"Run {k + 1} \t metodo:{c.conf['model']['init_weights']}")
 
-                self.trainer.reinit_conf(c)
+                self.trainer.init_conf(c)
                 if not train_with_same_dataset:
                     self.trainer.init_dataset()
                     self.trainer.load_dataset(self.trainer.gg.dataset)
@@ -330,7 +320,7 @@ class Experiments():
         k = 0
         for c in self.gc.configs:
             print(f'Run {k + 1}')
-            self.trainer.reinit_conf(c)
+            self.trainer.init_conf(c)
             if not test_same_training:
                 self.trainer.init_dataset()
                 self.trainer.load_dataset(self.trainer.gg.dataset)
@@ -380,7 +370,7 @@ class Experiments():
         for c in self.gc.configs:
             print(f'Run {k + 1}')
             #all_seeds()
-            self.trainer.reinit_conf(c)
+            self.trainer.init_conf(c)
             # i parametri linear ora sono sempre diversi perché sto prendendo un numero sempre diverso di neuroni e layers
             model = self.trainer.init_GCN(saved_initial_weights_gcn)  # , saved_initial_weights_lin)
             self.trainer.load_model(model)
@@ -692,6 +682,12 @@ class Experiments():
         #     graph_intrinsic_dimensions_total[l] = id_tot_graph_emb[i]
         #     node_correlation[l] = node_emb_corr[i]
         #     graph_correlation[l] = graph_emb_corr[i]
+
+    def save_config_to_path(self, config_class):
+        filepath = self.trainer.run_path / "config.yml"
+        with open(filepath, 'w') as outfile:
+            yaml.dump(config_class.conf, outfile, default_flow_style=False)
+
 
 #endregion
 

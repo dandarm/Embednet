@@ -16,6 +16,15 @@ class TrainingMode():
     mode2 = {'type': 'classification', 'criterion': torch.nn.BCEWithLogitsLoss(), 'labels': Labels.zero_one, 'last_neuron': 1}
     mode3 = {'type': 'regression', 'criterion': torch.nn.MSELoss(), 'labels': Labels.prob, 'last_neuron': 1}
 
+class CriterionType():
+    criterions = {
+        "MSELoss": torch.nn.MSELoss(),
+        "BCELoss": torch.nn.BCELoss(),
+        "MSELoss_ww": torch.nn.MSELoss(reduction='none'),
+        "BCELoss_ww": torch.nn.BCELoss(reduction='none'),
+    }
+
+
 class GraphType(Enum):
     ER = 1
     Regular = 2
@@ -63,6 +72,7 @@ class Config():
         self.autoencoding = False
         if (self.conf['model'].get('autoencoder') or
                 self.conf['model'].get('autoencoder_confmodel') or
+                self.conf['model'].get('autoencoder_mlpdecoder') or
                 self.conf['model'].get('autoencoder_graph_ae')):
             self.autoencoding = True
 
@@ -84,6 +94,14 @@ class Config():
 
     def get_mode(self):
         return eval(f"TrainingMode.{self.conf['training']['mode']}")
+
+    def get_loss(self):
+        loss_string = self.conf['training'].get('loss')
+        if loss_string is not None:
+            #return eval(f"CriterionType.criterions[{loss_string}]")
+            return CriterionType.criterions[f"{loss_string}"]
+        else:
+            return None
 
     def get_init_weights_mode(self):
         init_weights_mode = self.conf['model']['init_weights']
@@ -145,6 +163,8 @@ class Config():
             assert shape_nodi == shape_comunity, \
                 f"Num_nodes non ha la stessa shape delle comunità nello SBM: {shape_nodi} != {shape_comunity}"
 
+        self.check_last_layer_activation_autoencoder()
+
         self.unique_train_name, self.long_string_experiment = self.create_unique_train_name()
         #print(f"Training with {self.num_classes} classes")
         
@@ -204,41 +224,51 @@ class Config():
         return res
 
     def create_unique_train_name(self):
+        #region string dataset
         tipo_grafo = ""
         if self.graphtype != GraphType.REAL:
-            tipo_grafo = "Grafi-"
             numnodi = self.conf['graph_dataset']['Num_nodes']
             if isinstance(numnodi, list):
                 numnodi = numnodi[0]
-            numgrafi = self.conf['graph_dataset']['Num_grafi_per_tipo']            
+            numgrafi = self.conf['graph_dataset']['Num_grafi_per_tipo']
             if self.graphtype == GraphType.CM:
                 tipo_grafo += "CM"
                 data_label = self.conf['graph_dataset']['list_exponents']
-                if isinstance(data_label, list):
-                    data_label = f"{len(data_label)}exps"
+                #if isinstance(data_label, list):
+                #    data_label = f"{len(data_label)}exps"
             elif self.graphtype == GraphType.ER:
                 tipo_grafo += "ER"
                 data_label = self.conf['graph_dataset']['list_p']
             elif self.graphtype == GraphType.SBM:
                 tipo_grafo += "SBM"
                 data_label = self.conf['graph_dataset']['community_probs']
+            elif self.graphtype == GraphType.Regular:
+                tipo_grafo += "Reg"
+                data_label = self.conf['graph_dataset']['list_degree']
         
         elif self.graphtype == GraphType.REAL:
             numnodi = ""
             numgrafi = ""
             data_label = ""
             tipo_grafo = self.conf['graph_dataset']['real_data_name']
-                
-        percentuale_train = self.conf['training']['percentage_train']
+
+        string_dataset = f"{tipo_grafo.ljust(10, '_')}_Classi{self.num_classes}_nodi{str(numnodi).ljust(10, '_')}_grafiXtipo{str(numgrafi).ljust(4, '_')}"
+
+        # endregion
+
+        # region string Modello
+
         modo = self.conf['training']['mode']
         if self.conf['model']['autoencoder']:
             modo = "AE"
-        if self.conf['model']['autoencoder_confmodel']:
+        elif self.conf['model']['autoencoder_confmodel']:
             modo = "AE_CM"
+        elif self.conf['model']['autoencoder_mlpdecoder']:
+            modo = "AE_MLP"
         if self.conf['model']['autoencoder_graph_ae']:
             modo = "MIAGAE"
         freezed = self.conf['model']['freezeGCNlayers']
-        lr = self.conf['training']['learning_rate']
+
         layer_neuron_string = self.create_layer_neuron_string()
             
         if not self.conf['model']['autoencoder_graph_ae']:
@@ -247,17 +277,34 @@ class Config():
             init_weights = ""
 
         activation_type = self.conf['model'].get('activation')
-        optim = self.conf['training'].get('optimizer')
-        btchnrm = "btchnrmSI" if self.conf['model']['put_batchnorm'] else "btchnrmNO"
+        last_activation_type = self.conf['model'].get('last_layer_activation')
+
+        insert_batchnorm = self.conf['model']['put_batchnorm']
+        if insert_batchnorm:
+            btchnrm = "btchnrmSI"
+        else:
+            btchnrm = "btchnrmNO"
         if self.conf['model'].get('put_graphnorm'):
             btchnrm = "grphnorm"
 
-        nome = f"{tipo_grafo.ljust(15, '_')}_Classi{self.num_classes}_nodi{str(numnodi).ljust(10, '_')}_grafiXtipo{str(numgrafi).ljust(4, '_')}_{modo.ljust(6, '_')}_layers{layer_neuron_string}__{activation_type}__{btchnrm}__-{init_weights.ljust(10, '_')}_lr{str(lr).replace('.','')}_{optim}"  # _GCNfreezed{freezed}
+        string_model = f"_{modo.ljust(6, '_')}_{layer_neuron_string}__{activation_type}+{last_activation_type}__{btchnrm}__-{init_weights.ljust(10, '_')}"
+        # endregion
+
+        # region string trainer
+        # percentuale_train = self.conf['training']['percentage_train']
+        loss_string = self.conf['training']['loss']
+        lr = self.conf['training']['learning_rate']
+        optim = self.conf['training'].get('optimizer')
+        shuffled = self.conf['training']['shuffle_dataset']
+        string_trainer = f"_lr{str(lr).replace('.','')}_{optim}_{loss_string}"  #_shfl{shuffled}"
+        # endregion
+
+        nome = string_dataset + "_#_" + string_model + "_#_" + string_trainer
         nome = nome.replace(', ', '_')
 
         # creo stringa lunga
         #print(f"{sensori_eolici_rt.get(sensore[0]):<20}  -  Totale record: {df.shape[0]:<6} \t Record mancanti: {gaps.shape[0]:<6} ({round(gaps.shape[0] / df.shape[0], 2) * 100}%) \t vento calmo: {righe_ventocalmo}")
-        long_string = f"{self.longstring_graphtype} - {numnodi} nodi - {numgrafi} grafi per classe \n {layer_neuron_string} - {activation_type} - {init_weights} - lr{str(lr).replace('.','')}"  #  - GCNfreezed{freezed}"
+        long_string = f"{self.longstring_graphtype} - {numnodi} nodi - {numgrafi} grafi per classe \n {layer_neuron_string} - {activation_type}+{last_activation_type} - {btchnrm} - {init_weights} - lr{str(lr).replace('.','')} - {optim} - {loss_string} - shfl{shuffled}"  #  - GCNfreezed{freezed}"
             
     
         return nome, long_string
@@ -265,20 +312,28 @@ class Config():
     def check_lungh_numnodes_with_classes(self):
         # TODO nel caso di autoencoder devo o no controllare il numero di classi ? forse è solo per dataset reali
         if not self.conf['graph_dataset']['real_dataset']:
-            assert self.length_list_NumNodes == self.num_classes, f"Lunghezza di Num_nodes {self.length_list_NumNodes} != num classi {self.num_classes}"
+            assert self.length_list_NumNodes == self.num_classes, f"Lunghezza di Num_nodes {self.length_list_NumNodes} != num classi {self.num_classes}, numnodes: {self.NumNodes }"
         else:
             # nel caso di dataset reale non devo controllare che numnodes sia qualcosa,
             # perché non decido io i nodi
             pass
 
+    def check_last_layer_activation_autoencoder(self):
+        actv_f = self.conf['model'].get('last_layer_activation')
+        if self.conf['model'].get('autoencoder_confmodel'):
+            assert actv_f == 'RELU'
+        if self.conf['model'].get('autoencoder'):
+            assert actv_f != 'RELU', "Nel caso di autoencoder con sigmoide(z.zT) la RELU taglia i valori negativi, e dopo la sigmoide non ho mai p=ij minori di 0.5"
+
     def get_num_classes(self):
-        if self.conf['graph_dataset']['ERmodel'] \
-                or self.conf['graph_dataset']['regular']:
+        if self.conf['graph_dataset']['ERmodel']:
             self.num_classes = len(self.conf['graph_dataset']['list_p'])
         elif self.conf['graph_dataset']['confmodel']:
             self.num_classes = len(self.conf['graph_dataset']['list_exponents'])
         elif self.conf['graph_dataset']['sbm']:
             self.num_classes = len(self.conf['graph_dataset']['community_probs'])
+        elif self.conf['graph_dataset']['regular']:
+            self.num_classes = len(self.conf['graph_dataset']['list_degree'])
         #print(f"Abbiamo {self.num_classes} classi.")
         #print(self.conf['graph_dataset'])
         elif self.conf['graph_dataset'].get('real_dataset'):

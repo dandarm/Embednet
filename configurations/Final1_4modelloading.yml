@@ -7,11 +7,11 @@ graph_dataset:
     real_data_name:  'BACI'  #'REDDIT-BINARY'   #
     continuous_p: False
     random_node_feat: False
-    list_p: [0.27] #, 0.2, 0.15, 0.1] #, 0.01]
+    list_p: [0.99] # [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9] #, 0.2, 0.15, 0.1] #, 0.01]
     range_p: [0.01, 0.5]
     community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]], [[0.4, 0.01], [0.01, 0.1]]]  # num nodi * num classi * num comunità
-    Num_nodes: [7] #, 200, 200, 200] # , 200]
-    Num_grafi_per_tipo: 50
+    Num_nodes: [4]  # [4,4,4,4,4,4,4,4,4] #, 200, 200, 200] # , 200]
+    Num_grafi_per_tipo: 10
     Num_grafi_totali: 1000
     list_degree: [4, 50]
     list_exponents: [-2.2, -2.5, -2.8, -3.0, -3.2, -3.5, -3.7]
@@ -32,9 +32,11 @@ training:
     epochs_model_checkpoint: [-1]
     save_best_model: True
     every_epoch_embedding: True
-    shuffle_dataset: False
+    shuffle_dataset: True
     calculate_metrics: True
     optimizer: SGD
+    #weigths4unbalanced_dataset: False
+    loss: 'BCELoss' # BCELoss  "MSELoss_ww"  "BCELoss_ww"
 
 plot:
     x_axis_log: False
@@ -42,14 +44,14 @@ plot:
     
 model:
     last_layer_dense: False
-    GCNneurons_per_layer: [1, 64, 64, 64, 32]
+    GCNneurons_per_layer: [1,32,32,16]
     neurons_last_linear: [16, 16, 2]
     freezeGCNlayers: False
     autoencoder: False
     autoencoder_confmodel: True
     autoencoder_graph_ae: False
-    put_batchnorm: False
-    put_graphnorm: True
+    put_batchnorm: True
+    put_graphnorm: False
     final_pool_aggregator: True
     put_dropout: False
     node_features_dim: 1

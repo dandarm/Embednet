@@ -3,7 +3,7 @@ from enum import Enum
 import torch
 from torch.nn import Linear, BatchNorm1d
 from torch_geometric.nn.norm.graph_norm import GraphNorm
-from torch.nn import ReLU, LeakyReLU, Hardsigmoid, Tanh, ELU, Hardtanh
+from torch.nn import ReLU, LeakyReLU, Hardsigmoid, Tanh, ELU, Hardtanh, Sigmoid, Softsign, Identity
 from torch_geometric.nn import GCNConv, GAE, VGAE, TopKPooling
 #from torch_geometric.nn import global_mean_pool
 from torch_geometric import nn
@@ -27,7 +27,9 @@ class GCN(torch.nn.Module):
         self.node_features_dim = self.conf['model']['node_features_dim']
         self.freezeGCNlayers = self.conf['model'].get('freezeGCNlayers', False)
 
-        self.autoencoder = self.conf['model']['autoencoder'] or self.conf['model'].get('autoencoder_confmodel')
+        self.autoencoder = (self.conf['model']['autoencoder'] or
+                            self.conf['model'].get('autoencoder_confmodel') or
+                            self.conf['model'].get('autoencoder_mlpdecoder'))
         self.put_batchnorm = self.conf['model']['put_batchnorm']
         self.put_graphnorm = self.conf['model'].get('put_graphnorm')
         self.put_dropout = self.conf['model'].get('put_dropout', False)
@@ -97,8 +99,22 @@ class GCN(torch.nn.Module):
             activation_function = Hardtanh(0, 1)
         elif activation_function_string == "Tanh":
             activation_function = Tanh()
+        elif activation_function_string == "Softsign":
+            activation_function = Softsign()
+        elif "*Tanh" in activation_function_string:
+            factor = int(activation_function_string.split("*")[0])
+            print(f"Tangente iperbolica con fattore {factor}")
+            activation_function = lambda x: Tanh()(x) * factor
+        elif "*Softsign" in activation_function_string:
+            factor = int(activation_function_string.split("*")[0])
+            print(f"Softsign con fattore {factor}")
+            activation_function = lambda x: Softsign()(x) * factor
         elif activation_function_string == "LeakyRELU":
             activation_function = LeakyReLU(0.05)
+        elif activation_function_string == "Sigmoid":
+            activation_function = Sigmoid()
+        elif activation_function_string == 'Identity':
+            activation_function = Identity()
         else:
             raise "Errore nella funzione di attivazione specificata nel config."
         return activation_function
@@ -349,7 +365,6 @@ class VariationalGCNEncoder(torch.nn.Module):
         x = self.conv1(x, edge_index).relu()
         return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
 
-
 class LinearEncoder(torch.nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
@@ -357,7 +372,6 @@ class LinearEncoder(torch.nn.Module):
 
     def forward(self, x, edge_index):
         return self.conv(x, edge_index)
-
 
 class VariationalLinearEncoder(torch.nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -393,7 +407,7 @@ class AutoencoderGCN(GCN):
     def __init__(self, encoder, **kwargs):
         super().__init__(**kwargs)
         self.encoder = encoder
-        self.decoder = None
+        self.decoder = None  # meglio chiamarlo più propriamente: self.GAE
         self.convs = encoder.convs
         self.linears = encoder.linears
         # self.__dict__.update(dic_attr)
@@ -426,22 +440,42 @@ class AutoencoderGCN(GCN):
 class ConfModelDecoder(InnerProductDecoder):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # ATTIVAZIONE NECESSARIA  NECESSARIA PERCHÉ POSSO COMUNQUE SEMPRE AVERE VALORI NEGATIVI
-        # CHE DEVO RIPORTARE AL MINIMO A ZERO
-        #self.activation = ReLU()
 
     def forward(self, z, edge_index, sigmoid=False):
+        # sigmoid non vene mai usato
+        sigmoid = False
         value = (z[edge_index[0]] * z[edge_index[1]]).sum(dim=1)
-        #value = self.activation(value)
         value = value / (1 + value)
         return value
 
     def forward_all(self, z, sigmoid=False):
+        # sigmoid non vene mai usato
+        sigmoid = False
         adj = torch.matmul(z, z.t())
-        #adj = self.activation(adj)
         value = adj / (1 + adj)
         #check_nans(value, z)
         return value
+
+
+class MLPDecoder(torch.nn.Module):
+    def __init__(self, in_dim, out_dim, **kwargs):
+        """
+        :param in_dim:  deve essere la dim delle feture del nod
+        :param out_dim:  deve essere il numero di nodi
+        in modo che il prodotto venga una matrice num_nodi X num_nodi
+        """
+        super().__init__(**kwargs)
+        hidden_dim = 20
+        self.linear1 = Linear(in_dim, hidden_dim)
+        self.linear2 = Linear(hidden_dim, out_dim)
+        self.elu = ELU()
+
+    def forward_all(self, z, sigmoid=False):
+        # devo tenere sigmoid per compatibilità con le altre classi
+        z = self.elu(self.linear1(z))
+        return torch.sigmoid(self.linear2(z))
+
+
 
 def check_nans(input_array, embedding_z):
     nans = torch.isnan(input_array).any()
