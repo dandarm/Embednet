@@ -495,156 +495,156 @@ class Experiments():
             print('ci siamo?')
         return res
 
-    def make_video(self, skip=1, fromfiles=True, isgif=False, both=True, seq_colors=False):
-        # region variabili globali
-        global graph_embedding_per_epoch
-        global node_embedding_per_epoch
-        global output_per_epoch
-        global autoencoder_embedding_per_epoch
-        global exp_config
-        global embedding_dimension
-        global dataset
-        global loss_list
-        global accuracy_list
-        global epochs_list
-        global sequential_colors
-        global bounds_for_plot
-        global model_linear_pars_per_epoch
-        global model_gconv_pars_per_epoch
-        global param_labels
-        global absmin
-        global absmax
-        global data4video
-        global node_intrinsic_dimensions_perclass
-        global graph_intrinsic_dimensions_perclass
-        global node_intrinsic_dimensions_total
-        global graph_intrinsic_dimensions_total
-        global graph_correlation
-        global node_correlation
-        global long_string_experiment
-        global name_of_training_metric
-
-        if both:
-            isgif = True
-            isvideo = True
-            fromfiles = True
-
-        graph_embedding_per_epoch = self.trainer.graph_embedding_per_epoch  #experiments. (...)
-        node_embedding_per_epoch = self.trainer.node_embedding_per_epoch
-        output_per_epoch = self.trainer.output_per_epoch
-        autoencoder_embedding_per_epoch = self.trainer.autoencoder_embedding_per_epoch
-        dataset = self.trainer.dataset
-        epochs_list = self.epochs_list
-        loss_list = np.array(self.trainer.test_loss_list)[epochs_list]
-        accuracy_list = np.array(self.trainer.metric_list)[epochs_list]
-        exp_config = self.trainer.config_class
-        dataset_type = self.trainer.gg.graphtype
-        trainmode = self.trainer.config_class.modo
-        embedding_dimension = self.trainer.embedding_dimension
-        # experiments.num_classes = xp.trainer.config_class.num_classes
-        sequential_colors = seq_colors
-        name_of_training_metric = self.trainer.name_of_metric
-        model_linear_pars_per_epoch = self.trainer.model_LINEAR_pars_per_epoch
-        model_gconv_pars_per_epoch = self.trainer.model_GCONV_pars_per_epoch
-        print(f"model_gconv_pars_per_epoch: {len(model_gconv_pars_per_epoch)}")
-        lin_param_labels = get_param_labels(self.trainer.model.linears)
-        gcn_param_labels = get_param_labels(self.trainer.model.convs)
-        param_labels = gcn_param_labels + lin_param_labels
-        # endregion
-
-        # region calcolo i massimi e minimi di tutti i model pars
-        absmin = []
-        absmax = []
-        if len(model_linear_pars_per_epoch) > 0:
-            for layers in model_linear_pars_per_epoch:
-                absmin.append(np.min([np.min(par) for par in layers]))
-                absmax.append(np.max([np.max(par) for par in layers]))
-        for layers in model_gconv_pars_per_epoch:
-            absmin.append(np.min([np.min(par) for par in layers]))
-            absmax.append(np.max([np.max(par) for par in layers]))
-        absmin = np.min(absmin)
-        absmax = np.max(absmax)
-
-        node_embedding_per_epoch_ = np.array(node_embedding_per_epoch)#.squeeze()
-        graph_embedding_per_epoch_ = np.array(graph_embedding_per_epoch)#.squeeze()
-        output_per_epoch_ = np.array(output_per_epoch)#.squeeze()
-
-        #print(node_embedding_per_epoch_.shape)
-        if embedding_dimension > 1:
-            bounds_for_plot = []
-            try:
-                bounds_for_plot.append(axis_bounds(node_embedding_per_epoch_))
-                bounds_for_plot.append(axis_bounds(graph_embedding_per_epoch_))
-                bounds_for_plot.append(axis_bounds(output_per_epoch_))
-            except Exception as e:
-                print(e)
-                ##traceback.print_stack()
-                #print(traceback.format_exc())
-                print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
-                bounds_for_plot = None
-        else:
-            bounds_for_plot = None
-        #endregion
-
-        #with Manager() as manager:
-        # data4video = manager.list([None]*self.trainer.last_epoch)
-        # intrinsic_dimensions = manager.list([None]*self.trainer.last_epoch)
-        print(f"Preparing data for make video...")
-        start = time.time()
-        if self.trainer.config_class.autoencoding:
-            #print(f"quanto è lunga autoencoder_embedding_per_epoch {len(autoencoder_embedding_per_epoch)}")
-            d4v_e_ids_e_corrs = self.parallel_prepare_data4video_each_epoch_autoencoder(range(len(epochs_list)))
-        else:
-            d4v_e_ids_e_corrs = self.parallel_prepare_data4video_each_epoch(epochs_list)  # TODO: verificare che anche quì devo inserire range(len(self.epochs_list))
-        self.divide_lists_results_for_epochlist(d4v_e_ids_e_corrs)
-        end = time.time()
-        print(f"({round(end - start, 2)} s.)  ...data ready: make video...", end='')
-
-
-        nomefile = self.trainer.unique_train_name
-        long_string_experiment = self.trainer.config_class.long_string_experiment
-        print(nomefile, long_string_experiment)
-        start = time.time()
-        if fromfiles:
-            self.parallel_save_many_images_embedding(range(len(epochs_list)))
-            files = [f"scatter_epoch{i}.png" for i in range(len(epochs_list))]
-        else:
-            pictures = self.parallel_many_images_embedding(range(len(epochs_list)))
-        end = time.time()
-        print(f"({round(end - start, 2)} s.)")
-
-
-
-        if isgif:
-            if fromfiles:
-                # files = [f"scatter_epoch{i}.png" for i in lista]
-                ims = [imageio.imread(f) for f in files]
-                imageio.mimwrite(nomefile + ".gif", ims, duration=0.1)
-            else:
-                ims = [imageio.imread(f) for f in pictures]
-                imageio.mimwrite(nomefile, ims, duration=0.1)
-        if isvideo:  # con ffmpeg per forza da file...o no?
-            # devo rinominare i file in modo sequenziale altrimenti si blocca
-
-            radice = "scatter_epoch"
-            #mapping = {old: new for new, old in enumerate(lista)}
-            #new_files = []
-            #for i, f in enumerate(files):
-            #    old = f.replace(radice, '').split('.')[0]
-            #    new_file = f"{radice}{mapping[int(old)]}.png"
-            #    new_files.append(new_file)
-            #    os.rename(f, new_file)
-
-            save_ffmpeg(radice, nomefile)
-            #files = new_files
-
-        if fromfiles:
-            for f in files:
-                os.remove(f)
-
-        return nomefile
-
-        # endregion
+    # def make_video(self, skip=1, fromfiles=True, isgif=False, both=True, seq_colors=False):
+    #     # region variabili globali
+    #     global graph_embedding_per_epoch
+    #     global node_embedding_per_epoch
+    #     global output_per_epoch
+    #     global autoencoder_embedding_per_epoch
+    #     global exp_config
+    #     global embedding_dimension
+    #     global dataset
+    #     global loss_list
+    #     global accuracy_list
+    #     global epochs_list
+    #     global sequential_colors
+    #     global bounds_for_plot
+    #     global model_linear_pars_per_epoch
+    #     global model_gconv_pars_per_epoch
+    #     global param_labels
+    #     global absmin
+    #     global absmax
+    #     global data4video
+    #     global node_intrinsic_dimensions_perclass
+    #     global graph_intrinsic_dimensions_perclass
+    #     global node_intrinsic_dimensions_total
+    #     global graph_intrinsic_dimensions_total
+    #     global graph_correlation
+    #     global node_correlation
+    #     global long_string_experiment
+    #     global name_of_training_metric
+    #
+    #     if both:
+    #         isgif = True
+    #         isvideo = True
+    #         fromfiles = True
+    #
+    #     graph_embedding_per_epoch = self.trainer.graph_embedding_per_epoch  #experiments. (...)
+    #     node_embedding_per_epoch = self.trainer.node_embedding_per_epoch
+    #     output_per_epoch = self.trainer.output_per_epoch
+    #     autoencoder_embedding_per_epoch = self.trainer.autoencoder_embedding_per_epoch
+    #     dataset = self.trainer.dataset
+    #     epochs_list = self.epochs_list
+    #     loss_list = np.array(self.trainer.test_loss_list)[epochs_list]
+    #     accuracy_list = np.array(self.trainer.metric_list)[epochs_list]
+    #     exp_config = self.trainer.config_class
+    #     dataset_type = self.trainer.gg.graphtype
+    #     trainmode = self.trainer.config_class.modo
+    #     embedding_dimension = self.trainer.embedding_dimension
+    #     # experiments.num_classes = xp.trainer.config_class.num_classes
+    #     sequential_colors = seq_colors
+    #     name_of_training_metric = self.trainer.name_of_metric
+    #     model_linear_pars_per_epoch = self.trainer.model_LINEAR_pars_per_epoch
+    #     model_gconv_pars_per_epoch = self.trainer.model_GCONV_pars_per_epoch
+    #     print(f"model_gconv_pars_per_epoch: {len(model_gconv_pars_per_epoch)}")
+    #     lin_param_labels = get_param_labels(self.trainer.model.linears)
+    #     gcn_param_labels = get_param_labels(self.trainer.model.convs)
+    #     param_labels = gcn_param_labels + lin_param_labels
+    #     # endregion
+    #
+    #     # region calcolo i massimi e minimi di tutti i model pars
+    #     absmin = []
+    #     absmax = []
+    #     if len(model_linear_pars_per_epoch) > 0:
+    #         for layers in model_linear_pars_per_epoch:
+    #             absmin.append(np.min([np.min(par) for par in layers]))
+    #             absmax.append(np.max([np.max(par) for par in layers]))
+    #     for layers in model_gconv_pars_per_epoch:
+    #         absmin.append(np.min([np.min(par) for par in layers]))
+    #         absmax.append(np.max([np.max(par) for par in layers]))
+    #     absmin = np.min(absmin)
+    #     absmax = np.max(absmax)
+    #
+    #     node_embedding_per_epoch_ = np.array(node_embedding_per_epoch)#.squeeze()
+    #     graph_embedding_per_epoch_ = np.array(graph_embedding_per_epoch)#.squeeze()
+    #     output_per_epoch_ = np.array(output_per_epoch)#.squeeze()
+    #
+    #     #print(node_embedding_per_epoch_.shape)
+    #     if embedding_dimension > 1:
+    #         bounds_for_plot = []
+    #         try:
+    #             bounds_for_plot.append(axis_bounds(node_embedding_per_epoch_))
+    #             bounds_for_plot.append(axis_bounds(graph_embedding_per_epoch_))
+    #             bounds_for_plot.append(axis_bounds(output_per_epoch_))
+    #         except Exception as e:
+    #             print(e)
+    #             ##traceback.print_stack()
+    #             #print(traceback.format_exc())
+    #             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+    #             bounds_for_plot = None
+    #     else:
+    #         bounds_for_plot = None
+    #     #endregion
+    #
+    #     #with Manager() as manager:
+    #     # data4video = manager.list([None]*self.trainer.last_epoch)
+    #     # intrinsic_dimensions = manager.list([None]*self.trainer.last_epoch)
+    #     print(f"Preparing data for make video...")
+    #     start = time.time()
+    #     if self.trainer.config_class.autoencoding:
+    #         #print(f"quanto è lunga autoencoder_embedding_per_epoch {len(autoencoder_embedding_per_epoch)}")
+    #         d4v_e_ids_e_corrs = self.parallel_prepare_data4video_each_epoch_autoencoder(range(len(epochs_list)))
+    #     else:
+    #         d4v_e_ids_e_corrs = self.parallel_prepare_data4video_each_epoch(epochs_list)  # TODO: verificare che anche quì devo inserire range(len(self.epochs_list))
+    #     self.divide_lists_results_for_epochlist(d4v_e_ids_e_corrs)
+    #     end = time.time()
+    #     print(f"({round(end - start, 2)} s.)  ...data ready: make video...", end='')
+    #
+    #
+    #     nomefile = self.trainer.unique_train_name
+    #     long_string_experiment = self.trainer.config_class.long_string_experiment
+    #     print(nomefile, long_string_experiment)
+    #     start = time.time()
+    #     if fromfiles:
+    #         self.parallel_save_many_images_embedding(range(len(epochs_list)))
+    #         files = [f"scatter_epoch{i}.png" for i in range(len(epochs_list))]
+    #     else:
+    #         pictures = self.parallel_many_images_embedding(range(len(epochs_list)))
+    #     end = time.time()
+    #     print(f"({round(end - start, 2)} s.)")
+    #
+    #
+    #
+    #     if isgif:
+    #         if fromfiles:
+    #             # files = [f"scatter_epoch{i}.png" for i in lista]
+    #             ims = [imageio.imread(f) for f in files]
+    #             imageio.mimwrite(nomefile + ".gif", ims, duration=0.1)
+    #         else:
+    #             ims = [imageio.imread(f) for f in pictures]
+    #             imageio.mimwrite(nomefile, ims, duration=0.1)
+    #     if isvideo:  # con ffmpeg per forza da file...o no?
+    #         # devo rinominare i file in modo sequenziale altrimenti si blocca
+    #
+    #         radice = "scatter_epoch"
+    #         #mapping = {old: new for new, old in enumerate(lista)}
+    #         #new_files = []
+    #         #for i, f in enumerate(files):
+    #         #    old = f.replace(radice, '').split('.')[0]
+    #         #    new_file = f"{radice}{mapping[int(old)]}.png"
+    #         #    new_files.append(new_file)
+    #         #    os.rename(f, new_file)
+    #
+    #         save_ffmpeg(radice, nomefile)
+    #         #files = new_files
+    #
+    #     if fromfiles:
+    #         for f in files:
+    #             os.remove(f)
+    #
+    #     return nomefile
+    #
+    #     # endregion
 
     def divide_lists_results_for_epochlist(self, d4v_e_ids_e_corrs):
         global data4video, node_intrinsic_dimensions_perclass, graph_intrinsic_dimensions_perclass, node_intrinsic_dimensions_total, graph_intrinsic_dimensions_total, node_correlation, graph_correlation

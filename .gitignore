@@ -178,6 +178,8 @@ runs_before_14Mar23/
 runs_before_6-23/
 runs_before_luglio23/
 
+old_plots/
+
 #la cartella di pycharm
 .idea/
 
