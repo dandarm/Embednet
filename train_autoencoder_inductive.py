@@ -39,16 +39,7 @@ class Trainer_Autoencoder(Trainer):
         #self.num_graphs = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo'] * self.config_class.num_classes
         #print(f"nodi per grafo e num grafi: {self.num_nodes_per_graph} {self.num_graphs}")
 
-            
-    #def reinit_conf(self, config_class):
-    #    super().reinit_conf(config_class)
 
-
-    def set_optimizer(self, model):
-        if self.conf['training'].get('optimizer') == "SGD":
-            self.optimizer = torch.optim.SGD(model.parameters(), lr=float(self.lr), momentum=0.9)
-        else:
-            super().set_optimizer(model)
 
     def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False):
         """
@@ -75,8 +66,6 @@ class Trainer_Autoencoder(Trainer):
             out_dim = self.config_class.conf['graph_dataset']['Num_nodes'][0]  # numero di nodi per grafo
             in_dim = encoder.convs[-1].out_channels  # dimensione dell'embedding: ultimo layer convolutional
             model.set_decoder(encoder, MLPDecoder(in_dim, out_dim))
-
-
 
 
         model.to(device)
@@ -280,14 +269,7 @@ class Trainer_Autoencoder(Trainer):
             loss.backward()  # Derive gradients.
             # check che i gradienti siano non nulli
 
-            gradients = view_weights_gradients(self.model)
-            for g in gradients:
-                if torch.count_nonzero(g).item() == 0:
-                    pars = get_parameters(self.model.convs)
-                    for p in pars:
-                        print(f"loss: {loss.item()}")
-                        print(f" max: {max(p)}, min: {min(p)}")
-                    raise Exception("Problema con i gradienti: sono tutti ZER000")
+            #self.check_zero_gradients(loss)
 
             ##print(gradients)
             ##plt.hist([g.detach().cpu().numpy().ravel() for g in gradients])
@@ -306,6 +288,16 @@ class Trainer_Autoencoder(Trainer):
             num_batches += 1
 
         return running_loss / num_batches
+
+    def check_zero_gradients(self, loss):
+        gradients = view_weights_gradients(self.model)
+        for g in gradients:
+            if torch.count_nonzero(g).item() == 0:
+                pars = get_parameters(self.model.convs)
+                for p in pars:
+                    print(f"loss: {loss.item()}")
+                    print(f" max: {max(p)}, min: {min(p)}")
+                raise Exception("Problema con i gradienti: sono tutti ZER000")
 
     def test(self, loader):
         self.model.eval()

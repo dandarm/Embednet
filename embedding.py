@@ -647,3 +647,19 @@ class Embedding_autoencoder(Embedding):
             self.graph_correlation_per_class.append(correlaz)
 
         self.total_graph_correlation = np.mean(self.graph_correlation_per_class)
+
+
+class Embedding_AEMLP_per_graph():
+    def __init__(self, input_adj_mat, output_adj_mat, node_embedding=None):
+        if node_embedding is not None:
+            self.node_embedding = node_embedding.detach().cpu().numpy()
+        self.input_adj_mat = input_adj_mat.detach().cpu().numpy()
+        self.output_adj_mat = output_adj_mat.detach().cpu().numpy()
+
+        nodes = int(np.sqrt(self.input_adj_mat.shape[0]))
+        self.input_adj_mat = self.input_adj_mat.reshape(nodes, -1)
+        self.output_adj_mat = self.output_adj_mat.reshape(nodes, -1)
+
+        self.out_degree_seq = self.output_adj_mat.sum(axis=1)
+        self.input_degree_seq = self.input_adj_mat.sum(axis=1)
+

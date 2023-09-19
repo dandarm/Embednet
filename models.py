@@ -27,9 +27,6 @@ class GCN(torch.nn.Module):
         self.node_features_dim = self.conf['model']['node_features_dim']
         self.freezeGCNlayers = self.conf['model'].get('freezeGCNlayers', False)
 
-        self.autoencoder = (self.conf['model']['autoencoder'] or
-                            self.conf['model'].get('autoencoder_confmodel') or
-                            self.conf['model'].get('autoencoder_mlpdecoder'))
         self.put_batchnorm = self.conf['model']['put_batchnorm']
         self.put_graphnorm = self.conf['model'].get('put_graphnorm')
         self.put_dropout = self.conf['model'].get('put_dropout', False)
@@ -49,8 +46,8 @@ class GCN(torch.nn.Module):
             self.GCNbatchnorms = torch.nn.ModuleList()
             self.batchnorms = torch.nn.ModuleList()
 
-        activation_function = self.get_activ_func_from_config(self.conf['model'].get('activation'))
-        self.last_act_func = self.get_activ_func_from_config(self.conf['model'].get('last_layer_activation'))
+        activation_function = get_activ_func_from_config(self.conf['model'].get('activation'))
+        self.last_act_func = get_activ_func_from_config(self.conf['model'].get('last_layer_activation'))
 
 
         ###########   COSTRUISCO L'ARCHITETTURA      ###############
@@ -90,34 +87,6 @@ class GCN(torch.nn.Module):
         if self.freezeGCNlayers:
             self.freeze_gcn_layers()
 
-    def get_activ_func_from_config(self, activation_function_string):
-        if activation_function_string == 'ELU':
-            activation_function = ELU()
-        elif activation_function_string == "RELU":
-            activation_function = ReLU()
-        elif activation_function_string == "Hardtanh":
-            activation_function = Hardtanh(0, 1)
-        elif activation_function_string == "Tanh":
-            activation_function = Tanh()
-        elif activation_function_string == "Softsign":
-            activation_function = Softsign()
-        elif "*Tanh" in activation_function_string:
-            factor = int(activation_function_string.split("*")[0])
-            print(f"Tangente iperbolica con fattore {factor}")
-            activation_function = lambda x: Tanh()(x) * factor
-        elif "*Softsign" in activation_function_string:
-            factor = int(activation_function_string.split("*")[0])
-            print(f"Softsign con fattore {factor}")
-            activation_function = lambda x: Softsign()(x) * factor
-        elif activation_function_string == "LeakyRELU":
-            activation_function = LeakyReLU(0.05)
-        elif activation_function_string == "Sigmoid":
-            activation_function = Sigmoid()
-        elif activation_function_string == 'Identity':
-            activation_function = Identity()
-        else:
-            raise "Errore nella funzione di attivazione specificata nel config."
-        return activation_function
 
     def freeze_gcn_layers(self):
         #for param in self.parameters():
@@ -153,10 +122,17 @@ class GCN(torch.nn.Module):
 
         return x
 
+    # for hidden_size in self.neurons_per_layer:
+    #     encoder_layers.append(nn.Linear(prev_size, hidden_size))
+    #     encoder_layers.append(activation_function)
+    #     prev_size = hidden_size
+    #
+    # self.encoder = torch.nn.Sequential(*encoder_layers)
+
     def forward(self, x, edge_index, batch=None, graph_embedding=False, node_embedding=False):
         x = self.n_layers_gcn(x, edge_index)
 
-        if (node_embedding or self.autoencoder) and not graph_embedding:
+        if (node_embedding or self.config_class.autoencoding) and not graph_embedding:
             return x
 
         #print(f"before aggregator {x.shape}")
@@ -176,6 +152,35 @@ class GCN(torch.nn.Module):
 
 # endregion
 
+def get_activ_func_from_config(activation_function_string):
+    ''' non la metto nel Config per non dover importare le funzioni di pytorch nel modulo di Config'''
+    if activation_function_string == 'ELU':
+        activation_function = ELU()
+    elif activation_function_string == "RELU":
+        activation_function = ReLU()
+    elif activation_function_string == "Hardtanh":
+        activation_function = Hardtanh(0, 1)
+    elif activation_function_string == "Tanh":
+        activation_function = Tanh()
+    elif activation_function_string == "Softsign":
+        activation_function = Softsign()
+    elif "*Tanh" in activation_function_string:
+        factor = int(activation_function_string.split("*")[0])
+        print(f"Tangente iperbolica con fattore {factor}")
+        activation_function = lambda x: Tanh()(x) * factor
+    elif "*Softsign" in activation_function_string:
+        factor = int(activation_function_string.split("*")[0])
+        print(f"Softsign con fattore {factor}")
+        activation_function = lambda x: Softsign()(x) * factor
+    elif activation_function_string == "LeakyRELU":
+        activation_function = LeakyReLU(0.05)
+    elif activation_function_string == "Sigmoid":
+        activation_function = Sigmoid()
+    elif activation_function_string == 'Identity':
+        activation_function = Identity()
+    else:
+        raise "Errore nella funzione di attivazione specificata nel config."
+    return activation_function
 
 
 # region imposta i pesi della rete
@@ -352,7 +357,7 @@ def modify_parameters_linear(model, new_par, device=torch.device('cuda')):
 # endregion
 
 
-# region MODELLI AUTOENCODER
+# region non li sto usando
 
 class VariationalGCNEncoder(torch.nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -399,9 +404,10 @@ def simpleautoencoder(num_features, out_channels):
     model = GAE(GCNEncoder(num_features, out_channels))
     return model
 
+# endregion
 
 
-  # uso solo i seguenti al momento
+# region MODELLI AUTOENCODER  uso solo i seguenti al momento
 
 class AutoencoderGCN(GCN):
     def __init__(self, encoder, **kwargs):
@@ -435,6 +441,50 @@ class AutoencoderGCN(GCN):
         #return cls(dic_attr, **parent_instance.__dict__)
         return cls(encoder=parent_instance, config_class=parent_instance.config_class)
 
+
+# Definiamo la classe dell'autoencoder
+class AutoencoderMLP(torch.nn.Module):
+    def __init__(self, config_class):
+        super(AutoencoderMLP, self).__init__()
+
+        self.config_class = config_class
+        self.conf = self.config_class.conf
+
+        in_size = self.conf['graph_dataset']['Num_nodes'][0]
+        self.input_size = in_size * in_size  # tutti gli elementi della matrice
+        self.neurons_per_layer = self.conf['mlp_ae_model']['neurons_per_layer']
+        # devo definire un layer latente intermedio di embedding
+        self.embedding_dim = min(self.neurons_per_layer)
+        activation_function = get_activ_func_from_config(self.conf['mlp_ae_model'].get('activation'))
+        last_act_func = get_activ_func_from_config(self.conf['mlp_ae_model'].get('last_layer_activation'))
+
+        encoder_layers = []
+        decoder_layers = []
+        prev_size = self.input_size
+
+        # Costruiamo l'encoder
+        for hidden_size in self.neurons_per_layer:
+            encoder_layers.append(nn.Linear(prev_size, hidden_size))
+            encoder_layers.append(activation_function)
+            prev_size = hidden_size
+
+        self.encoder = torch.nn.Sequential(*encoder_layers)
+
+        # Costruiamo il decoder (simmetrico all'encoder)
+        for hidden_size in reversed(self.neurons_per_layer):
+            decoder_layers.append(nn.Linear(prev_size, hidden_size))
+            decoder_layers.append(activation_function)
+            prev_size = hidden_size
+
+        decoder_layers.append(nn.Linear(prev_size, self.input_size))
+        decoder_layers.append(last_act_func)
+
+        self.decoder = torch.nn.Sequential(*decoder_layers)
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
 
 
 class ConfModelDecoder(InnerProductDecoder):

@@ -49,7 +49,7 @@ class GridConfigurations():
         # filtro i duplicati secondo tutte le altre colonne (poiché contiene liste devo usare astype(str))
         # queste che rimangono sono le righe utile tra tutte quelle con dataset reale
         real_ds_rows = df_cum['graph_dataset']['real_dataset']
-        col2sort = [('graph_dataset','ERmodel'),('graph_dataset','confmodel'), ('graph_dataset','sbm'), ('graph_dataset','regular')]
+        col2sort = [('graph_dataset','ERmodel'),('graph_dataset','confmodel'), ('graph_dataset','sbm'), ('graph_dataset','regular'), ('graph_dataset','const_degree_dist')]
         #indici_rimanenti = df_cum[real_ds_rows].astype(str).drop_duplicates(subset=other_cols, keep='first').index
         # voglio mantenere la riga dove tutti i graphtype sintetici siano False:
         # devo ordinarli mettendoli al primo posto, poi il drop ducplicates tieni la prima riga
@@ -73,7 +73,7 @@ class GridConfigurations():
             config_is_back['device'] = 'gpu'
 
             try:
-                config_class = Config.fromdict(config_is_back)  # faccio la validazione della config
+                config_class = Config.fromdict(config_is_back, verbose=False)  # faccio la validazione della config: verbose True per debuggare
                 self.configs.append(config_class)
             except AssertionError as e:
                 #raise e

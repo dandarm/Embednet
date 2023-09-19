@@ -52,10 +52,10 @@ class Trainer():
         self.rootsave = rootsave
         self.verbose = verbose
 
-        self.percentage_train = None
+        #self.percentage_train = None
         self.lr = None
         self.epochs = None
-        self.batch_size = None
+        #self.batch_size = None
         self.last_layer_neurons = None
         self.embedding_dimension = None
         self.unique_train_name = None
@@ -85,7 +85,7 @@ class Trainer():
 
 
         # CONFIGURAZIONI BASE PER OGNI EVENTUALE TRIAL
-        self.run_path = None
+        self.run_path = self.create_runpath_dir()
         # scrivo la lista delle epoche sulla quale esegui i calcoli
         self.epochs_list_points = self.conf["training"].get("epochs_list_points")
         self.epochs_list = self.make_epochs_list_for_embedding_tracing(self.epochs_list_points)
@@ -99,9 +99,10 @@ class Trainer():
             self.total_graph_emb_dim[i] = -1.0
 
     def create_runpath_dir(self):
-        self.run_path = self.rootsave / self.unique_train_name
-        if not os.path.exists(self.run_path):
-            os.makedirs(self.run_path)
+        run_path = self.rootsave / self.unique_train_name
+        if not os.path.exists(run_path):
+            os.makedirs(run_path)
+        return run_path
 
     def make_epochs_list_for_embedding_tracing(self, list_points):
         """
@@ -127,7 +128,7 @@ class Trainer():
         lista = np.unique(np.round(squarearray)).astype(int)#[:-1]
         if self.verbose:
             print(f"epoch list {lista} ")
-        return lista
+        return np.concatenate(([0], lista))  # aggiungo anche l'elemento 0 per i plot snapshot
 
     def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False):
         """
@@ -154,12 +155,15 @@ class Trainer():
         return model
 
     def set_optimizer(self, model):
-        # self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr , )
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=float(self.lr),
-                                          betas=(0.9, 0.999),
-                                          eps=1e-08,
-                                          weight_decay=0,
-                                          amsgrad=False)
+        if self.conf['training'].get('optimizer') == "SGD":
+            self.optimizer = torch.optim.SGD(model.parameters(), lr=float(self.lr), momentum=0.9)
+        elif self.conf['training'].get('optimizer') == "ADAM":
+            # self.optimizer = torch.optim.Adam(model.parameters(), lr=self.lr , )
+            self.optimizer = torch.optim.Adam(model.parameters(), lr=float(self.lr),
+                                              betas=(0.9, 0.999),
+                                              eps=1e-08,
+                                              weight_decay=0,
+                                              amsgrad=False)
         decayRate = 0.96
         # self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
 
@@ -171,10 +175,10 @@ class Trainer():
         self.config_class.valid_conf()
         self.conf = self.config_class.conf
 
-        self.percentage_train = self.conf['training']['percentage_train']
+        #self.percentage_train = self.conf['training']['percentage_train']
         self.lr = self.conf['training']['learning_rate']
         self.epochs = self.conf['training']['epochs']
-        self.batch_size = self.conf['training']['batch_size']
+        #self.batch_size = self.conf['training']['batch_size']
         self.last_layer_neurons = self.config_class.get_mode()['last_neuron']
         #self.mode = self.conf['training']['mode']  # 'classification'  or 'regression'  or 'unsupervised'
         self.unique_train_name = self.config_class.unique_train_name
@@ -202,7 +206,10 @@ class Trainer():
         self.model = model
         self.model.to(self.device)
         self.set_optimizer(self.model)
-        self.embedding_dimension = self.model.convs[-1].out_channels
+        if hasattr(self.model, 'convs'):
+            self.embedding_dimension = self.model.convs[-1].out_channels
+        else:
+            self.embedding_dimension = self.model.embedding_dim
         if self.verbose: print(f"Optimizer: {self.optimizer}")
 
     def init_dataset(self, parallel=True, verbose=False):
@@ -225,14 +232,14 @@ class Trainer():
     def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
         print("Loading Dataset...")
         if not self.config_class.conf['graph_dataset'].get('real_dataset'):            
-            self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset, verbose=self.verbose)
+            self.dataset = Dataset.from_super_instance(self.config_class, dataset, verbose=self.verbose)
             self.dataset.prepare(self.shuffle_dataset, parallel)
         else:
             if self.config_class.conf['graph_dataset']['real_data_name'] == 'REDDIT-BINARY':
                 # con questo dataset abbiamo già una lista di oggetti Data
-                self.dataset = DatasetReady(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
+                self.dataset = DatasetReady(self.config_class, dataset)
             elif self.config_class.conf['graph_dataset']['real_data_name'] == 'BACI':
-                self.dataset = Dataset.from_super_instance(self.percentage_train, self.batch_size, self.device, self.config_class, dataset)
+                self.dataset = Dataset.from_super_instance(self.config_class, dataset)
                 self.dataset.prepare(self.shuffle_dataset, parallel)
 
     def init_all(self, parallel=True, verbose=False, path_model_toload=None):
@@ -259,8 +266,6 @@ class Trainer():
             batch = self.dataset.sample_dummy_data()
             plot = plot_model(self.model, batch, self.unique_train_name)
             return plot
-
-        self.create_runpath_dir()
 
 
     def correct_shape(self, y):
@@ -460,15 +465,10 @@ class Trainer():
 
         print("Epoca 0...")
         test_loss = self.test(self.dataset.test_loader)
-        # if self.dataset.all_data_loader is None:
-        #     all_data_loader = DataLoader(self.dataset.dataset_pyg, batch_size=self.dataset.bs, shuffle=False)
-        # else:
-        #     all_data_loader = self.dataset.all_data_loader
-        #alldata_loss = self.test(all_data_loader)
-        self.train_loss_list.append(0)
+        self.train_loss_list.append(test_loss)
         self.test_loss_list.append(test_loss)
-        print("Prima snapshot...")
-        metric_object_train, metric_object_test = self.produce_traning_snapshot(0, self.epochs if self.epochs > 0 else 1, False, [])
+        print("Prima snapshot...")   # self.epochs if self.epochs > 0 else 1,
+        metric_object_train, metric_object_test = self.produce_traning_snapshot(0, False, [])
         file_path = self.run_path / f"_epoch0.png"
         animation_files.append(file_path)
 
@@ -517,13 +517,17 @@ class Trainer():
         parallel_processes_save_images = []
 
         for epoch in tqdm(range(1, self.epochs+1), total=self.epochs):
-            train_loss = self.train()
-            writer.add_scalar("Train Loss", train_loss, epoch)
 
             if epoch % 1 == 0:
                 test_loss = self.test(self.dataset.test_loader)
-                writer.add_scalar("Test Loss", test_loss, epoch)
+                #writer.add_scalar("Test Loss", test_loss, epoch)
                 #writer.add_scalar(f"Test {self.name_of_metric}", metric_object.get_metric(self.name_of_metric), epoch)
+            # VOGLIO AGGIORNARE I PESI COL TRAINING DOPO AVER CALCOLATO LA LOSS DI TEST,
+            # ALTRIMENTI LA LOSS DI TEST SARÀ SEMPRE PIÙ AVVANTAGGIATA RISPETTO ALLA LOSS DI TRAINING
+            # PERCHÈ ARRIVEREBBE DOPO L'AGGIORNAMENTO APPUNTO
+            train_loss = self.train()
+            #writer.add_scalar("Train Loss", train_loss, epoch)
+
 
             #for i, v in enumerate(test_f1score):
             #    writer.add_scalar(f"Test F1 Score/{i}", v, epoch)
@@ -537,15 +541,14 @@ class Trainer():
             if self.conf['training'].get('every_epoch_embedding'):
                 if epoch in self.epochs_list:
                     parallel = True
-                    self.produce_traning_snapshot(epoch, self.epochs_list[-1],
-                                                parallel, parallel_processes_save_images)
+                    self.produce_traning_snapshot(epoch, parallel, parallel_processes_save_images)
                     file_path = self.run_path / f"_epoch{epoch}.png"
                     animation_files.append(file_path)
-                else:
-                    # devo aggiungere comunque i vecchi valori di metriche  alla lista
-                    # per ottenere liste della stessa llungjhezza rispetto a range(epoca)
-                    self.metric_obj_list_train.append(metric_object_train)
-                    self.metric_obj_list_test.append(metric_object_test)
+                # else:
+                #     # devo aggiungere comunque i vecchi valori di metriche  alla lista
+                #     # per ottenere liste della stessa llungjhezza rispetto a range(epoca)
+                #     self.metric_obj_list_train.append(metric_object_train)
+                #     self.metric_obj_list_test.append(metric_object_test)
 
 
             #expvar = self.myExplained_variance.compute()
@@ -576,8 +579,8 @@ class Trainer():
                 break
 
         print(f"best loss: {round(best_loss, 3)} at epoch {best_epoch}")
-        if verbose > 0:
-            print(f'Epoch: {epoch}\tTest loss: {test_loss} \t\tBest test loss: {best_loss} FINE TRAINING')
+        #if verbose > 0:
+        print(f'Epoch: {epoch}\tTest loss: {round(test_loss, 3)} \t\tTrain loss: {round(train_loss, 3)} FINE TRAINING')
 
 
         writer.flush()
@@ -602,7 +605,7 @@ class Trainer():
 
         return
 
-    def produce_traning_snapshot(self, epoch, last_epoch, parallel, parallel_processes_save_images, **kwargs):
+    def produce_traning_snapshot(self, epoch, parallel, parallel_processes_save_images, **kwargs):
         if self.conf['training'].get('calculate_metrics'):
             #metric_object = self.calc_metric(self.dataset.all_data_loader)
             metric_object_train = self.calc_metric(self.dataset.train_loader)
@@ -618,19 +621,68 @@ class Trainer():
         model_weights = self.provide_model_weights()
         if parallel:
             p = multiprocessing.Process(target=self.save_image_at_epoch,
-                                        args=(all_embeddings_arrays, model_weights, epoch, last_epoch,
+                                        args=(all_embeddings_arrays, model_weights, epoch,
                                               emb_pergraph_train, emb_pergraph_test,
                                               self.run_path), kwargs=kwargs)
             p.start()
             parallel_processes_save_images.append(p)
         else:
-            self.save_image_at_epoch(all_embeddings_arrays, model_weights, epoch, last_epoch,
+            self.save_image_at_epoch(all_embeddings_arrays, model_weights, epoch,
                                      emb_pergraph_train, emb_pergraph_test,
                                      self.run_path, **kwargs)
         return metric_object_train, metric_object_test
 
     def save_all_animations(self, animation_files, epochs_list):
         nomefile = self.run_path / str(self.unique_train_name)
+
+        self.save_gif_snapshots(animation_files, nomefile)
+
+        # degree seq
+        #self.save_degree_seq_animation(epochs_list)
+
+        new_files = self.save_mp4_snapshots(animation_files, epochs_list, nomefile)
+
+        # ora cancello le singole snapshots
+        self.delete_list_of_files(new_files)
+
+    def save_degree_seq_animation(self, epochs_list):
+        degims = []
+        degree_files = [self.run_path / f"Degree_seq.{self.unique_train_name}_{epoch}.png" for epoch in epochs_list]
+        for f in degree_files:
+            degims.append(imageio.imread(f))
+        imageio.mimwrite(self.run_path / f"Degree_seq.{self.unique_train_name}.gif", degims, duration=0.1)
+        self.delete_list_of_files(degree_files)
+
+    def delete_list_of_files(self, files, keep_last=True):
+        for f in files[:-1]:
+            try:
+                os.remove(f)
+            except FileNotFoundError as e:
+                print(f"Non è riuscito a rimuovere qualche file: {e}")
+        if keep_last:
+            os.rename(files[-1], self.run_path / "last_epoch.png")
+
+    def save_mp4_snapshots(self, animation_files, epochs_list, nomefile):
+        # salvo video in mp4
+        # devo rinominare i file in modo sequenziale altrimenti si blocca
+        radice = "_epoch"
+        mapping = {old: new for new, old in enumerate(epochs_list)}
+        new_files = []
+        for i, f in enumerate(animation_files):
+            old = str(f).split('.')[0].split('/')[-1].replace(radice, '')
+            # print(f"file: {str(f)}, old: {old}")
+            new_file = self.run_path / f"{radice}{mapping[int(old)]}.png"
+            try:
+                os.rename(f, new_file)
+                new_files.append(new_file)
+            except FileNotFoundError as e:
+                print(e)
+
+        # chiamo FFMPEG
+        save_ffmpeg(self.run_path / radice, nomefile)
+        return new_files
+
+    def save_gif_snapshots(self, animation_files, nomefile):
         ims = []
         try:
             for f in animation_files:
@@ -638,43 +690,8 @@ class Trainer():
         except FileNotFoundError as e:
             print(f"Errore in save animations: {e}")
         imageio.mimwrite(nomefile.with_suffix(".gif"), ims, duration=0.1)
+        # non cancello i file perché servono a salvare anche il video
 
-        # degree seq
-        degims = []
-        degree_files = [self.run_path / f"Degree_seq.{self.unique_train_name}_{epoch}.png" for epoch in epochs_list]
-        for f in degree_files:
-            degims.append(imageio.imread(f))
-        imageio.mimwrite(self.run_path / f"Degree_seq.{self.unique_train_name}.gif", degims, duration=0.1)
-        for f in degree_files:
-            try:
-                os.remove(f)
-            except FileNotFoundError as e:
-                print(f"Non è riuscito a rimuovere qualche file: {e}")
-
-        # salvo video in mp4
-        # devo rinominare i file in modo sequenziale altrimenti si blocca
-        radice = "_epoch"  # TODO: cambiare in "nomefile"
-        mapping = {old: new for new, old in enumerate(epochs_list)}
-        new_files = []
-        for i, f in enumerate(animation_files):
-            old = str(f).split('.')[0].split('/')[-1].replace(radice, '')
-            # print(f"file: {str(f)}, old: {old}")
-            new_file = self.run_path / f"{radice}{mapping[int(old)]}.png"
-            # print(new_file)
-            try:
-                os.rename(f, new_file)
-                new_files.append(new_file)
-            except FileNotFoundError as e:
-                print(e)
-
-        save_ffmpeg(self.run_path / radice, nomefile)
-        # files = new_files
-
-        for f in new_files:
-            try:
-                os.remove(f)
-            except FileNotFoundError as e:
-                print(f"Non è riuscito a rimuovere qualche file: {e}")
 
     def provide_model_weights(self):
         if self.conf['model']['last_layer_dense']:
@@ -724,7 +741,7 @@ class Trainer():
             all_embeddings_arrays = graph_embeddings_array, node_embeddings_array, final_output
         return emb_pergraph_test, emb_pergraph_train, all_embeddings_arrays
 
-    def save_image_at_epoch(self, embedding_arrays, model_weights_and_labels, epoch, last_epoch,
+    def save_image_at_epoch(self, embedding_arrays, model_weights_and_labels, epoch,
                             emb_pergraph_train=None, emb_pergraph_test=None,
                             path=".", **kwargs):
         # DEVO SEPARARE LA RACCOLTA DEGLI EMBEDDING DAL MULTIPROCESSING
@@ -755,7 +772,7 @@ class Trainer():
         graph_correlation = embedding_class.total_graph_correlation  # graph_correlation_per_class
 
         try:
-            metric_epoch_list = None
+            metric_epoch_list = self.epochs_list[:np.where(self.epochs_list == epoch)]
             if not kwargs.get("unico_plot"):
                 if epoch == 0:
                     testll = [self.test_loss_list[0]]
@@ -776,7 +793,7 @@ class Trainer():
 
                 if kwargs.get("last_plot"):
                     all_range_epochs_list = range(epoch)
-                    metric_epoch_list = [0, last_epoch]
+                    metric_epoch_list = [0, self.epochs_list[-1]]
                     #metric_obj_list_train = self.metric_obj_list_train
                     #metric_obj_list_test = self.metric_obj_list_test
                     total_node_emb_dim = [self.total_node_emb_dim[0], self.total_node_emb_dim[-1]]
@@ -798,13 +815,14 @@ class Trainer():
                                total_node_emb_dim, total_graph_emb_dim,
                                model_pars, param_labels,
                                node_correlation, graph_correlation, sequential_colors=True,
-                               showplot=False, last_epoch=last_epoch, metric_name=self.name_of_metric,
+                               showplot=False, last_epoch=self.epochs_list[-1], metric_name=self.name_of_metric,
                                long_string_experiment=self.config_class.long_string_experiment,
                                metric_obj_list_train=metric_obj_list_train,
                                metric_obj_list_test=metric_obj_list_test,
                                train_loss_list=trainll,
                                x_axis_log=self.conf.get("plot").get("x_axis_log"),
                                metric_epoch_list=metric_epoch_list,
+                               plot_reconstructed_degree_scatter=True,
                                **kwargs)
 
             if kwargs.get("notsave"):
@@ -820,8 +838,8 @@ class Trainer():
                     os.rename(f"{file_name}.png", path / f"{self.unique_train_name}.png")
 
             # salvo la sequneza di grado
-            if not kwargs.get("notsave"):
-                data.plot_output_degree_sequence(path / f"Degree_seq.{self.unique_train_name}_{epoch}.png")
+            #if not kwargs.get("notsave"):
+            #    data.plot_output_degree_sequence(ax=axes[0][1], path / f"Degree_seq.{self.unique_train_name}_{epoch}.png")
 
         except Exception as e:
             print(f"Immagine {epoch} non completata")

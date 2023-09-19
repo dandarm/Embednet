@@ -111,8 +111,8 @@ class Data2Plot():
              sequential_colors=False, log=False, title=None):
 
         self.set_data(datatype)
-        if self.array2plot is None:  #.all():
-            return
+#        if self.array2plot is None:  #.all():
+#            return
 
 
 
@@ -242,28 +242,32 @@ class DataAutoenc2Plot(Data2Plot):
     def __init__(self, wrapper_obj, dim, config_class=None, sequential_colors=False, **kwargs):  #, metric_name='da_impostare'):
         self.config_class = config_class
         self.wrapper_obj = wrapper_obj
-        self.input_obj = wrapper_obj.list_emb_autoenc_per_graph
+
         self.array2plot = []
         # oggetti embedding separati per train e test
         self.emb_pergraph_train = kwargs.get("emb_pergraph_train")
         self.emb_pergraph_test = kwargs.get("emb_pergraph_test")
         self.array2plot_train = []
         self.array2plot_test = []
-        ## la label di classe è prodotta nel training set
-        self.class_labels = [graph.scalar_label for graph in self.input_obj]
-        self.unique_class_labels = sorted(list(set(self.class_labels)))
-        self.total_class_colors = len(self.unique_class_labels)
+
+        if self.wrapper_obj is not None:
+            self.input_obj = wrapper_obj.list_emb_autoenc_per_graph
+            ## la label di classe è prodotta nel training set
+            self.class_labels = [graph.scalar_label for graph in self.input_obj]
+            self.unique_class_labels = sorted(list(set(self.class_labels)))
+            self.total_class_colors = len(self.unique_class_labels)
         ## la label di nodo può essere diversa per ogni nodo (actual node degree  oppure original node label)
         ## oppure posso voler associare a ogni nodo la label del grafo a cui il nodo appartiene
-        self.allnode_labels = None ## [graph.node_label_from_dataset for graph in self.input_obj]
-        self.all_node_degree = None
-        self.dim = dim
-        if self.emb_pergraph_train is None and self.emb_pergraph_test is None:
-            self.threshold_for_binary_prediction = wrapper_obj.list_emb_autoenc_per_graph[0].threshold_for_binary_prediction
-            self.threshold_for_binary_prediction2 = 0
-        else:
-            self.threshold_for_binary_prediction = self.emb_pergraph_train[0].threshold_for_binary_prediction
-            self.threshold_for_binary_prediction2 = self.emb_pergraph_test[0].threshold_for_binary_prediction
+            self.allnode_labels = None  ## [graph.node_label_from_dataset for graph in self.input_obj]
+            self.all_node_degree = None
+            self.dim = dim
+            if self.emb_pergraph_train is None and self.emb_pergraph_test is None:
+                self.threshold_for_binary_prediction = self.input_obj[0].threshold_for_binary_prediction
+                self.threshold_for_binary_prediction2 = 0
+            else:
+                self.threshold_for_binary_prediction = self.emb_pergraph_train[0].threshold_for_binary_prediction
+                self.threshold_for_binary_prediction2 = self.emb_pergraph_test[0].threshold_for_binary_prediction
+
         self.colors = None
         self.custom_legend_lines = None
         self.sequential_colors = sequential_colors
@@ -315,7 +319,7 @@ class DataAutoenc2Plot(Data2Plot):
             input_adj_flat, pred_adj_flat, pred_after_sigm = self.array2plot
             # input_adj_flat, pred_adj_flat = input_adj_flat[0], pred_adj_flat[0]
             input_adj_flat, pred_adj_flat, pred_after_sigm_flat = input_adj_flat.ravel(), pred_adj_flat.ravel(), pred_after_sigm.ravel()
-            ax1.hist((input_adj_flat, pred_adj_flat, pred_after_sigm_flat), bins=50, range=[-0.25, 1.25]);
+            ax1.hist((input_adj_flat, pred_adj_flat, pred_after_sigm_flat), bins=25, range=[-0.25, 1.25]);
             if threshold:
                 ax1.text(1.2, 1.0, f"soglia {round(threshold, 2)}", fontdict=font_for_text)
         else:
@@ -326,13 +330,26 @@ class DataAutoenc2Plot(Data2Plot):
 
             fig = plt.gcf()
             axes = [ax1]
-            ax1.hist((input_adj_flat_test, pred_adj_flat_test, pred_after_sigm_flat_test), bins=50, range=[-0.25, 1.25], label="Test set");
+            N, bins, patches = ax1.hist(input_adj_flat_test, bins=60, color='crimson', range=[-0.25, 1.25], label="Test set");
+            N, bins, patches = ax1.hist(pred_adj_flat_test, bins=100, range=[-0.25, 1.25]);
+            N, bins, patches = ax1.hist(pred_after_sigm_flat_test, bins=100, color='mediumblue', range=[-0.25, 1.25]);
+            #for p in patches[0]:  # colore dell'input
+            #    p.set_facecolor('red')
+            #for p in patches[2]:  # colore del predicted
+            #    p.set_facecolor('royalblue')
             if threshold:
                 ax1.text(1.2, 1.0, f"soglia {round(threshold2, 2)}", fontdict=font_for_text)
+
             # secondo asse del test
             asse = fig.add_subplot(233, sharex=ax1, sharey=ax1, label=f"ax2")
             axes.append(asse)
-            asse.hist((input_adj_flat_train, pred_adj_flat_train, pred_after_sigm_flat_train), bins=50, range=[-0.25, 1.25], label="Train set");
+            N, bins, patches2 = asse.hist(input_adj_flat_train, bins=60, color='orangered', range=[-0.25, 1.25], label="Train set");
+            N, bins, patches2 = asse.hist(pred_adj_flat_train, bins=100, range=[-0.25, 1.25]);
+            N, bins, patches2 = asse.hist(pred_after_sigm_flat_train, bins=100, color='cornflowerblue', range=[-0.25, 1.25]);
+            #for p in patches2[0]:  # colore dell'input
+            #    p.set_facecolor('lightcoral')
+            #for p in patches2[2]:  # colore del predicted
+            #    p.set_facecolor('lightskyblue')
             if threshold2:
                 asse.text(1.2, 1.0, f"soglia {round(threshold,2)}", fontdict=font_for_text)
 
@@ -353,18 +370,27 @@ class DataAutoenc2Plot(Data2Plot):
                     ax.spines["left"].set_visible(False)
                     ax.tick_params(labelleft=False, left=False, labelbottom=False)
 
-    def plot_output_degree_sequence(self, filename_save=None):
+    def plot_output_degree_sequence(self, filename_save=None, ax=None):
         # voglio plottare anche altre cose tipo la sequenza di grado
         # prendo la seq grado delloutput
         pred_degrees = np.array([g.out_degree_seq for g in self.input_obj]).ravel().squeeze()
         input_degree = np.array(self.wrapper_obj.node_degree).ravel().squeeze()
         # print(pred_degrees.shape, input_degree.shape)
-        plt.scatter(input_degree, pred_degrees)
-        plt.ylim(0, max(pred_degrees))
+        if ax is not None:
+            ax.scatter(input_degree, pred_degrees, label="Predicted")
+            ax.scatter(input_degree, input_degree, label="Input", color='red')
+            ax.set_ylim(min(input_degree), max(input_degree))
+            ax.legend()
+        else:
+            plt.scatter(input_degree, pred_degrees, label="Predicted")
+            plt.scatter(input_degree, input_degree, label="Input", color='red')
+            plt.ylim(min(input_degree), max(input_degree))
+            plt.legend()
         if filename_save:
             plt.savefig(filename_save)
         else:
-            plt.show()
+            if ax is None:
+                plt.show()
         # fig = plt.gcf()
         # fig.clf()
         # plt.cla()
@@ -387,9 +413,9 @@ class DataAutoenc2Plot(Data2Plot):
             num_tot = len(self.input_obj)
         elif type == 'adj_entries':
             num_tot = len(self.input_obj)# * len(self.input_obj[0])
-        alpha_value = min(0.3, 500 / num_tot)
+        alpha_value = min(0.3, 50 / num_tot)
         if i is not None:
-            arr = [3000, 2000, 1000, 500, 200, 100, 50]
+            arr = [300, 200, 100, 50, 20, 10, 5]
             alpha_value = min(0.3, arr[min(6,i)] / num_tot)
         #print(f"num_tot per alpha value: {num_tot}  - alpha: {alpha_value}")
         return alpha_value
@@ -446,29 +472,41 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
 
     fig, axes = plt.subplots(2, 3, figsize=(20, 12))
 
-    if num_emb_neurons == 1:
-        #print("Plotting 1D embeddings...")
-        data.plot(datatype='node_embedding', type='scatter', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
-        data.plot(datatype='graph_embedding', type='histogram', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
-        # TODO: rimettere
-        #plot_node_and_graph_correlations(axes, graph_correlation, node_correlation, epochs_list, **kwargs)
-    else:
-        #print("Plotting 2D or n>=2 embeddings...")
-        #if num_emb_neurons < 3:     # per evitare di calcolare UMAP per ogni frame   #kwargs.get('plot_node_embedding', True):
-        data.plot(datatype='node_embedding', type='plot', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
-        data.plot(datatype='graph_embedding', type='plot', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
-        if node_intrinsic_dimensions_total is not None and graph_intrinsic_dimensions_total is not None:
-            plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs)
+    if data is not None:
+        if not data.fullMLP:
+            if num_emb_neurons == 1:
+                #print("Plotting 1D embeddings...")
+                data.plot(datatype='node_embedding', type='scatter', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
+                if not kwargs.get('plot_reconstructed_degree_scatter'):
+                    data.plot(datatype='graph_embedding', type='histogram', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
+                else:
+                    data.plot_output_degree_sequence(ax=axes[0][1])
+                # TODO: rimettere
+                #plot_node_and_graph_correlations(axes, graph_correlation, node_correlation, epochs_list, **kwargs)
+            else:
+                #print("Plotting 2D or n>=2 embeddings...")
+                #if num_emb_neurons < 3:     # per evitare di calcolare UMAP per ogni frame   #kwargs.get('plot_node_embedding', True):
+                data.plot(datatype='node_embedding', type='plot', ax=axes[0][0], sequential_colors=sequential_colors, title="Node Embedding")
+                if not kwargs.get('plot_reconstructed_degree_scatter'):
+                    data.plot(datatype='graph_embedding', type='plot', ax=axes[0][1], sequential_colors=sequential_colors, title="Graph Embedding")
+                else:
+                    data.plot_output_degree_sequence(ax=axes[0][1])
+                if node_intrinsic_dimensions_total is not None and graph_intrinsic_dimensions_total is not None:
+                    plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs)
+        else:
+            data.plot_output_degree_sequence(ax=axes[0][1])
 
-    if data.config_class.autoencoding:
-        data.plot(datatype='adj_entries', type='hist', ax=axes[0][2], sequential_colors=sequential_colors, title="Adj matrix entries")
-    else:
-        data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
+        if data.config_class.autoencoding:
+            data.plot(datatype='adj_entries', type='hist', ax=axes[0][2], sequential_colors=sequential_colors, title="Adj matrix entries")
+        else:
+            data.plot(datatype='final_output', type='plot', ax=axes[0][2], sequential_colors=sequential_colors, title="Final Output")
+
 
 
     plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs)
 
-    plot_weights_multiple_hist(model_pars, param_labels, axes[1][2], absmin=-2, absmax=2, sequential_colors=False)
+    if model_pars is not None:
+        plot_weights_multiple_hist(model_pars, param_labels, axes[1][2], absmin=-2, absmax=2, sequential_colors=False)
 
     fig.suptitle(f"{kwargs['long_string_experiment']}")
 
@@ -500,12 +538,14 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
     minimo = min(loss_list_min, train_loss_list_min)
     massimo = max(loss_list_max, train_loss_list_max)
     if is_x_axis_log:
+        #plt.xscale('log', base=2)
         ploss, = axes[1][0].semilogx(epochs_list, test_loss_list, marker=marker, color='black', label='Test Loss')
     else:
         ploss, = axes[1][0].plot(epochs_list, test_loss_list, marker=marker,color='black', label='Test Loss')
 
     # train loss
     if is_x_axis_log:
+        #plt.xscale('log', base=2)
         axes[1][0].semilogx(epochs_list, train_loss_list, marker=marker,color='darkgray', label='Train Loss')
     else:
         axes[1][0].plot(epochs_list, train_loss_list, marker=marker,color='darkgray', label='Train Loss')
@@ -517,34 +557,43 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
     # axes[1][0].yaxis.label.set_color(ploss.get_color())
 
     axt = axes[1][0].twinx()
+    ax2 = axes[1][0].twinx()  # questo lo tengo per Euclide
+
 
     # Plot metriche
+    marker = '.'
+    m_size = 5.0
     for i, metric_name in enumerate(metric_names):
+        asse = axt
+        if i == 1:
+            asse = ax2
         metricatrain = [m.get_metric(metric_name) for m in metric_obj_list_train]
         metricatest = [m.get_metric(metric_name) for m in metric_obj_list_test]
         color = get_colors_to_cycle_rainbow8()[i % 8]
-        if metric_epoch_list:
+        if metric_epoch_list is not None:
             epochs_list = metric_epoch_list
         if is_x_axis_log:
-            pmetric, = axt.semilogx(epochs_list, metricatest, marker=marker,color=color, label=metric_name)
-            pmetric_train, = axt.semilogx(epochs_list, metricatrain, marker=marker,color=adjust_lightness(color, 1.5), label=metric_name)
+            pmetric, = asse.semilogx(epochs_list, metricatest, linestyle='None',marker='.',markersize=m_size,color=color, label=metric_name)
+            pmetric_train, = asse.semilogx(epochs_list, metricatrain, linestyle='None',marker='+',markersize=m_size,color=adjust_lightness(color, 1.5), label=metric_name)
         else:
-            pmetric, = axt.plot(epochs_list, metricatest, marker=marker,color=color, label=metric_name)
-            pmetric_train, = axt.plot(epochs_list, metricatrain, marker=marker,color=adjust_lightness(color, 1.5), label=metric_name)
-        #axt.set_ylim(0, 1)
+            pmetric, = asse.plot(epochs_list, metricatest, linestyle='None',marker='.',markersize=m_size,color=color, label=metric_name)
+            pmetric_train, = asse.plot(epochs_list, metricatrain, linestyle='None',marker='+',markersize=m_size,color=adjust_lightness(color, 1.5), label=metric_name)
         # axt.set_ylabel('Test metric', fontsize=12);
-        axt.set_xlim(0, x_max)
+        asse.set_xlim(0, x_max)
         #    axt.set_yticklabels([0.0,1.0])
-        axt.legend(loc='upper right')
         # axt.yaxis.label.set_color(pmetric.get_color())
-        axt.tick_params(axis='y', colors=pmetric.get_color())
+        asse.tick_params(axis='y', colors=pmetric.get_color())
+    axt.set_ylim(0, 1)
+    ax2.set_ylim(0, max(metricatest))
+    axt.legend(loc='upper right')
+    ax2.legend(loc='upper center')
 
 
 def plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs):
-    x_max = kwargs.get("last_epoch")
+    last_epoch = kwargs.get("last_epoch")
     is_x_axis_log = kwargs.get("x_axis_log")
     metric_epoch_list = kwargs.get("metric_epoch_list")
-    if metric_epoch_list:
+    if metric_epoch_list is not None:
         epochs_list = metric_epoch_list
     if is_x_axis_log:
         axes[1][1].semilogx(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
@@ -552,8 +601,8 @@ def plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrin
     else:
         axes[1][1].plot(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
         axes[1][1].plot(epochs_list, graph_intrinsic_dimensions_total, linestyle='None', marker='.', color='blue', label='graph id')
-    axes[1][1].set_xlim(0, x_max)
-    axes[1][1].set_ylim(0, 3.0)
+    axes[1][1].set_xlim(0, last_epoch)
+    axes[1][1].set_ylim(-0.1, max(max(node_intrinsic_dimensions_total), max(graph_intrinsic_dimensions_total)))
     axes[1][1].set_title(f"Intrinsic Dimensionality")
     axes[1][1].legend()
 
@@ -634,7 +683,7 @@ def parallel_coord(ys, host, titolo_grafico, **kwargs):
     #custom_cycler = (cycler(color=get_colors_to_cycle_sequential(len(ys))))
     #host.set_prop_cycle(custom_cycler)
     host.plot(ys.T,  lw=2, alpha=kwargs.get("alpha_value"), color=kwargs.get("color"), label=kwargs.get("label"))  #, cmap=cmap)
-    host.plot(ys.T, '.', alpha=kwargs.get("alpha_value"), color=kwargs.get("color")) #, alpha=0.8)
+    host.plot(ys.T, '.', alpha=kwargs.get("alpha_value")*10, color=kwargs.get("color"))
 
 
     #host.legend(legend_handles, iris.target_names,

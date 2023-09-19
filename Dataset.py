@@ -39,37 +39,41 @@ class GeneralDataset:
 
 class Dataset(GeneralDataset):
 
-    def __init__(self, percentage_train, batch_size, device, config_class, dataset_list, labels, original_node_class, exponent, actual_node_class, scalar_label,_num_nodes_per_graph, verbose):
-        super().__init__(dataset_list, labels,
-                         original_node_class=original_node_class,
-                         exponent=exponent,
-                         actual_node_class=actual_node_class,
-                         scalar_label=scalar_label,
-                         _num_nodes_per_graph=_num_nodes_per_graph)
-        #self.dataset_list = dataset_list  # rename in dataset_list
+    # def __init__(self, config_class, dataset_list, labels, original_node_class, exponent, actual_node_class, scalar_label,_num_nodes_per_graph, verbose):
+    #     super().__init__(dataset_list, labels,
+    #                      original_node_class=original_node_class,
+    #                      exponent=exponent,
+    #                      actual_node_class=actual_node_class,
+    #                      scalar_label=scalar_label,
+    #                      _num_nodes_per_graph=_num_nodes_per_graph)
+    def __init__(self, config_class, **kwarg):
+        super().__init__(**kwarg)
+
+        self.config_class = config_class
+        self.conf = config_class.conf
+        self.percentage_train = self.conf['training']['percentage_train']
+        self.bs = self.conf['training']['batch_size']
+        self.device = config_class.device
+        self.verbose = kwarg.get('verbose')
+
         self.dataset_pyg = None
-        #self.labels = labels
         self.len_data = len(self.dataset_list)
-        self.tt_split = int(self.len_data * percentage_train)
+        self.tt_split = int(self.len_data * self.percentage_train)
         self.train_dataset = None
         self.train_len = None
         self.test_dataset = None
         self.test_len = None
-        self.bs = batch_size
-        self.device = device
+
         self.train_loader = None
         self.test_loader = None
-        self.config_class = config_class
-        self.config = config_class.conf
+
         self.last_neurons = self.config_class.lastneuron
         self.all_data_loader = None
 
-        self.verbose = verbose
-
 
     @classmethod
-    def from_super_instance(cls, percentage_train, batch_size, device, config_class, super_instance, verbose):
-        return cls(percentage_train, batch_size, device, config_class, **super_instance.__dict__, verbose=verbose)
+    def from_super_instance(cls, config_class, super_instance, verbose):
+        return cls(config_class, **super_instance.__dict__, verbose=verbose)
 
     def convert_G(self, g_i):
         g, i = g_i
@@ -150,7 +154,7 @@ class Dataset(GeneralDataset):
             for g in tqdm(graph_list_nx, total=len(graph_list_nx)):
                 #if self.config['model']['autoencoder']:
                 #    pyg_graph = self.convert_G_autoencoder((g, i))
-                if self.config['graph_dataset']['random_node_feat']:
+                if self.conf['graph_dataset']['random_node_feat']:
                     pyg_graph = self.convert_G_random_feature((g, i))
                 else:
                     pyg_graph = self.convert_G((g, i))

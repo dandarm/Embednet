@@ -3,6 +3,7 @@ graph_dataset:
     regular: False
     confmodel: False
     sbm: False
+    const_degree_dist: False
     real_dataset: False
     real_data_name:  'BACI'  #'REDDIT-BINARY'   #
     continuous_p: False
@@ -47,9 +48,12 @@ model:
     GCNneurons_per_layer: [1,32,32,16]
     neurons_last_linear: [16, 16, 2]
     freezeGCNlayers: False
+    only_encoder: False
     autoencoder: False
     autoencoder_confmodel: True
     autoencoder_graph_ae: False
+    autoencoder_mlpdecoder: False
+    autoencoder_fullMLP: False
     put_batchnorm: True
     put_graphnorm: False
     final_pool_aggregator: True

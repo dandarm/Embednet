@@ -27,6 +27,7 @@ class GenerateGraph():
         self.dataset = None
         self.dataset_grafi_nx = []
         self.target_labels = []
+        self.actual_ERprobs = []
         self.dataset_degree_seq = []
         self.scalar_label = []
         self.node_label = []
@@ -89,8 +90,12 @@ class GenerateGraph():
             if modo == TrainingMode.mode1 or modo == TrainingMode.mode2:
                 self.dataset_nclass_SBM(parallel=parallel)
 
+        elif self.graphtype == GraphType.CONST_DEG_DIST:
+            self.dataset_CONST_DEG_DIST(parallel=parallel)
+
         print("Dataset generated")
 
+# region build single graph
     def create_ER(self, Num_nodes, p, N_graphs):
         """
         Num_nodes:  Graph nodes number
@@ -208,52 +213,38 @@ class GenerateGraph():
                 actual_degrees.append(sbmg.degree())
         return grafi, actual_degrees
 
+# endregion
+
+# build dataset_list and GeneralDataset class
     def dataset_nclass_ER(self):
         nodes_per_class = self.conf['graph_dataset']['Num_nodes']
         list_p = self.conf['graph_dataset']['list_p']
 
+        for i, p in enumerate(list_p):
+            N = nodes_per_class[i]
+            grafi_p, actual_probs, actual_degrees = self.create_ER(N, p, self.Num_grafi_per_tipo)
+            self.dataset_grafi_nx.extend(grafi_p)
+            only_degrees = [list(dict(dw).values()) for dw in actual_degrees]
+            self.dataset_degree_seq.extend(only_degrees)
+            self.actual_ERprobs.extend(actual_probs)
+            self.node_label.extend([[p] * N] * self.Num_grafi_per_tipo)
+            # shape: Num_per_tipo*len(list_p) X N
+            self.scalar_label = self.scalar_label + [p] * self.Num_grafi_per_tipo
 
+        # definisco le label in 3 modi diversi a seconda del caso
         label_kind = self.config_class.get_mode()['labels']
-
         if label_kind == Labels.onehot:
             n_classi = len(list_p)
             onehot_matrix = np.eye(n_classi)
             for i, p in enumerate(list_p):
-                N = nodes_per_class[i]
-                grafi_p, actual_p, actual_degrees = self.create_ER(N, p, self.Num_grafi_per_tipo)
-                self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
-                self.target_labels = self.target_labels + [onehot_matrix[i]] * len(grafi_p)
-                #self.scalar_label = self.scalar_label + [p] * self.Num_grafi_per_tipo
-                #self.node_label.extend([[p] * N] * self.Num_grafi_per_tipo)
-                only_degrees = [list(dict(dw).values()) for dw in actual_degrees]
-                self.dataset_degree_seq.extend(only_degrees)
-                #print(f"{set(self.node_label)} <-> {set(self.scalar_label)}")
+                self.target_labels = self.target_labels + [onehot_matrix[i]] * self.Num_grafi_per_tipo
 
-        elif label_kind == Labels.zero_one:
-            # ho quindi solo due classi
+        elif label_kind == Labels.zero_one:  # ho quindi solo due classi
             for i, p in enumerate(list_p):
-                N = nodes_per_class[i]
-                grafi_p, actual_probs, actual_degrees = self.create_ER(N, p, self.Num_grafi_per_tipo)
-                self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
-                self.target_labels = self.target_labels + [i] * len(grafi_p)
-                #self.scalar_label = self.scalar_label + [p] * self.Num_grafi_per_tipo
-                #self.node_label.extend([[p] * N] * self.Num_grafi_per_tipo)
-                only_degrees = [list(dict(dw).values()) for dw in actual_degrees]
-                self.dataset_degree_seq.extend(only_degrees)
+                self.target_labels = self.target_labels + [i] * self.Num_grafi_per_tipo
 
         elif label_kind == Labels.prob:
-            for i, p in enumerate(list_p):
-                N = nodes_per_class[i]
-                grafi_p, actual_probs, _ = self.create_ER(N, p, self.Num_grafi_per_tipo)
-                self.dataset_grafi_nx = self.dataset_grafi_nx + grafi_p
-                self.target_labels.extend(actual_probs)
-                #self.scalar_label = self.scalar_label + [p] * self.Num_grafi_per_tipo
-                #self.node_label.extend([[p] * N] * self.Num_grafi_per_tipo)
-
-        for i, p in enumerate(list_p):
-            N = nodes_per_class[i]
-            self.node_label.extend([[p] * N] * self.Num_grafi_per_tipo)
-            self.scalar_label = self.scalar_label + [p] * self.Num_grafi_per_tipo
+            self.target_labels = self.actual_ERprobs
 
         self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.target_labels),
                                       original_node_class=self.node_label,
@@ -424,6 +415,36 @@ class GenerateGraph():
                                       original_node_class=self.node_label,
                                       actual_node_class=self.dataset_degree_seq,
                                       scalar_label=self.scalar_label)
+
+    def dataset_CONST_DEG_DIST(self, parallel):
+        grafi = []
+        degrees = []
+        i = 0
+        #for _ in range(self.Num_grafi_per_tipo*2):
+        while len(grafi) < self.Num_grafi_per_tipo:
+            # ho un solo tipo quì! faccio per 2 perché in media la metà viene scartata
+            r = np.random.randint(1, 50, self.N[0])
+            if nx.is_graphical(r):
+                gcm = nx.configuration_model(r)
+                grcm = nx.Graph(gcm)  # remove multiple edges
+                grcm.remove_edges_from(nx.selfloop_edges(grcm))  # remove self loops
+                gccmm = sorted(nx.connected_components(grcm), key=len, reverse=True)
+                grcm0 = grcm.subgraph(gccmm[0]).copy()
+                if len(grcm0.nodes()) == self.N[0]:
+                    grafi.append(grcm0)
+                    degrees.append(np.array(list(dict(grcm0.degree()).values())))
+                    i += 1
+            self.dataset_grafi_nx = grafi
+
+        print(f"Generati {i} grafi")
+
+        self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array([0]*len(grafi)),
+                                      original_node_class=degrees,
+                                      actual_node_class=degrees,
+                                      scalar_label=np.array([0]*len(grafi)))
+
+# endregion
+
     def make_planted_matrix(self, a):
         mat = [a, a[::-1]]
         return mat
@@ -438,6 +459,8 @@ class GenerateGraph():
         if verbose:
             print([nx.to_numpy_matrix(g).sum(axis=1).mean() for g in dataset_list_perturbed])
         self.dataset.dataset_list = dataset_list_perturbed
+
+
 
 
 class GenerateGraph_from_numpyarray():
@@ -558,14 +581,14 @@ def powerlaw_dist(x0, x1, n, size):
     y = np.random.random(size=size)
     ((x1**n - x0**n) * y + x0**n) ** (1. / n)  # risulta la stessa della funzione rndm
 
-import matplotlib.pyplot as plt
-def plott(flattened, sigma):
-    count, bins, ignored = plt.hist(flattened, 300, density=True)
-    plt.plot(bins, 1/(sigma * np.sqrt(2 * np.pi)) *
-                   np.exp( - (bins - 0)**2 / (2 * sigma**2) ),
-             linewidth=2, color='r')
-    plt.show()
-    return count, bins
+#import matplotlib.pyplot as plt
+# def plott(flattened, sigma):
+#     count, bins, ignored = plt.hist(flattened, 300, density=True)
+#     plt.plot(bins, 1/(sigma * np.sqrt(2 * np.pi)) *
+#                    np.exp( - (bins - 0)**2 / (2 * sigma**2) ),
+#              linewidth=2, color='r')
+#     plt.show()
+#     return count, bins
 
 
 
