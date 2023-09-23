@@ -22,7 +22,8 @@ from torchmetrics import HammingDistance
 class Trainer_Autoencoder(Trainer):
     def __init__(self, config_class, verbose=False, rootsave="."):
         super().__init__(config_class, verbose, rootsave)
-        self.name_of_metric = ["auc", "pr_auc", "f1_score", "euclid"]
+        #self.name_of_metric = ["auc", "pr_auc", "f1_score", "euclid"]
+        self.name_of_metric = ["pr_auc", "euclid"]  # "auc",  "f1_score"
 
         #self.HD = HammingDistance(task="binary")
 
@@ -488,6 +489,7 @@ class Trainer_Autoencoder(Trainer):
         num_nodes_batch = [len(data.x) for data in loader.dataset]
         with torch.no_grad():
             i = 0
+            num_grafi = 0
             inputs = []
             predictions = []
             for data in loader:
@@ -499,6 +501,7 @@ class Trainer_Autoencoder(Trainer):
                 predictions.append(pred_adj_flat)
                 inputs.append(input_adj_flat)
                 i += loader.batch_size
+                num_grafi += len(data)
 
             inputs = np.concatenate(inputs)
             predictions = np.concatenate(predictions)
@@ -523,7 +526,7 @@ class Trainer_Autoencoder(Trainer):
                 inpt_t = torch.tensor(inputs, dtype=torch.uint8)
                 #hamming_dist = self.HD(pred_t, inpt_t)
                 euclid_dist = (pred_t.ravel() - inpt_t.ravel()).pow(2).sum().sqrt()
-                euclid_dist = euclid_dist / inpt_t.shape[0]  # deve essere uguale anche a pred shape
+                euclid_dist = euclid_dist / num_grafi # deve essere uguale anche a pred shape
                 #print(hamming_dist)
             except Exception as e:
                 auc = -1

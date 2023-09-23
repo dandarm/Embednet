@@ -2,9 +2,7 @@ import os
 import time
 import traceback
 import yaml
-
 import matplotlib
-import matplotlib.pyplot as plt
 #from cycler import cycler
 #from matplotlib import animation
 import numpy as np

@@ -92,8 +92,8 @@ class Trainer():
         #self.mapping_of_snap_epochs = {snapshot_epochs: sequential_epochs for
         #                sequential_epochs, snapshot_epochs in enumerate(self.epochs_list)}
 
-        self.total_node_emb_dim = multiprocessing.Array('d', range(self.epochs+1))
-        self.total_graph_emb_dim = multiprocessing.Array('d', range(self.epochs+1))
+        self.total_node_emb_dim = multiprocessing.Array('f', range(self.epochs+1))
+        self.total_graph_emb_dim = multiprocessing.Array('f', range(self.epochs+1))
         for i in range(self.epochs):
             self.total_node_emb_dim[i] = -1.0
             self.total_graph_emb_dim[i] = -1.0
@@ -120,12 +120,12 @@ class Trainer():
         if list_points > self.epochs:
             raise Exception('Chiesto un numero di epochs_list maggiore del numero di epoche da config')
         #list_points = min(list_points, self.trainer.epochs)
-        logarray = np.round(np.logspace(1., endlog, num=list_points, base=2)).astype(int)
+        #logarray = np.round(np.logspace(1., endlog, num=list_points, base=2)).astype(int)
         cubicarray = np.power(np.linspace(1., end3, num=list_points), 3)
         squarearray = np.power(np.linspace(1., end2, num=list_points), 2)
         #lista = np.unique(np.concatenate((np.arange(0, 10, 2), logarray)))[:-1]
         #lista = np.unique(np.round(cubicarray)).astype(int)[:-1]
-        lista = np.unique(np.round(squarearray)).astype(int)#[:-1]
+        lista = np.unique(np.round(cubicarray)).astype(int)#[:-1]
         if self.verbose:
             print(f"epoch list {lista} ")
         return np.concatenate(([0], lista))  # aggiungo anche l'elemento 0 per i plot snapshot
@@ -164,6 +164,9 @@ class Trainer():
                                               eps=1e-08,
                                               weight_decay=0,
                                               amsgrad=False)
+        elif self.conf['training'].get('optimizer') == 'ADAMW':
+            self.optimizer = torch.optim.AdamW(model.parameters(), lr=float(self.lr))  # gli altri valori default sono gli stessi
+
         decayRate = 0.96
         # self.scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
 
@@ -468,7 +471,7 @@ class Trainer():
         self.train_loss_list.append(test_loss)
         self.test_loss_list.append(test_loss)
         print("Prima snapshot...")   # self.epochs if self.epochs > 0 else 1,
-        metric_object_train, metric_object_test = self.produce_traning_snapshot(0, False, [])
+        self.produce_traning_snapshot(0, False, [])
         file_path = self.run_path / f"_epoch0.png"
         animation_files.append(file_path)
 
@@ -520,13 +523,13 @@ class Trainer():
 
             if epoch % 1 == 0:
                 test_loss = self.test(self.dataset.test_loader)
-                #writer.add_scalar("Test Loss", test_loss, epoch)
+                writer.add_scalar("Test Loss", test_loss, epoch)
                 #writer.add_scalar(f"Test {self.name_of_metric}", metric_object.get_metric(self.name_of_metric), epoch)
             # VOGLIO AGGIORNARE I PESI COL TRAINING DOPO AVER CALCOLATO LA LOSS DI TEST,
             # ALTRIMENTI LA LOSS DI TEST SARÀ SEMPRE PIÙ AVVANTAGGIATA RISPETTO ALLA LOSS DI TRAINING
             # PERCHÈ ARRIVEREBBE DOPO L'AGGIORNAMENTO APPUNTO
             train_loss = self.train()
-            #writer.add_scalar("Train Loss", train_loss, epoch)
+            writer.add_scalar("Train Loss", train_loss, epoch)
 
 
             #for i, v in enumerate(test_f1score):
@@ -544,11 +547,6 @@ class Trainer():
                     self.produce_traning_snapshot(epoch, parallel, parallel_processes_save_images)
                     file_path = self.run_path / f"_epoch{epoch}.png"
                     animation_files.append(file_path)
-                # else:
-                #     # devo aggiungere comunque i vecchi valori di metriche  alla lista
-                #     # per ottenere liste della stessa llungjhezza rispetto a range(epoca)
-                #     self.metric_obj_list_train.append(metric_object_train)
-                #     self.metric_obj_list_test.append(metric_object_test)
 
 
             #expvar = self.myExplained_variance.compute()
@@ -561,22 +559,24 @@ class Trainer():
             #     if verbose > 1: print(f'Epoch: {epoch}\tTest loss: {test_loss}')  # \t Explained Variance: {var_exp}')
 
             # region salva il self.best_model
-            if epoch in self.epochs_checkpoint:
-                self.model_checkpoint = copy.deepcopy(self.model)
-            if test_loss < best_loss:  # check for save best model
-                best_loss = test_loss
-                best_epoch = epoch
-                self.best_model = copy.deepcopy(self.model)
-            if epoch % 1000 == 0:
+            #if epoch in self.epochs_checkpoint:
+            #    self.model_checkpoint = copy.deepcopy(self.model)
+
+            if epoch % 10000 == 0:
+                if test_loss < best_loss:  # check for save best model
+                    best_loss = test_loss
+                    best_epoch = epoch
+                    self.best_model = copy.deepcopy(self.model)
                 torch.save(self.best_model.state_dict(), self.run_path / "model")
 
             # endregion
 
-            early_stopping(test_loss)
-            if early_stopping.early_stop:
-                #if verbose > 0:
-                print("Early stopping!!!")
-                break
+            # TODO: rimettere l'early stopping!  check per performance
+            # early_stopping(test_loss)
+            # if early_stopping.early_stop:
+            #     #if verbose > 0:
+            #     print("Early stopping!!!")
+            #     break
 
         print(f"best loss: {round(best_loss, 3)} at epoch {best_epoch}")
         #if verbose > 0:
@@ -584,10 +584,11 @@ class Trainer():
 
 
         writer.flush()
-        torch.save(self.best_model.state_dict(), self.run_path / "model")
+        if self.best_model is not None:
+            torch.save(self.best_model.state_dict(), self.run_path / "model")
+
         #writer_variance.flush()
         #self.myExplained_variance.reset()
-        #self.last_metric_value = self.metric_list[-1]
         self.last_epoch = epoch
 
         # aspetto per sicurezza che tutti i processi di salvataggio immagini siano finiti
@@ -601,7 +602,7 @@ class Trainer():
             self.save_all_animations(animation_files, self.epochs_list)
 
         if not self.config_class.conf['training']['every_epoch_embedding']:
-            self.produce_traning_snapshot(self.last_epoch, self.last_epoch, False, [], last_plot=True)
+            self.produce_traning_snapshot(self.last_epoch, False, [], last_plot=True)
 
         return
 
@@ -744,7 +745,7 @@ class Trainer():
     def save_image_at_epoch(self, embedding_arrays, model_weights_and_labels, epoch,
                             emb_pergraph_train=None, emb_pergraph_test=None,
                             path=".", **kwargs):
-        # DEVO SEPARARE LA RACCOLTA DEGLI EMBEDDING DAL MULTIPROCESSING
+        # DEVO SEPARARE LA RACCOLTA DEGLI EMBEDDING DAL MULTIPROCESSING, ma mi sa che no nsi chiamare lo spostamento dalla gpu da dentro un processo parallelo
         if self.config_class.autoencoding:
             embedding_class = Embedding_autoencoder(embedding_arrays, config_c=self.config_class, dataset=self.dataset)
             embedding_class.get_metrics(self.embedding_dimension)
@@ -772,43 +773,10 @@ class Trainer():
         graph_correlation = embedding_class.total_graph_correlation  # graph_correlation_per_class
 
         try:
-            metric_epoch_list = self.epochs_list[:np.where(self.epochs_list == epoch)]
-            if not kwargs.get("unico_plot"):
-                if epoch == 0:
-                    testll = [self.test_loss_list[0]]
-                    trainll = [self.train_loss_list[0]]
-                    all_range_epochs_list = [0]
-                    metric_obj_list_train = [self.metric_obj_list_train[0]]
-                    metric_obj_list_test = [self.metric_obj_list_test[0]]
-                    total_node_emb_dim = [self.total_node_emb_dim[0]]
-                    total_graph_emb_dim = [self.total_graph_emb_dim[0]]
-                else:
-                    testll = self.test_loss_list[:epoch]
-                    trainll = self.train_loss_list[:epoch]
-                    all_range_epochs_list = range(epoch)
-                    metric_obj_list_train = self.metric_obj_list_train[:epoch]
-                    metric_obj_list_test = self.metric_obj_list_test[:epoch]
-                    total_node_emb_dim = self.total_node_emb_dim[:epoch]
-                    total_graph_emb_dim = self.total_graph_emb_dim[:epoch]
-
-                if kwargs.get("last_plot"):
-                    all_range_epochs_list = range(epoch)
-                    metric_epoch_list = [0, self.epochs_list[-1]]
-                    #metric_obj_list_train = self.metric_obj_list_train
-                    #metric_obj_list_test = self.metric_obj_list_test
-                    total_node_emb_dim = [self.total_node_emb_dim[0], self.total_node_emb_dim[-1]]
-                    total_graph_emb_dim = [self.total_graph_emb_dim[0], self.total_graph_emb_dim[-1]]
-
-            else:
-                testll = [0]
-                trainll = [0]
-                all_range_epochs_list = [0]
-                #metric_epoch_list = [1]
-                metric_obj_list_train = [self.metric_obj_list_train[0]]
-                metric_obj_list_test = [self.metric_obj_list_test[0]]
-                total_node_emb_dim = [self.total_node_emb_dim[0]]
-                total_graph_emb_dim = [self.total_graph_emb_dim[0]]
-
+            (all_range_epochs_list, metric_epoch_list,
+             metric_obj_list_test, metric_obj_list_train,
+             testll, total_graph_emb_dim, total_node_emb_dim, trainll,
+             intr_dim_epoch_list) = self.handle_lists_for_plots(epoch, kwargs)
 
             fig = plot_metrics(data, self.embedding_dimension,
                                testll, all_range_epochs_list,
@@ -823,6 +791,7 @@ class Trainer():
                                x_axis_log=self.conf.get("plot").get("x_axis_log"),
                                metric_epoch_list=metric_epoch_list,
                                plot_reconstructed_degree_scatter=True,
+                               intr_dim_epoch_list=intr_dim_epoch_list,
                                **kwargs)
 
             if kwargs.get("notsave"):
@@ -849,5 +818,35 @@ class Trainer():
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
 
         return
+
+    def handle_lists_for_plots(self, epoch, kwargs):
+        metric_epoch_list = self.epochs_list[:np.where(self.epochs_list == epoch)[0][0] + 1]
+        if not kwargs.get("unico_plot"):
+            testll = self.test_loss_list
+            trainll = self.train_loss_list
+            all_range_epochs_list = range(epoch + 1)
+            metric_obj_list_train = self.metric_obj_list_train
+            metric_obj_list_test = self.metric_obj_list_test
+            total_node_emb_dim = self.total_node_emb_dim
+            total_graph_emb_dim = self.total_graph_emb_dim
+            intr_dim_epoch_list = range(self.epochs_list[-1]+1)
+
+            if kwargs.get("last_plot"):
+                metric_epoch_list = [0, self.epochs_list[-1]]
+                # intr_dim_epoch_list = [0, self.epochs_list[-1]]
+                # total_node_emb_dim = [self.total_node_emb_dim[0], self.total_node_emb_dim[-1]]
+                # total_graph_emb_dim = [self.total_graph_emb_dim[0], self.total_graph_emb_dim[-1]]
+
+        else:  # quando voglio fare un solo plot, cioè quando carico un modello preaddestrato
+            testll = [0]
+            trainll = [0]
+            all_range_epochs_list = [0]
+            # metric_epoch_list = [1]
+            metric_obj_list_train = [self.metric_obj_list_train[0]]
+            metric_obj_list_test = [self.metric_obj_list_test[0]]
+            total_node_emb_dim = [self.total_node_emb_dim[0]]
+            total_graph_emb_dim = [self.total_graph_emb_dim[0]]
+
+        return all_range_epochs_list, metric_epoch_list, metric_obj_list_test, metric_obj_list_train, testll, total_graph_emb_dim, total_node_emb_dim, trainll, intr_dim_epoch_list
 
 

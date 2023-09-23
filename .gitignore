@@ -167,6 +167,7 @@ cython_debug/
 
 # la cartella dei run di training
 runs/
+old_runs/
 runs_before_020522/
 runs_before15-6-22/
 runs_before_agosto22/

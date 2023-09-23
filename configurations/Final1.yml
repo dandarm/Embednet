@@ -26,8 +26,8 @@ training:
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
     learning_rate: 0.001
-    epochs: 4000
-    epochs_list_points: 100
+    epochs: 2000000
+    epochs_list_points: 350
     batch_size: 1000
     percentage_train: 0.70
     earlystop_patience: 500
@@ -36,7 +36,7 @@ training:
     every_epoch_embedding: True
     shuffle_dataset: True
     calculate_metrics: True
-    optimizer: 'ADAM'
+    optimizer: 'ADAMW'
     #weigths4unbalanced_dataset: True
     loss: 'BCELoss' # MSELoss  "MSELoss_ww"  "BCELoss_ww"
 

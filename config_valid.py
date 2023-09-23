@@ -262,7 +262,7 @@ class Config():
             numnodi = self.conf['graph_dataset']['Num_nodes']
             if isinstance(numnodi, list):
                 numnodi = numnodi[0]
-            numgrafi = self.conf['graph_dataset']['Num_grafi_per_tipo']
+            numgrafi = int(self.conf['graph_dataset']['Num_grafi_per_tipo'])
             if self.graphtype == GraphType.CM:
                 tipo_grafo += "CM"
                 data_label = self.conf['graph_dataset']['list_exponents']

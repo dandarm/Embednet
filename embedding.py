@@ -408,6 +408,7 @@ class Embedding():
         if num_emb_neurons == 1:
             self.calc_graph_emb_correlation()  # calcola self.graph_correlation_per_class o self.total_graph_correlation
             self.calc_node_emb_correlation()
+            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_graph_emb_dim = 0, 0, 0, 0
             #if training_mode == TrainingMode.mode3:
             #    self.calc_regression_error()
         else:

@@ -56,6 +56,8 @@ class Data2Plot():
             print(f"Warning: problema forse con autoencoder 2 plot \n {e}")
             pass
 
+        self.fullMLP = False
+
     def set_data(self, type=None):
         self.array2plot = []
         self.class_labels = []
@@ -271,9 +273,8 @@ class DataAutoenc2Plot(Data2Plot):
         self.colors = None
         self.custom_legend_lines = None
         self.sequential_colors = sequential_colors
-        #self.metric_name = metric_name
-        #super().__init__(input_obj, dim, config_class)
-        #print("Chiamo DataAutoenc2Plot: inizializzato correttamente.")
+
+        self.fullMLP = False
 
     def set_data(self, type=None):
         self.array2plot = []
@@ -316,23 +317,23 @@ class DataAutoenc2Plot(Data2Plot):
 
     def plot_adj_entries_hist(self, ax1, threshold=None, threshold2=None):
         if self.array2plot_test is None and self.array2plot_train is None:
-            input_adj_flat, pred_adj_flat, pred_after_sigm = self.array2plot
+            input_adj_flat, pred_adj_flat, sampled_adjs_from_output = self.array2plot
             # input_adj_flat, pred_adj_flat = input_adj_flat[0], pred_adj_flat[0]
-            input_adj_flat, pred_adj_flat, pred_after_sigm_flat = input_adj_flat.ravel(), pred_adj_flat.ravel(), pred_after_sigm.ravel()
+            input_adj_flat, pred_adj_flat, pred_after_sigm_flat = input_adj_flat.ravel(), pred_adj_flat.ravel(), sampled_adjs_from_output.ravel()
             ax1.hist((input_adj_flat, pred_adj_flat, pred_after_sigm_flat), bins=25, range=[-0.25, 1.25]);
             if threshold:
                 ax1.text(1.2, 1.0, f"soglia {round(threshold, 2)}", fontdict=font_for_text)
         else:
-            input_adj_flat, pred_adj_flat, pred_after_sigm = self.array2plot_train
-            input_adj_flat_train, pred_adj_flat_train, pred_after_sigm_flat_train = input_adj_flat.ravel(), pred_adj_flat.ravel(), pred_after_sigm.ravel()
-            input_adj_flat, pred_adj_flat, pred_after_sigm = self.array2plot_test
-            input_adj_flat_test, pred_adj_flat_test, pred_after_sigm_flat_test = input_adj_flat.ravel(), pred_adj_flat.ravel(), pred_after_sigm.ravel()
+            input_adj_flat, pred_adj_flat, sampled_adjs_from_output = self.array2plot_train
+            input_adj_flat_train, pred_adj_flat_train, pred_after_sampling_flat_train = input_adj_flat.ravel(), pred_adj_flat.ravel(), sampled_adjs_from_output.ravel()
+            input_adj_flat, pred_adj_flat, sampled_adjs_from_output = self.array2plot_test
+            input_adj_flat_test, pred_adj_flat_test, pred_after_sampling_flat_test = input_adj_flat.ravel(), pred_adj_flat.ravel(), sampled_adjs_from_output.ravel()
 
             fig = plt.gcf()
             axes = [ax1]
             N, bins, patches = ax1.hist(input_adj_flat_test, bins=60, color='crimson', range=[-0.25, 1.25], label="Test set");
-            N, bins, patches = ax1.hist(pred_adj_flat_test, bins=100, range=[-0.25, 1.25]);
-            N, bins, patches = ax1.hist(pred_after_sigm_flat_test, bins=100, color='mediumblue', range=[-0.25, 1.25]);
+            N, bins, patches = ax1.hist(pred_adj_flat_test, bins=100, color='darkorange', range=[-0.25, 1.25]);
+            N, bins, patches = ax1.hist(pred_after_sampling_flat_test, bins=100, color='mediumblue', range=[-0.25, 1.25]);
             #for p in patches[0]:  # colore dell'input
             #    p.set_facecolor('red')
             #for p in patches[2]:  # colore del predicted
@@ -344,8 +345,8 @@ class DataAutoenc2Plot(Data2Plot):
             asse = fig.add_subplot(233, sharex=ax1, sharey=ax1, label=f"ax2")
             axes.append(asse)
             N, bins, patches2 = asse.hist(input_adj_flat_train, bins=60, color='orangered', range=[-0.25, 1.25], label="Train set");
-            N, bins, patches2 = asse.hist(pred_adj_flat_train, bins=100, range=[-0.25, 1.25]);
-            N, bins, patches2 = asse.hist(pred_after_sigm_flat_train, bins=100, color='cornflowerblue', range=[-0.25, 1.25]);
+            N, bins, patches2 = asse.hist(pred_adj_flat_train, bins=100, color='#FDB147', range=[-0.25, 1.25]);
+            N, bins, patches2 = asse.hist(pred_after_sampling_flat_train, bins=100, color='cornflowerblue', range=[-0.25, 1.25]);
             #for p in patches2[0]:  # colore dell'input
             #    p.set_facecolor('lightcoral')
             #for p in patches2[2]:  # colore del predicted
@@ -469,6 +470,7 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
                  node_correlation=None, graph_correlation=None,
                  sequential_colors=False, log=False, **kwargs):
 
+    intr_dim_epoch_list = kwargs.get('intr_dim_epoch_list')
 
     fig, axes = plt.subplots(2, 3, figsize=(20, 12))
 
@@ -492,7 +494,7 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
                 else:
                     data.plot_output_degree_sequence(ax=axes[0][1])
                 if node_intrinsic_dimensions_total is not None and graph_intrinsic_dimensions_total is not None:
-                    plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs)
+                    plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, intr_dim_epoch_list, **kwargs)
         else:
             data.plot_output_degree_sequence(ax=axes[0][1])
 
@@ -592,9 +594,10 @@ def plot_test_loss_and_metric(axes, test_loss_list, epochs_list, **kwargs):
 def plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs):
     last_epoch = kwargs.get("last_epoch")
     is_x_axis_log = kwargs.get("x_axis_log")
-    metric_epoch_list = kwargs.get("metric_epoch_list")
-    if metric_epoch_list is not None:
-        epochs_list = metric_epoch_list
+    #metric_epoch_list = kwargs.get("metric_epoch_list")
+    #if metric_epoch_list is not None:
+    #    epochs_list = metric_epoch_list
+
     if is_x_axis_log:
         axes[1][1].semilogx(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
         axes[1][1].semilogx(epochs_list, graph_intrinsic_dimensions_total, linestyle='None', marker='.', color='blue', label='graph id')
@@ -602,7 +605,8 @@ def plot_intrinsic_dimension(axes, graph_intrinsic_dimensions_total, node_intrin
         axes[1][1].plot(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
         axes[1][1].plot(epochs_list, graph_intrinsic_dimensions_total, linestyle='None', marker='.', color='blue', label='graph id')
     axes[1][1].set_xlim(0, last_epoch)
-    axes[1][1].set_ylim(-0.1, max(max(node_intrinsic_dimensions_total), max(graph_intrinsic_dimensions_total)))
+    #massimo = max(max(node_intrinsic_dimensions_total), max(graph_intrinsic_dimensions_total))
+    axes[1][1].set_ylim(-0.1, 5)
     axes[1][1].set_title(f"Intrinsic Dimensionality")
     axes[1][1].legend()
 
@@ -683,7 +687,7 @@ def parallel_coord(ys, host, titolo_grafico, **kwargs):
     #custom_cycler = (cycler(color=get_colors_to_cycle_sequential(len(ys))))
     #host.set_prop_cycle(custom_cycler)
     host.plot(ys.T,  lw=2, alpha=kwargs.get("alpha_value"), color=kwargs.get("color"), label=kwargs.get("label"))  #, cmap=cmap)
-    host.plot(ys.T, '.', alpha=kwargs.get("alpha_value")*10, color=kwargs.get("color"))
+    host.plot(ys.T, '.', alpha=min(1.0, kwargs.get("alpha_value")*10), color=kwargs.get("color"))
 
 
     #host.legend(legend_handles, iris.target_names,

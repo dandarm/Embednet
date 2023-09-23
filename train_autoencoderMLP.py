@@ -120,7 +120,7 @@ class Trainer_AutoencoderMLP(Trainer):
                 # non posso sommare o mediare le metriche, devo accumumlare gli array
                 predictions.append(pred_adj_flat)
                 inputs.append(input_adj_flat)
-                i += loader.batch_size
+                i += len(batch_data)
 
             inputs = np.concatenate(inputs)
             predictions = np.concatenate(predictions)
@@ -133,7 +133,9 @@ class Trainer_AutoencoderMLP(Trainer):
                 pred_t = torch.tensor(predictions)
                 inpt_t = torch.tensor(inputs, dtype=torch.uint8)
                 euclid_dist = (pred_t.ravel() - inpt_t.ravel()).pow(2).sum().sqrt()
-                euclid_dist = euclid_dist / inpt_t.shape[0]  # deve essere uguale anche a pred shape
+                # divido per il numero totale di nodi nel dataloader
+                euclid_dist = euclid_dist / (i)  #  NON divido anche per i nodi * self.conf['graph_dataset']['Num_nodes'][0]
+                #me lo tengo PER GAFO
 
             except Exception as e:
                 auc = -1
