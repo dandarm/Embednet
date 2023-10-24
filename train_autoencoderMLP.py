@@ -249,9 +249,9 @@ class Trainer_AutoencoderMLP(Trainer):
             else:
                 file_name = path / f"_epoch{epoch}"
                 plt.savefig(file_name)
-                fig.clf()
-                plt.cla()
-                plt.clf()
+                #fig.clf()
+                #plt.cla()
+                #plt.clf()
                 if not self.conf['training']['every_epoch_embedding']: # quì ho soltanto una immagine all'inizio e una allafine
                     # salvo solo lultima immagine e la rinomino:
                     os.rename(f"{file_name}.png", path / f"{self.unique_train_name}.png")

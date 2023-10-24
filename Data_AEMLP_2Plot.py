@@ -44,4 +44,26 @@ class DataAEMLP2Plot(DataAutoenc2Plot):
         massimo = max(max(input_degree_train), max(input_degree_test))
         ax.set_ylim(minimo-1, massimo+1)
         ax.legend()
-#
+
+    def plot_output_clust_coeff(self, ax):
+        pred_cc_train = np.array([g.out_clust_coeff for g in self.emb_pergraph_train]).ravel().squeeze()
+        input_cc_train = np.array([g.input_clust_coeff for g in self.emb_pergraph_train]).ravel().squeeze()
+
+        pred_cc_test = np.array([g.out_clust_coeff for g in self.emb_pergraph_test]).ravel().squeeze()
+        input_cc_test = np.array([g.input_clust_coeff for g in self.emb_pergraph_test]).ravel().squeeze()
+
+        #input_degree = np.concatenate((input_degree_train, input_degree_test), axis=0)
+
+        ax.scatter(input_cc_train, input_cc_train, label="Input Train", color='orangered', alpha=1.0)
+        ax.scatter(input_cc_test, input_cc_test, label="Input Test", color='crimson', alpha=1.0)
+
+        ax.scatter(input_cc_test, pred_cc_test, label="Predicted Test", color='mediumblue', alpha=0.3)
+        ax.scatter(input_cc_train, pred_cc_train, label="Predicted Train", color='cornflowerblue', alpha=0.3)
+
+
+        #minimo = min(min(input_cc_train), min(input_cc_test))
+        #massimo = max(max(input_cc_train), max(input_cc_test))
+        ax.set_ylim(-0.01, 1.01)
+        ax.set_xlim(-0.01, 1.01)
+        #ax.set_ylim(minimo-0.01, massimo+0.01)
+        ax.legend()

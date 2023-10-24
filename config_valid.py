@@ -236,12 +236,14 @@ class Config():
         assert true_found == 1, f"Errore nel config: scegliere un solo tipo di {tipi}. Trovati {true_found}"
         return true_found
 
-    def create_layer_neuron_string(self):
+    def create_layer_neuron_string(self, modo=None):
         neurons = self.conf['model']['GCNneurons_per_layer']
         if self.conf['model']['autoencoder_graph_ae']:
             neurons = self.conf['graph_ae_model']['neurons_per_layer']
         elif self.conf['model']['autoencoder_fullMLP']:
             neurons = self.conf['mlp_ae_model']['neurons_per_layer']
+        elif modo == "AE_decMLP":
+            neurons = str(neurons) + "ç" + str(self.conf['model']['neurons_last_linear'])
 
         s1 = str(neurons).replace(', ', '-').strip('[').strip(']')
 
@@ -312,7 +314,7 @@ class Config():
         else:
             freezed = "- GCN freezed" if self.conf['model']['freezeGCNlayers'] else ""
 
-        layer_neuron_string = self.create_layer_neuron_string()
+        layer_neuron_string = self.create_layer_neuron_string(modo)
             
         if self.conf['model']['autoencoder_graph_ae'] or self.conf['model']['autoencoder_fullMLP']:
             init_weights = ""

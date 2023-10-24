@@ -1,7 +1,7 @@
 graph_dataset:
-    ERmodel: True
+    ERmodel: False
     regular: False
-    confmodel: False
+    confmodel: True
     sbm: False
     const_degree_dist: False
     real_dataset: False
@@ -15,7 +15,7 @@ graph_dataset:
     Num_grafi_per_tipo: 10
     Num_grafi_totali: 1000
     list_degree: [4, 50]
-    list_exponents: [-2.2, -2.5, -2.8, -3.0, -3.2, -3.5, -3.7]
+    list_exponents: [-2.2]  #, -2.5, -2.8, -3.0, -3.2, -3.5, -3.7]
     
     
     

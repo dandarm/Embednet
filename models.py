@@ -453,7 +453,7 @@ class AutoencoderMLP(torch.nn.Module):
         in_size = self.conf['graph_dataset']['Num_nodes'][0]
         self.input_size = in_size * in_size  # tutti gli elementi della matrice
         self.neurons_per_layer = self.conf['mlp_ae_model']['neurons_per_layer']
-        # devo definire un layer latente intermedio di embedding
+        # devo comunque definire un layer latente intermedio di embedding per avere embedding:dim
         self.embedding_dim = min(self.neurons_per_layer)
         activation_function = get_activ_func_from_config(self.conf['mlp_ae_model'].get('activation'))
         last_act_func = get_activ_func_from_config(self.conf['mlp_ae_model'].get('last_layer_activation'))
@@ -503,27 +503,40 @@ class ConfModelDecoder(InnerProductDecoder):
         sigmoid = False
         adj = torch.matmul(z, z.t())
         value = adj / (1 + adj)
+        value.fill_diagonal_(0)
         #check_nans(value, z)
         return value
 
 
 class MLPDecoder(torch.nn.Module):
-    def __init__(self, in_dim, out_dim, **kwargs):
+    def __init__(self, config, in_dim, out_dim, **kwargs):
         """
-        :param in_dim:  deve essere la dim delle feture del nod
+        :param in_dim:  deve essere la dim delle feture del nodo
         :param out_dim:  deve essere il numero di nodi
         in modo che il prodotto venga una matrice num_nodi X num_nodi
         """
         super().__init__(**kwargs)
-        hidden_dim = 20
-        self.linear1 = Linear(in_dim, hidden_dim)
-        self.linear2 = Linear(hidden_dim, out_dim)
-        self.elu = ELU()
+        self.conf = config
+        # prendo i neuroni dal livello linear che usavo per classification
+        self.neurons_per_layer = self.conf['model']['neurons_last_linear']
+        # prendo le activ.f. dedicate mlp_ae_model
+        activation_function = get_activ_func_from_config(self.conf['mlp_ae_model'].get('activation'))
+        last_act_func = get_activ_func_from_config(self.conf['mlp_ae_model'].get('last_layer_activation'))
+
+        decoder_layers = []
+        prev_size = in_dim
+        for hidden_size in reversed(self.neurons_per_layer):
+            decoder_layers.append(nn.Linear(prev_size, hidden_size))
+            decoder_layers.append(activation_function)
+            prev_size = hidden_size
+        decoder_layers.append(nn.Linear(prev_size, out_dim))
+        decoder_layers.append(last_act_func)
+        self.decoder_layers = torch.nn.Sequential(*decoder_layers)
 
     def forward_all(self, z, sigmoid=False):
         # devo tenere sigmoid per compatibilità con le altre classi
-        z = self.elu(self.linear1(z))
-        return torch.sigmoid(self.linear2(z))
+        z = self.decoder_layers(z)
+        return z
 
 
 

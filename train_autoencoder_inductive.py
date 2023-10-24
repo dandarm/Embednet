@@ -66,7 +66,7 @@ class Trainer_Autoencoder(Trainer):
             # quì suppongo che i nodi siano gli stessi per tutti i grafi
             out_dim = self.config_class.conf['graph_dataset']['Num_nodes'][0]  # numero di nodi per grafo
             in_dim = encoder.convs[-1].out_channels  # dimensione dell'embedding: ultimo layer convolutional
-            model.set_decoder(encoder, MLPDecoder(in_dim, out_dim))
+            model.set_decoder(encoder, MLPDecoder(self.conf, in_dim, out_dim))
 
 
         model.to(device)
@@ -367,6 +367,12 @@ class Trainer_Autoencoder(Trainer):
         final_loss = self.calc_loss(cost_matrix.ravel(), Adjs.ravel()).item()
         return final_loss
 
+    def calc_loss_input_dataset_CM(self, loader):
+        Adjs = self.dataset.get_concatenated_input_adjs(loader)
+        starting_matrix_pij = self.dataset.get_concatenated_starting_matrix(loader)
+        final_loss = self.calc_loss(starting_matrix_pij.ravel(), Adjs.ravel()).item()
+        return final_loss
+
     # def get_embedding(self, loader, type_embedding='both'):
     #     self.model.eval()
     #     graph_embeddings_array = []
@@ -473,6 +479,7 @@ class Trainer_Autoencoder(Trainer):
                 e.calc_decoder_output(self.model.forward_all, sigmoid=False)
             e.to_cpu()
             e.calc_degree_sequence()
+            e.calc_clustering_coeff()
             e.sample_without_threshold()
 
 
@@ -525,7 +532,7 @@ class Trainer_Autoencoder(Trainer):
                 pred_t = torch.tensor(predictions)
                 inpt_t = torch.tensor(inputs, dtype=torch.uint8)
                 #hamming_dist = self.HD(pred_t, inpt_t)
-                euclid_dist = (pred_t.ravel() - inpt_t.ravel()).pow(2).sum().sqrt()
+                euclid_dist = (pred_t.ravel() - inpt_t.ravel()).pow(2).sum().sqrt().item()
                 euclid_dist = euclid_dist / num_grafi # deve essere uguale anche a pred shape
                 #print(hamming_dist)
             except Exception as e:

@@ -120,7 +120,7 @@ class Experiments():
         else:
             self.trainer = Trainer(config_class, rootsave=self.rootsave)
 
-    def GS_simple_experiments(self, parallel_take_result=True, do_plot=True, **kwargs):
+    def GS_simple_experiments(self, do_plot=True, **kwargs):
 
         k = 0
         for c in self.gc.configs:
@@ -130,11 +130,21 @@ class Experiments():
             self.save_config_to_path(c)
             self.just_train(verbose=self.verbose)
             k += 1
-
             print("🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳\n")
 
 
 # region tutti gli altri GS
+
+    def many_same_training(self, ktot):
+        for c in self.gc.configs:
+            self.init_trainer(c)
+            self.save_config_to_path(c)
+            orig_run_path = self.trainer.run_path
+            for k in range(ktot):
+                self.trainer.change_kth_runpath(orig_run_path, k)
+                self.just_train(verbose=self.verbose)
+
+
     def stesso_init_diversi_dataset(self):
         self.GS_same_weight_inits_different_datasets(test_same_training=False)
     def GS_same_weight_inits_different_datasets(self):

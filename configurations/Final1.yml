@@ -12,10 +12,10 @@ graph_dataset:
     range_p: [0.01, 0.5]
     community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]], [[0.4, 0.01], [0.01, 0.1]]]  # num nodi * num classi * num comunità
     Num_nodes: [500] #, 200, 200, 200] # , 200]
-    Num_grafi_per_tipo: 100
+    Num_grafi_per_tipo: 20
     Num_grafi_totali: 1000
     list_degree: [7]
-    list_exponents: [-2.2, -2.5, -2.8, -3.0, -3.2]  #, -3.5, -3.7]
+    list_exponents: [-2.2]  #, -2.5, -2.8, -3.0, -3.2]  #, -3.5, -3.7]
     #max_degree_const_dist: 50
     
     
@@ -25,9 +25,9 @@ training:
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
-    learning_rate: 0.001
+    learning_rate: 0.0005
     epochs: 2000000
-    epochs_list_points: 350
+    epochs_list_points: 250
     batch_size: 1000
     percentage_train: 0.70
     earlystop_patience: 500
@@ -39,15 +39,17 @@ training:
     optimizer: 'ADAMW'
     #weigths4unbalanced_dataset: True
     loss: 'BCELoss' # MSELoss  "MSELoss_ww"  "BCELoss_ww"
+    repetitions: 0
 
 plot:
     x_axis_log: True
     plot_model: False
+    plot_embeddings: False
     
 model:
     last_layer_dense: False
     GCNneurons_per_layer: [1, 32, 32, 32]
-    neurons_last_linear: [16, 16, 2]
+    neurons_last_linear: [32, 32]
     freezeGCNlayers: False
     only_encoder: False
     autoencoder: False
@@ -71,7 +73,7 @@ graph_ae_model:
     neurons_per_layer: [1,32,32,32]
 
 mlp_ae_model:
-    neurons_per_layer: [256, 128, 256]
+    neurons_per_layer: [128, 128]
     activation: 'ELU'
     last_layer_activation: 'Sigmoid'
     

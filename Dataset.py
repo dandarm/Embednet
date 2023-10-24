@@ -25,6 +25,10 @@ class GeneralDataset:
         self.exponent = kwarg.get('exponent')
         self.scalar_label = kwarg.get('scalar_label')
 
+        self.p_ij = kwarg.get('p_ij')
+
+        self.actual_cluster_coeff = kwarg.get('actual_cluster_coeff')
+
         # devo ricalcolare il num_nodes_per_graph
         self._num_nodes_per_graph = None
 
@@ -272,7 +276,7 @@ class Dataset(GeneralDataset):
     def get_concatenated_constant_matrix(self, loader):
         for data in loader:
             input_adj = to_dense_adj(data.edge_index, data.batch)[0]  # loader mi ritorna un batch intero
-            break
+            break# TODO: cambiare nel aso in cui la batch size sia più piccola del dataset!
         out = []
         for p in self.scalar_label:  # nel caso di ER questa l è la p_ER
             m = self.matrix_constant_ER(input_adj, p)
@@ -285,4 +289,15 @@ class Dataset(GeneralDataset):
         cost_adj = np.full(shape, p_ER)
         # cost_adj e' la predicted (x) da confrontare con input (y)
         return cost_adj
+
+    def get_concatenated_starting_matrix(self, loader):
+        for data in loader:
+            input_adj = to_dense_adj(data.edge_index, data.batch)[0]  # loader mi ritorna un batch intero
+            break   # TODO: cambiare nel aso in cui la batch size sia più piccola del dataset!
+        out = []
+        for p in self.scalar_label:  # nel caso di powerlaw questa è l'esponente
+            m = np.tile(self.p_ij, (input_adj.shape[0],1,1))
+            out.append(m)
+        out = torch.Tensor(np.array(out))
+        return out
 

@@ -91,21 +91,7 @@ def studioERp():
 #     embedding_class = xp.embedding()
 
 def simple_grid_search(argv):
-    c, diz_trials = get_diz_trials("configurations/Final1.yml")
-
-    try:
-        modification_file = argv[1]
-        edits = load_trials_edits(modification_file)
-    except Exception as e:
-        print(e)
-        print("Nessuna modifica ai trials")
-        edits = None
-
-    path_to_save = Path(str(argv[0]))
-    #print(f"Salvo plot in {rootsave / path_to_save} ")
-
-    if edits is not None:
-        diz_trials = modify_some_trials(diz_trials, **edits)
+    c, diz_trials, path_to_save = load_trials(argv)
 
     is_verbose = argv[2] == "True"
     print(f"verbose: {is_verbose}")
@@ -113,6 +99,34 @@ def simple_grid_search(argv):
                      rootsave=rootsave / path_to_save, config_class=c,
                      reset_all_seeds=False, verbose=is_verbose)
     xp.GS_simple_experiments(verbose=is_verbose)
+
+
+def load_trials(argv):
+    c, diz_trials = get_diz_trials("configurations/Final1.yml")
+    try:
+        modification_file = argv[1]
+        edits = load_trials_edits(modification_file)
+    except Exception as e:
+        print(e)
+        print("Nessuna modifica ai trials")
+        edits = None
+    path_to_save = Path(str(argv[0]))
+    # print(f"Salvo plot in {rootsave / path_to_save} ")
+    if edits is not None:
+        diz_trials = modify_some_trials(diz_trials, **edits)
+    return c, diz_trials, path_to_save
+
+
+def run_many_same_training(argv):
+    c, diz_trials, path_to_save = load_trials(argv)
+    is_verbose = argv[2] == "True"
+
+    xp = Experiments(diz_trials=diz_trials,
+                     rootsave=rootsave / path_to_save, config_class=c,
+                     reset_all_seeds=False, verbose=is_verbose)
+    reps = c.conf['training'].get('repetitions')
+    if reps > 0:
+        xp.many_same_training(reps)
 
 # endregion
 
@@ -199,7 +213,26 @@ if __name__ == "__main__":
     #simple_grid_search()
 
     #count_non_iso_motif_up_to_n(4)
+
     simple_grid_search(sys.argv[1:])
+    #run_many_same_training(sys.argv[1:])
+
+    # from NEMtropy import UndirectedGraph, network_functions
+    # from graph_generation import rndm
+    #
+    # Num_nodes = 350
+    # exponent = -2.1
+    # s = rndm(3, Num_nodes, exponent, Num_nodes)
+    # x = np.array(s, int)
+    # ps = x * x[:, np.newaxis]
+    # p_ij = ps / (1 + ps)
+    # graph = UndirectedGraph(p_ij)
+    # graph.solve_tool(model="cm_exp",
+    #                  method="newton",
+    #                  initial_guess="random")
+    # res = graph.ensemble_sampler(10, cpu_n=None, output_dir="None")
+    # #network_functions.build_graph_from_edgelist(res[0], is_directed=False)
+    # network_functions.build_adjacency_from_edgelist(res[0], is_directed=False)
 
 
 

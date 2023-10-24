@@ -9,6 +9,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import imageio
 import multiprocessing
+import pickle
 
 import numpy as np
 import torch
@@ -103,6 +104,16 @@ class Trainer():
         if not os.path.exists(run_path):
             os.makedirs(run_path)
         return run_path
+
+    def change_kth_runpath(self, orig_run_path, k):
+        kth_run_path = Path(orig_run_path) / str(k)
+        if not os.path.exists(kth_run_path):
+            os.makedirs(kth_run_path)
+        else:
+            raise Exception("La cartella già esiste -> il training è già stato fatto")
+        self.run_path = kth_run_path
+
+
 
     def make_epochs_list_for_embedding_tracing(self, list_points):
         """
@@ -471,7 +482,8 @@ class Trainer():
         self.train_loss_list.append(test_loss)
         self.test_loss_list.append(test_loss)
         print("Prima snapshot...")   # self.epochs if self.epochs > 0 else 1,
-        self.produce_traning_snapshot(0, False, [])
+        self.produce_traning_snapshot(0, False, [],
+                                      plot_embeddings=self.conf['plot'].get('plot_embeddings'))
         file_path = self.run_path / f"_epoch0.png"
         animation_files.append(file_path)
 
@@ -544,7 +556,8 @@ class Trainer():
             if self.conf['training'].get('every_epoch_embedding'):
                 if epoch in self.epochs_list:
                     parallel = True
-                    self.produce_traning_snapshot(epoch, parallel, parallel_processes_save_images)
+                    self.produce_traning_snapshot(epoch, parallel, parallel_processes_save_images,
+                                                  plot_embeddings=self.conf['plot'].get('plot_embeddings'))
                     file_path = self.run_path / f"_epoch{epoch}.png"
                     animation_files.append(file_path)
 
@@ -603,6 +616,9 @@ class Trainer():
 
         if not self.config_class.conf['training']['every_epoch_embedding']:
             self.produce_traning_snapshot(self.last_epoch, False, [], last_plot=True)
+
+        # salvo le metriche su pickle
+        self.save_metrics2file()
 
         return
 
@@ -745,14 +761,16 @@ class Trainer():
     def save_image_at_epoch(self, embedding_arrays, model_weights_and_labels, epoch,
                             emb_pergraph_train=None, emb_pergraph_test=None,
                             path=".", **kwargs):
-        # DEVO SEPARARE LA RACCOLTA DEGLI EMBEDDING DAL MULTIPROCESSING, ma mi sa che no nsi chiamare lo spostamento dalla gpu da dentro un processo parallelo
+        # DEVO SEPARARE LA RACCOLTA DEGLI EMBEDDING DAL MULTIPROCESSING,
+        # ma mi sa che non si può chiamare (lo spostamento dalla gpu) da dentro un processo parallelo
         if self.config_class.autoencoding:
             embedding_class = Embedding_autoencoder(embedding_arrays, config_c=self.config_class, dataset=self.dataset)
             embedding_class.get_metrics(self.embedding_dimension)
             data = DataAutoenc2Plot(embedding_class, dim=self.embedding_dimension,
                                     config_class=self.config_class,
                                     emb_pergraph_train=emb_pergraph_train,
-                                    emb_pergraph_test=emb_pergraph_test)
+                                    emb_pergraph_test=emb_pergraph_test,
+                                    **kwargs)
         else:
             graph_embeddings_array, node_embeddings_array, final_output = embedding_arrays
             embedding_class = Embedding(graph_embeddings_array, node_embeddings_array, self.dataset, self.config_class, final_output)
@@ -794,14 +812,16 @@ class Trainer():
                                intr_dim_epoch_list=intr_dim_epoch_list,
                                **kwargs)
 
+            #data.plot_output_clust_coeff(filename_save=path / f"clust_coeff_{epoch}.png")
+
             if kwargs.get("notsave"):
                 fig.show()
             else:
                 file_name = path / f"_epoch{epoch}"
                 plt.savefig(file_name)
-                fig.clf()
-                plt.cla()
-                plt.clf()
+                #fig.clf()
+                #plt.cla()
+                #plt.clf()
                 if not self.conf['training']['every_epoch_embedding']: # quì ho soltanto una immagine all'inizio e una allafine
                     # salvo solo lultima immagine e la rinomino:
                     os.rename(f"{file_name}.png", path / f"{self.unique_train_name}.png")
@@ -846,7 +866,20 @@ class Trainer():
             metric_obj_list_test = [self.metric_obj_list_test[0]]
             total_node_emb_dim = [self.total_node_emb_dim[0]]
             total_graph_emb_dim = [self.total_graph_emb_dim[0]]
+            intr_dim_epoch_list = range(self.epochs_list[-1] + 1)
 
         return all_range_epochs_list, metric_epoch_list, metric_obj_list_test, metric_obj_list_train, testll, total_graph_emb_dim, total_node_emb_dim, trainll, intr_dim_epoch_list
 
+    def save_metrics2file(self):
+        self.savelist2pickle(self.metric_obj_list_train, "metrics_train")
+        self.savelist2pickle(self.metric_obj_list_test, "metrics_test")
+        self.savelist2pickle(self.total_node_emb_dim[:], "totale_node_dim")
+        self.savelist2pickle(self.total_graph_emb_dim[:], "totale_graph_dim")
+        self.savelist2pickle(self.train_loss_list, "train_loss")
+        self.savelist2pickle(self.test_loss_list, "test_loss")
+        Path(self.run_path / "§training_ended§").touch()
+
+    def savelist2pickle(self, list, nomefile):
+        with open(f'{self.run_path / nomefile}.pkl', 'wb') as f:
+            pickle.dump(list, f)
 

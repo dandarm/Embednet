@@ -481,8 +481,10 @@ class Embedding_autoencoder_per_graph():
         self.scalar_label = None
         self.node_label_from_dataset = None
         self.node_degree = None  # viene dai grafi di input
+        self.node_cc = None   # cluster coeff dell'input
 
         self.out_degree_seq = None  # viene dai grafi di output
+        self.out_clust_coeff = None  # clust coeff dall'output
 
         self.HardTanh = Hardtanh(0, 1)
 
@@ -516,6 +518,20 @@ class Embedding_autoencoder_per_graph():
     def calc_degree_sequence(self):
         self.out_degree_seq = self.decoder_output.sum(axis=1)
 
+    def calc_clustering_coeff(self):
+        #adj = self.sample_from_pij(self.decoder_output)
+        #graph = nx.from_numpy_array(adj)
+        #clust_coeffs = nx.clustering(graph)
+
+        clust_coeffs = cc_einsum(self.decoder_output)
+        #only_ccs = list(dict(clust_coeffs).values())  # for dw in clust_coeffs]  [
+        self.out_clust_coeff = clust_coeffs
+        #print(f"cosa è il clust coeff?: {self.out_clust_coeff}")
+
+
+
+
+
     def calc_graph_emb(self):
         #print(f"shape di node embedding: {self.node_embedding.shape}")
         self.graph_embedding = np.mean(self.node_embedding, axis=-2).squeeze()   # perch
@@ -532,6 +548,18 @@ class Embedding_autoencoder_per_graph():
         adj = np.random.binomial(1, p_ij)
         return adj
 
+
+def cc_einsum(m):
+    np.fill_diagonal(m, 0)
+    denom = np.einsum('ij,ki->i', m, m)
+    correzione = np.einsum('ij,ji->i', m, m)
+    d = (denom - correzione)
+    num = np.einsum('ij,jk,ki->i', m, m, m)
+
+    # Use numpy.divide() to handle division by zero directly
+    cc = np.divide(num, d, out=np.zeros_like(num), where=d != 0)
+
+    return cc
 
 
 class Embedding_autoencoder(Embedding):
@@ -554,6 +582,7 @@ class Embedding_autoencoder(Embedding):
 
         self.node_label_from_dataset = dataset.original_node_class
         self.node_degree = dataset.actual_node_class
+        self.node_cc = dataset.actual_cluster_coeff
         self.scalar_label = dataset.scalar_label
         self.tidy_embeddings_with_labels()
 
@@ -564,6 +593,7 @@ class Embedding_autoencoder(Embedding):
         for i, graph in enumerate(self.list_emb_autoenc_per_graph):
             graph.node_label_from_dataset = self.node_label_from_dataset[i]
             graph.node_degree = self.node_degree[i]
+            graph.node_cc = self.node_cc[i]
             graph.scalar_label = self.scalar_label[i]
 
     # def calc_decoder_output(self, model_decoder, activation_func, **kwargs):
@@ -663,4 +693,21 @@ class Embedding_AEMLP_per_graph():
 
         self.out_degree_seq = self.output_adj_mat.sum(axis=1)
         self.input_degree_seq = self.input_adj_mat.sum(axis=1)
+
+        self.out_clust_coeff = self.calc_clustering_coeff(self.output_adj_mat)
+        self.input_clust_coeff = self.calc_clustering_coeff(self.input_adj_mat)
+
+
+    def sample_from_pij(self, p_ij):
+        pij_shape = p_ij.shape
+        assert len(pij_shape) == 2,  f"Non e' una matrice. p_ij shape: {pij_shape}"
+        adj = np.random.binomial(1, p_ij)
+        return adj
+
+    def calc_clustering_coeff(self, matrix):
+        adj = self.sample_from_pij(matrix)
+        graph = nx.from_numpy_array(adj)
+        clust_coeffs = nx.clustering(graph)
+        only_ccs = list(dict(clust_coeffs).values())  # for dw in clust_coeffs]  [
+        return only_ccs
 
