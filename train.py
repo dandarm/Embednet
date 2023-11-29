@@ -93,11 +93,12 @@ class Trainer():
         #self.mapping_of_snap_epochs = {snapshot_epochs: sequential_epochs for
         #                sequential_epochs, snapshot_epochs in enumerate(self.epochs_list)}
 
-        self.total_node_emb_dim = multiprocessing.Array('f', range(self.epochs+1))
-        self.total_graph_emb_dim = multiprocessing.Array('f', range(self.epochs+1))
-        for i in range(self.epochs):
-            self.total_node_emb_dim[i] = -1.0
-            self.total_graph_emb_dim[i] = -1.0
+        if self.conf['training'].get('every_epoch_embedding'):
+            self.total_node_emb_dim = multiprocessing.Array('f', range(self.epochs+1))
+            self.total_graph_emb_dim = multiprocessing.Array('f', range(self.epochs+1))
+            for i in range(self.epochs):
+                self.total_node_emb_dim[i] = -1.0
+                self.total_graph_emb_dim[i] = -1.0
 
     def create_runpath_dir(self):
         run_path = self.rootsave / self.unique_train_name
@@ -149,13 +150,9 @@ class Trainer():
         :return:
         """
         if verbose: print("Initialize model")
-        if self.config_class.conf['device'] == 'gpu':
-            device = torch.device('cuda')
-        else:
-            device = "cpu"
 
         model = GCN(self.config_class)
-        model.to(device)
+        model.to(self.device)
         if init_weights_gcn is not None:
             modify_parameters(model, init_weights_gcn)
         if init_weights_lin is not None:
@@ -482,10 +479,11 @@ class Trainer():
         self.train_loss_list.append(test_loss)
         self.test_loss_list.append(test_loss)
         print("Prima snapshot...")   # self.epochs if self.epochs > 0 else 1,
-        self.produce_traning_snapshot(0, False, [],
+        if self.conf['training'].get('every_epoch_embedding'):
+            self.produce_traning_snapshot(0, False, [],
                                       plot_embeddings=self.conf['plot'].get('plot_embeddings'))
-        file_path = self.run_path / f"_epoch0.png"
-        animation_files.append(file_path)
+            file_path = self.run_path / f"_epoch0.png"
+            animation_files.append(file_path)
 
         #self.f1score_list.append(test_f1score)
         #self.last_metric_value = self.metric_list[-1]
@@ -533,7 +531,7 @@ class Trainer():
 
         for epoch in tqdm(range(1, self.epochs+1), total=self.epochs):
 
-            if epoch % 1 == 0:
+            if epoch % self.conf['training'].get('test_loss_every_epochs') == 0:
                 test_loss = self.test(self.dataset.test_loader)
                 writer.add_scalar("Test Loss", test_loss, epoch)
                 #writer.add_scalar(f"Test {self.name_of_metric}", metric_object.get_metric(self.name_of_metric), epoch)
@@ -580,7 +578,7 @@ class Trainer():
                     best_loss = test_loss
                     best_epoch = epoch
                     self.best_model = copy.deepcopy(self.model)
-                torch.save(self.best_model.state_dict(), self.run_path / "model")
+                    torch.save(self.best_model.state_dict(), self.run_path / "model")
 
             # endregion
 
@@ -605,17 +603,16 @@ class Trainer():
         self.last_epoch = epoch
 
         # aspetto per sicurezza che tutti i processi di salvataggio immagini siano finiti
-        for p in parallel_processes_save_images:
-            p.join()
-        sys.stdout.flush()
+        if self.conf['training'].get('every_epoch_embedding'):
+            for p in parallel_processes_save_images:
+                p.join()
+            sys.stdout.flush()
 
-        # salvo le animazioni
-        if self.conf['training'].get('every_epoch_embedding') and self.epochs != 0:
+            # salvo le animazioni
             self.epochs_list = np.insert(self.epochs_list, 0, 0)
             self.save_all_animations(animation_files, self.epochs_list)
 
-        if not self.config_class.conf['training']['every_epoch_embedding']:
-            self.produce_traning_snapshot(self.last_epoch, False, [], last_plot=True)
+            #self.produce_traning_snapshot(self.last_epoch, False, [], last_plot=True)
 
         # salvo le metriche su pickle
         self.save_metrics2file()

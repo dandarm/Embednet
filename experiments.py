@@ -17,7 +17,8 @@ from models import GAEGCNEncoder, view_parameters, get_param_labels, new_paramet
 from train import Trainer
 from train_autoencoder_inductive import Trainer_Autoencoder
 from train_autoencoderMIAGAE import Trainer_AutoencoderMIAGAE
-from train_autoencoderMLP import  Trainer_AutoencoderMLP
+from train_autoencoderMLP import Trainer_AutoencoderMLP
+from train_degree_seq import Trainer_Degree_Sequence
 #from train_debug_MIAGAE import Trainer_AutoencoderMIAGAE_DEBUG
 from embedding import Embedding
 from plot_funcs import Data2Plot, DataAutoenc2Plot, plot_metrics
@@ -113,8 +114,10 @@ class Experiments():
             if config_class.conf['model']['autoencoder_graph_ae']:
                 self.trainer = Trainer_AutoencoderMIAGAE(config_class, rootsave=self.rootsave, verbose=self.verbose)
             # DEBUG #self.trainer = Trainer_AutoencoderMIAGAE_DEBUG(self.config_class)
-            elif config_class.conf['model']['autoencoder_fullMLP']:
+            elif config_class.conf['model']['autoencoder_fullMLP'] or config_class.conf['model']['autoencoder_fullMLP_CM']:
                 self.trainer = Trainer_AutoencoderMLP(config_class, rootsave=self.rootsave, verbose=self.verbose)
+            elif config_class.conf['model'].get('autoencoder_degseq'):
+                self.trainer = Trainer_Degree_Sequence(config_class, rootsave=self.rootsave, verbose=self.verbose)
             else:
                 self.trainer = Trainer_Autoencoder(config_class, rootsave=self.rootsave, verbose=self.verbose)
         else:

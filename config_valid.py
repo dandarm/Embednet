@@ -75,7 +75,11 @@ class Config():
                 self.conf['model'].get('autoencoder_confmodel') or
                 self.conf['model'].get('autoencoder_mlpdecoder') or
                 self.conf['model'].get('autoencoder_fullMLP') or
-                self.conf['model'].get('autoencoder_graph_ae')):
+                self.conf['model'].get('autoencoder_fullMLP_CM') or
+                self.conf['model'].get('autoencoder_graph_ae') or
+                self.conf['model'].get('autoencoder_degseq') or
+                self.conf['model'].get('autoencoder_MLPCM')
+        ):
             self.autoencoding = True
 
         if self.conf['device'] == 'gpu':
@@ -220,7 +224,10 @@ class Config():
                       self.conf['model']['autoencoder_confmodel'],
                       self.conf['model']['autoencoder_graph_ae'],
                       self.conf['model']['autoencoder_mlpdecoder'],
-                      self.conf['model']['autoencoder_fullMLP']]
+                      self.conf['model']['autoencoder_fullMLP'],
+                      self.conf['model']['autoencoder_fullMLP_CM'],
+                      self.conf['model']['autoencoder_degseq'],
+                      self.conf['model']['autoencoder_MLPCM']]
         true_found = self.only1Bool(bool_array, tipi='modello')
         return true_found
 
@@ -240,7 +247,7 @@ class Config():
         neurons = self.conf['model']['GCNneurons_per_layer']
         if self.conf['model']['autoencoder_graph_ae']:
             neurons = self.conf['graph_ae_model']['neurons_per_layer']
-        elif self.conf['model']['autoencoder_fullMLP']:
+        elif self.conf['model']['autoencoder_fullMLP'] or self.conf['model']['autoencoder_fullMLP_CM']:
             neurons = self.conf['mlp_ae_model']['neurons_per_layer']
         elif modo == "AE_decMLP":
             neurons = str(neurons) + "ç" + str(self.conf['model']['neurons_last_linear'])
@@ -305,18 +312,20 @@ class Config():
             modo = "AE_decMLP"
         elif self.conf['model']['autoencoder_fullMLP']:
             modo = "AE_fullMLP"
+        elif self.conf['model']['autoencoder_fullMLP_CM']:
+            modo = "AE_fullMLP_CM"
         elif self.conf['model']['autoencoder_graph_ae']:
             modo = "MIAGAE"
 
 
-        if self.conf['model']['autoencoder_fullMLP']:
+        if self.conf['model']['autoencoder_fullMLP'] or self.conf['model']['autoencoder_fullMLP_CM']:
             freezed = ""
         else:
             freezed = "- GCN freezed" if self.conf['model']['freezeGCNlayers'] else ""
 
         layer_neuron_string = self.create_layer_neuron_string(modo)
             
-        if self.conf['model']['autoencoder_graph_ae'] or self.conf['model']['autoencoder_fullMLP']:
+        if self.conf['model']['autoencoder_graph_ae'] or self.conf['model']['autoencoder_fullMLP'] or self.conf['model']['autoencoder_fullMLP_CM']:
             init_weights = ""
         else:
             init_weights = self.conf['model']['init_weights']

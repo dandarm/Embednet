@@ -434,7 +434,10 @@ class AutoencoderGCN(GCN):
     def recon_loss(self, z, pos_edge_label_index, neg_edge_index=None):
         return self.decoder.recon_loss(z, pos_edge_label_index, neg_edge_index)
     def forward_all(self, z, sigmoid: bool = False):
-        return self.decoder.decoder.forward_all(z, sigmoid=sigmoid)
+        print(f"output z: {z.shape}")
+        output = self.decoder.decoder.forward_all(z, sigmoid=sigmoid)
+        print(f"output decoder: {output.shape}")
+        return output
 
     @classmethod
     def from_parent_instance(cls, dic_attr, parent_instance):
@@ -481,11 +484,33 @@ class AutoencoderMLP(torch.nn.Module):
 
         self.decoder = torch.nn.Sequential(*decoder_layers)
 
+        if self.conf['model']['autoencoder_fullMLP_CM']:
+            self.final_layer = self.cm_layer
+        else:
+            self.final_layer = self.linear_layer
+
     def forward(self, x):
         x = self.encoder(x)
         x = self.decoder(x)
+        x = self.final_layer(x)
+
         return x
 
+    def linear_layer(self, x):
+        return x
+
+    def cm_layer(self, z):
+        z = z.reshape(z.shape[0], int(np.sqrt(z.shape[-1])), int(np.sqrt(z.shape[-1])))
+        res = []
+        for v in z:
+            adj = torch.matmul(v, v.t())
+            value = adj / (1 + adj)
+            value.fill_diagonal_(0)
+            res.append(v)
+        # check_nans(value, z)
+        out = torch.stack(res)
+        out = out.reshape(out.shape[0], -1)
+        return out
 
 class ConfModelDecoder(InnerProductDecoder):
     def __init__(self, **kwargs):
@@ -538,6 +563,21 @@ class MLPDecoder(torch.nn.Module):
         z = self.decoder_layers(z)
         return z
 
+
+class MLPCMDecoder(MLPDecoder):
+    def __init__(self, config, in_dim, out_dim, **kwargs):
+        super().__init__(config, in_dim, out_dim, **kwargs)
+        # Inizializzazione aggiuntiva se necessaria
+
+    def forward_all(self, z, sigmoid=False):
+        # Prima applica le operazioni di MLPDecoder
+        z = super().forward_all(z)
+
+        # Poi esegui la normalizzazione come in ConfModelDecoder
+        adj = torch.matmul(z, z.t())
+        value = adj / (1 + adj)
+        value.fill_diagonal_(0)  # Assicurati che la diagonale sia 0
+        return value
 
 
 def check_nans(input_array, embedding_z):

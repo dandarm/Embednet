@@ -644,7 +644,7 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
         #    axt.set_yticklabels([0.0,1.0])
         # axt.yaxis.label.set_color(pmetric.get_color())
         asse.tick_params(axis='y', colors=pmetric.get_color())
-    axt.set_ylim(0, 1)
+    #axt.set_ylim(0, 1)
     ax2.set_ylim(0, max(metricatest))
     axt.legend(loc='upper right')
     ax2.legend(loc='upper center')

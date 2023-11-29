@@ -483,6 +483,8 @@ class GenerateGraph():
                                       actual_node_class=degrees,
                                       scalar_label=np.array([0]*len(grafi)))
 
+
+
 # endregion
 
     def make_planted_matrix(self, a):

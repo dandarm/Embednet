@@ -9,6 +9,7 @@ import torch
 from train import Trainer
 from models import AutoencoderMLP
 from Dataset_ae_mlp import Dataset_for_ae_mlp
+from Dataset import Dataset
 from Metrics import Metrics
 from plot_funcs import DataAutoenc2Plot, plot_metrics
 from Data_AEMLP_2Plot import DataAEMLP2Plot
@@ -45,7 +46,10 @@ class Trainer_AutoencoderMLP(Trainer):
     def load_dataset(self, dataset, parallel=False):
         print("Loading Dataset...")
         if not self.config_class.conf['graph_dataset'].get('real_dataset'):
+            #if self.config_class.conf['model']['autoencoder_fullMLP']:
             self.dataset = Dataset_for_ae_mlp(self.config_class, super_instance=dataset, verbose=self.verbose)
+            #elif self.config_class.conf['model']['autoencoder_fullMLP_CM']:
+            #    self.dataset = Dataset.from_super_instance(self.config_class, dataset, verbose=self.verbose)
             self.dataset.prepare(self.shuffle_dataset, parallel)
 
 

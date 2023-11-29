@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from torch.nn import Linear, BatchNorm1d, LeakyReLU, Hardsigmoid, Tanh, ELU, Hardtanh, ReLU
 
 from train import Trainer
-from models import GCN, AutoencoderGCN, ConfModelDecoder, MLPDecoder
+from models import GCN, AutoencoderGCN, ConfModelDecoder, MLPDecoder, MLPCMDecoder
 from models import view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear, view_weights_gradients
 #from Dataset_autoencoder import DatasetAutoencoder
 from embedding import Embedding_autoencoder_per_graph, Embedding_autoencoder
@@ -50,14 +50,21 @@ class Trainer_Autoencoder(Trainer):
         :return:
         """
         if verbose: print("Initialize model")
-        if self.config_class.conf['device'] == 'gpu':
-            device = torch.device('cuda')
-        else:
-            device = "cpu"
-
 
         encoder = GCN(self.config_class)
         model = AutoencoderGCN.from_parent_instance(dic_attr="dict_attr", parent_instance=encoder)
+        self.init_decoder(encoder, model)
+
+        model.to(self.device)
+        if init_weights_gcn is not None:
+            modify_parameters(model, init_weights_gcn)
+        if init_weights_lin is not None:
+            modify_parameters_linear(model, init_weights_lin)
+        if verbose:
+            print(model)
+        return model
+
+    def init_decoder(self, encoder, model):
         if self.config_class.conf['model']['autoencoder']:
             model.set_decoder(encoder)
         elif self.config_class.conf['model'].get('autoencoder_confmodel'):
@@ -67,17 +74,12 @@ class Trainer_Autoencoder(Trainer):
             out_dim = self.config_class.conf['graph_dataset']['Num_nodes'][0]  # numero di nodi per grafo
             in_dim = encoder.convs[-1].out_channels  # dimensione dell'embedding: ultimo layer convolutional
             model.set_decoder(encoder, MLPDecoder(self.conf, in_dim, out_dim))
+        elif self.config_class.conf['model'].get('autoencoder_MLPCM'):
+            in_dim = encoder.convs[-1].out_channels  # dimensione dell'embedding: ultimo layer convolution
+            out_dim = self.config_class.conf['model'].get('neurons_last_linear')[-1]
+            model.set_decoder(encoder, MLPCMDecoder(self.conf, in_dim, out_dim))
 
 
-        model.to(device)
-        if init_weights_gcn is not None:
-            modify_parameters(model, init_weights_gcn)
-        if init_weights_lin is not None:
-            modify_parameters_linear(model, init_weights_lin)
-        if verbose:
-            print(model)
-        return model
-        
     def gestisci_batch(self, complete_adjacency_matrix, batch_array, num_nodi_adj):
         # !SLOW
         # create a mask for pairs of nodes that belong to the same graph
@@ -249,8 +251,6 @@ class Trainer_Autoencoder(Trainer):
             total_batch_z, adjusted_pred_adj, input_adj = self.encode_decode_inputadj(
                 data, i, self.dataset.train_loader.batch_size, num_nodes_batch)
 
-            adjusted_pred_adj_r = adjusted_pred_adj.ravel()
-            input_adj_r = input_adj.ravel()
             ##print(f"adjusted_pred_adj shape: {adjusted_pred_adj_r.shape}")
             ##print(f"input_adj shape: {input_adj_r.shape}")
 
@@ -264,7 +264,7 @@ class Trainer_Autoencoder(Trainer):
 
             ##print(f"adjusted_pred_adj_t shape: {adjusted_pred_adj_t.shape}")
             ##print(f"input_adj_t shape_t: {input_adj_t.shape}")
-            loss = self.calc_loss(adjusted_pred_adj_r, input_adj_r)
+            loss = self.calc_loss(adjusted_pred_adj, input_adj)
 
             ##view_weights_gradients(self.model)
             loss.backward()  # Derive gradients.
@@ -312,10 +312,7 @@ class Trainer_Autoencoder(Trainer):
                 total_batch_z, adjusted_pred_adj, input_adj = self.encode_decode_inputadj(
                     data, i, loader.batch_size, num_nodes_batch)
 
-                adjusted_pred_adj_r = adjusted_pred_adj.ravel()
-                input_adj_r = input_adj.ravel()
-
-                loss = self.calc_loss(adjusted_pred_adj_r, input_adj_r)
+                loss = self.calc_loss(adjusted_pred_adj, input_adj)
 
                 running_loss += loss.item()
                 i += loader.batch_size
@@ -323,13 +320,15 @@ class Trainer_Autoencoder(Trainer):
 
         return running_loss / num_batches
 
-    def calc_loss(self, adjusted_pred_adj_r, input_adj_r):
+    def calc_loss(self, adjusted_pred_adj, input_adj):
         """
         :param adjusted_pred_adj_r:  deve essere sempre un vettore 1D quello rispetto al quale si calcola la loss
         :param input_adj_r:  idem. Altrimenti calcola tante loss, una per ogni vettore lungo l'ultima dimensione
         :param is_weighted:
         :return:
         """
+        adjusted_pred_adj_r = adjusted_pred_adj.ravel()
+        input_adj_r = input_adj.ravel()
         #pred_activated = self.loss_activation(adjusted_pred_adj_r)
         if self.is_weighted:
             unreduced_loss = self.criterion(adjusted_pred_adj_r, input_adj_r)
@@ -533,7 +532,7 @@ class Trainer_Autoencoder(Trainer):
                 inpt_t = torch.tensor(inputs, dtype=torch.uint8)
                 #hamming_dist = self.HD(pred_t, inpt_t)
                 euclid_dist = (pred_t.ravel() - inpt_t.ravel()).pow(2).sum().sqrt().item()
-                euclid_dist = euclid_dist / num_grafi # deve essere uguale anche a pred shape
+                euclid_dist = euclid_dist / num_grafi  # deve essere uguale anche a pred shape
                 #print(hamming_dist)
             except Exception as e:
                 auc = -1

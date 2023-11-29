@@ -25,9 +25,10 @@ training:
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
-    learning_rate: 0.0005
-    epochs: 2000000
-    epochs_list_points: 250
+    learning_rate: 0.00025
+    epochs: 5000
+    epochs_list_points: 30
+    test_loss_every_epochs: 20
     batch_size: 1000
     percentage_train: 0.70
     earlystop_patience: 500
@@ -44,7 +45,7 @@ training:
 plot:
     x_axis_log: True
     plot_model: False
-    plot_embeddings: False
+    plot_embeddings: True
     
 model:
     last_layer_dense: False
@@ -57,6 +58,9 @@ model:
     autoencoder_graph_ae: False
     autoencoder_mlpdecoder: False
     autoencoder_fullMLP: False
+    autoencoder_degseq: False
+    autoencoder_MLPCM: False
+    autoencoder_fullMLP_CM: False
     put_batchnorm: False
     put_graphnorm: False
     final_pool_aggregator: True
@@ -73,7 +77,7 @@ graph_ae_model:
     neurons_per_layer: [1,32,32,32]
 
 mlp_ae_model:
-    neurons_per_layer: [128, 128]
+    neurons_per_layer: [16, 16]
     activation: 'ELU'
     last_layer_activation: 'Sigmoid'
     
