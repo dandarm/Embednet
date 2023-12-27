@@ -8,7 +8,7 @@ graph_dataset:
     real_data_name:  'BACI'  #'REDDIT-BINARY'   #
     continuous_p: False
     random_node_feat: False
-    list_p: [0.27] #, 0.2, 0.15, 0.1] #, 0.01]
+    list_p: [0.01] #, 0.2, 0.15, 0.1] #, 0.01]
     range_p: [0.01, 0.5]
     community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]], [[0.4, 0.01], [0.01, 0.1]]]  # num nodi * num classi * num comunità
     Num_nodes: [500] #, 200, 200, 200] # , 200]
@@ -25,10 +25,10 @@ training:
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
-    learning_rate: 0.00025
-    epochs: 5000
-    epochs_list_points: 30
-    test_loss_every_epochs: 20
+    learning_rate: 0.0005
+    epochs: 100000
+    epochs_list_points: 40
+    test_loss_every_epochs: 200
     batch_size: 1000
     percentage_train: 0.70
     earlystop_patience: 500
@@ -45,7 +45,7 @@ training:
 plot:
     x_axis_log: True
     plot_model: False
-    plot_embeddings: True
+    plot_embeddings: False
     
 model:
     last_layer_dense: False
@@ -69,6 +69,7 @@ model:
     init_weights:  'xavier_normal' #  'kaiming_uniform'  'normal'
     activation: 'ELU'   # LeakyRELU , Hardtanh, 'RELU' Tanh'
     last_layer_activation: 'RELU'  #'5*Softsign'    #
+    normalized_adj: True
     
 graph_ae_model:
     num_kernels: 2

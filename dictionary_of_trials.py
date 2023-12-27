@@ -2,26 +2,28 @@ import yaml
 from config_valid import Config
 
 def get_diz_trials(nome_file_config="configurations/Final1.yml"):
-    num_nodi = 100
+    num_nodi = 800
     c = Config(nome_file_config)
     print("primo config base da estendere con i trials validato.")
-    #c.conf['graph_dataset']['list_exponents'] = [-2.2, -2.9]
-    diz_trials = {'model.autoencoder': [False],
+    #c.conf['graph_dataset']['list_exponents'] =
+    diz_trials = {'model.autoencoder': [True],
                   'model.autoencoder_confmodel': [False],
                   'model.autoencoder_mlpdecoder': [False],
                   'model.autoencoder_fullMLP': [False],
                   'model.autoencoder_degseq': [False],
                   'model.autoencoder_MLPCM': [False],
-                  'model.autoencoder_fullMLP_CM': [True],
-                  'model.last_layer_activation': ['RELU'],    #['Sigmoid'],  # 'Identity'],   # una esclude l-altra con AE e AE_CM
+                  'model.autoencoder_fullMLP_CM': [False],
+                  'model.last_layer_activation': ['RELU'],    #['Sigmoid'], RELU  # 'Identity'],   # una esclude l-altra con AE e AE_CM
+                  'model.normalized_adj': [True],
                   'graph_dataset.ERmodel': [True],
                   'graph_dataset.confmodel': [False],
                   'graph_dataset.sbm': [False],
                   'graph_dataset.const_degree_dist': [False],
                   'graph_dataset.real_dataset': [False],
-                  'graph_dataset.list_p': [[0.1]],  #0.25,[0.3],[0.5],[0.7],[0.9]],  #[0.1,0.2,0.5,0.8,0.9]
+                  #'graph_dataset.list_p': [[0.3], [0.5], [0.7], [0.9]],  #[0.1,0.2,0.5,0.8,0.9]
+                  #'graph_dataset.list_exponents': [[-0.3],[0.3],[-2.1]],
                   'graph_dataset.Num_nodes': [[num_nodi]],  # [num_nodi]*5, [[num_nodi, int(num_nodi / 2)]] * 3],  # per lo SBM: num nodi * num classi * num comunità
-                  'graph_dataset.Num_grafi_per_tipo': [50],
+                  'graph_dataset.Num_grafi_per_tipo': [21],
                   'model.GCNneurons_per_layer': [
                       # [1, 32, 16, len(c.conf['graph_dataset']['list_exponents'])],
                       # [1, 32, 16, len(c.conf['graph_dataset']['list_p'])],
@@ -30,7 +32,9 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml"):
                       #[1, 64, 64, 64, 32],
                       #[1, 32, 32, 32]
                       #[1, 64, 64, 32],
-                      [1, 32, 32],
+                      #[1,128,128,64,32,16]
+                      [1,8,4],
+                      #[1, 8, 8, 8, 8, 4]
 
                       #[1, 16, 16, 16],
                       #[1, 64, 16]
@@ -63,7 +67,7 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml"):
                       #[1,2]
                   ],
                   'model.neurons_last_linear': [[32, 32]],
-                  'model.init_weights': ['xavier_normal'],  #'eye'],  # , ],, 'xavier_uniform', 'sparse'  orthogonal
+                  'model.init_weights': ['xavier_normal'],  #''],   # , eye],, 'xavier_uniform', 'sparse'  orthogonal
                   #'model.put_batchnorm': [False],
                   'model.put_graphnorm': [True],
                   #'training.learning_rate': [0.0001, 0.0005],

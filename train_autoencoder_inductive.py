@@ -479,6 +479,7 @@ class Trainer_Autoencoder(Trainer):
             e.to_cpu()
             e.calc_degree_sequence()
             e.calc_clustering_coeff()
+            e.calc_knn()
             e.sample_without_threshold()
 
 

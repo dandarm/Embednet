@@ -428,7 +428,28 @@ class DataAutoenc2Plot(Data2Plot):
             if ax is None:
                 plt.show()
 
+    def plot_output_knn(self, filename_save=None, ax=None):
+        pred_knn = np.array([g.out_knn for g in self.input_obj]).ravel().squeeze()
+        input_knn = np.array(self.wrapper_obj.node_knn).ravel().squeeze()
+        #print(f"pred_knn shape {pred_knn.shape}")
+        #print(f"input_knn shape {input_knn.shape}")
 
+        if ax is not None:
+            ax.set_title(f'Knn coeff.', fontsize='small')
+            ax.scatter(input_knn, pred_knn, label="Predicted")
+            ax.scatter(input_knn, input_knn, label="Input", color='red')
+            ax.set_ylim(min(input_knn), max(input_knn))
+            ax.legend()
+        else:
+            plt.scatter(input_knn, pred_knn, label="Predicted")
+            plt.scatter(input_knn, input_knn, label="Input", color='red')
+            plt.ylim(min(input_knn), max(input_knn))
+            plt.legend()
+        if filename_save:
+            plt.savefig(filename_save)
+        else:
+            if ax is None:
+                plt.show()
 
 
     def get_color(self, i):
@@ -529,6 +550,7 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
 
     ax0100 = ax01s.flat[0]
     ax0101 = ax01s.flat[1]
+    ax0102 = ax01s.flat[2]
 
     if data is not None:
         if not data.fullMLP:
@@ -540,6 +562,7 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
                 else:
                     data.plot_output_degree_sequence(ax=ax0100)
                     data.plot_output_clust_coeff(ax=ax0101)
+                    data.plot_output_knn(ax=ax0102)
                 # TODO: rimettere
                 #plot_node_and_graph_correlations(axes, graph_correlation, node_correlation, epochs_list, **kwargs)
             else:
@@ -551,11 +574,13 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
                 else:
                     data.plot_output_degree_sequence(ax=ax0100)
                     data.plot_output_clust_coeff(ax=ax0101)
+                    data.plot_output_knn(ax=ax0102)
                 if node_intrinsic_dimensions_total is not None and graph_intrinsic_dimensions_total is not None:
                     plot_intrinsic_dimension(ax11, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, intr_dim_epoch_list, **kwargs)
         else:
             data.plot_output_degree_sequence(ax=ax0100)
             data.plot_output_clust_coeff(ax=ax0101)
+            data.plot_output_knn(ax=ax0102)
 
         if data.config_class.autoencoding:
             ax02_bis = figs_i[2].add_subplot(111, sharex=ax02, sharey=ax02, label=f"ax02bis")
@@ -1131,20 +1156,9 @@ def plot_data_degree_sequence(emb_by_class, sequential_colors=False, log=False):
         custom_lines.append(Line2D([0], [0], color=color, lw=3))
         scalar_label.append(emb_class[0].scalar_label)
         for emb_pergraph in emb_class:
-            counts = np.unique(emb_pergraph.actual_node_class, return_counts=True)
-            degree_sorted = sorted(emb_pergraph.actual_node_class, reverse=True)
-            #if sequential_colors:
-            if log:
-                ax1.loglog(*counts, c=color, alpha=alpha_value, label=emb_pergraph.scalar_label, linewidth=3)
-                ax2.loglog(degree_sorted, '.', c=color, alpha=alpha_value, label=emb_pergraph.scalar_label)
-            else:
-                ax1.plot(*counts, c=color, alpha=alpha_value, label=emb_pergraph.scalar_label, linewidth=3)
-                ax2.plot(degree_sorted, '.', c=color, alpha=alpha_value, label=emb_pergraph.scalar_label)
-            #else:
-            #    if log:
-            #        ax1.loglog(*counts, c=color, alpha=alpha_value, label=emb_pergraph.scalar_label)
-            #    else:
-            #        ax1.plot(*counts, c=color, alpha=alpha_value, label=emb_pergraph.scalar_label)
+            degree_sequence = emb_pergraph.actual_node_class
+            plot_label = emb_pergraph.scalar_label
+            plot_deg_seq(alpha_value, ax1, ax2, color, degree_sequence, log, plot_label)
 
     # plt.legend(loc="upper left")
     ax1.set_title(f'Node degree distribution')
@@ -1158,6 +1172,18 @@ def plot_data_degree_sequence(emb_by_class, sequential_colors=False, log=False):
     ax2.legend(custom_lines, [f"class {e}" for e in scalar_label])
     # plt.gca().legend(('y0','y1'))
     plt.show()
+
+
+def plot_deg_seq(alpha_value, ax1, ax2, color, degree_sequence, log, plot_label):
+    counts = np.unique(degree_sequence, return_counts=True)
+    degree_sorted = sorted(degree_sequence, reverse=True)
+    # if sequential_colors:
+    if log:
+        ax1.loglog(*counts, c=color, alpha=alpha_value, label=plot_label, linewidth=3)
+        ax2.loglog(degree_sorted, '.', c=color, alpha=alpha_value, label=plot_label)
+    else:
+        ax1.plot(*counts, c=color, alpha=alpha_value, label=plot_label, linewidth=3)
+        ax2.plot(degree_sorted, '.', c=color, alpha=alpha_value, label=plot_label)
 
 
 def plot_corr_epoch(avg_corr_classes, config_c, ax=None):

@@ -53,8 +53,9 @@ class GCN(torch.nn.Module):
         ###########   COSTRUISCO L'ARCHITETTURA      ###############
         ############################################################
         rangeconv_layers = range(len(self.GCNneurons_per_layer) - 1)
+        norm = self.conf['model'].get('normalized_adj')
         for i in rangeconv_layers:
-            self.convs.append(GCNConv(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1]))
+            self.convs.append(GCNConv(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1], normalize=norm))
             if self.put_batchnorm:
                 self.GCNbatchnorms.append(BatchNorm1d(self.GCNneurons_per_layer[i]))
             elif self.put_graphnorm:
@@ -257,20 +258,23 @@ def view_weights_gradients(model):
             gradients.append(m.lin.weight.grad)
     return gradients
 
-def new_parameters(model, method=Inits.xavier_uniform, const_value=1.0):
+def new_parameters(model, method=Inits.xavier_uniform, const_value=1.0, **kwargs):
     new_par = []
-
     for m in model.modules():
         if isinstance(m, nn.GCNConv):
             shape = m.lin.weight.shape
             custom_weight = torch.empty(shape)
-            custom_weight = get_weights_from_init_method(custom_weight, method, const_value=const_value)
+            custom_weight = get_weights_from_init_method(custom_weight, method, const_value=const_value, **kwargs)
 
             new_par.append(custom_weight)
     return new_par
 
 
-def get_weights_from_init_method(custom_weight, method, const_value=1.0):
+def get_weights_from_init_method(custom_weight, method, const_value=1.0, **kwargs):
+    if kwargs.get('modified_gain_for_UNnormalized_adj'):
+        gain = 0.003
+    else:
+        gain = 1.0
     if method is Inits.kaiming_normal:
         gain = torch.nn.init.calculate_gain(nonlinearity='relu', param=None)  # nonlinearity – the non-linear function (nn.functional name)
         torch.nn.init.kaiming_normal_(custom_weight, mode='fan_out', nonlinearity='relu')
@@ -289,7 +293,7 @@ def get_weights_from_init_method(custom_weight, method, const_value=1.0):
     elif method == Inits.xavier_uniform:
         torch.nn.init.xavier_uniform_(custom_weight, gain=1.0)
     elif method == Inits.xavier_normal:
-        torch.nn.init.xavier_normal_(custom_weight, gain=1.0)
+        torch.nn.init.xavier_normal_(custom_weight, gain=gain)  #gain=1.0
     elif method == Inits.trunc_normal:
         torch.nn.init.trunc_normal_(custom_weight, mean=0.0, std=1.0, a=- 2.0, b=2.0)
     elif method == Inits.orthogonal:
@@ -420,7 +424,7 @@ class AutoencoderGCN(GCN):
 
     def set_decoder(self, encoder, decoder=None):
         if decoder is not None:
-            # necessario per attaccare corretatmente il decoder al GAE
+            # necessario per attaccare correttamente il decoder al GAE
             self.decoder = GAE(encoder, decoder=decoder)
         else:
             self.decoder = GAE(encoder)
@@ -434,9 +438,7 @@ class AutoencoderGCN(GCN):
     def recon_loss(self, z, pos_edge_label_index, neg_edge_index=None):
         return self.decoder.recon_loss(z, pos_edge_label_index, neg_edge_index)
     def forward_all(self, z, sigmoid: bool = False):
-        print(f"output z: {z.shape}")
         output = self.decoder.decoder.forward_all(z, sigmoid=sigmoid)
-        print(f"output decoder: {output.shape}")
         return output
 
     @classmethod

@@ -33,6 +33,7 @@ class GenerateGraph():
         self.actual_ERprobs = []
         self.dataset_degree_seq = []
         self.dataset_cluster_coeff = []
+        self.dataset_knn = []
         self.scalar_label = []
         self.node_label = []
 
@@ -110,6 +111,7 @@ class GenerateGraph():
         actual_probs = []
         actual_degrees = []
         actual_clust_coeff = []
+        actual_knn = []
         N_graphs = int(N_graphs)
         for i in range(N_graphs):
             gr = nx.erdos_renyi_graph(Num_nodes, p)  # seed = 1
@@ -120,10 +122,11 @@ class GenerateGraph():
             actual_probs.append(actual_p)
             actual_degrees.append(gr.degree())
             actual_clust_coeff.append(nx.clustering(gr))
+            actual_knn.append(nx.average_neighbor_degree(gr))
 
         if self.verbose: self.info_connectivity(grafi, p)
 
-        return grafi, actual_probs, actual_degrees, actual_clust_coeff
+        return grafi, actual_probs, actual_degrees, actual_clust_coeff, actual_knn
 
     def info_connectivity(self, grafi, p):
         print("Mean connectivity for each node:", end=' ')
@@ -159,26 +162,29 @@ class GenerateGraph():
         if parallel:
             with Pool(processes=32) as pool:
                 input_list = zip([Num_nodes]*N_graphs, [exponent]*N_graphs)
-                grafi_actual_degrees_clustcoeff = pool.map(self.build_cm_graph, input_list)
-                grafi = [gr[0] for gr in grafi_actual_degrees_clustcoeff]
-                actual_degrees = [gr[1] for gr in grafi_actual_degrees_clustcoeff]
-                actual_clust_coeff = [gr[2] for gr in grafi_actual_degrees_clustcoeff]
+                grafi_actual_feats = pool.map(self.build_cm_graph, input_list)
+                grafi = [gr[0] for gr in grafi_actual_feats]
+                actual_degrees = [gr[1] for gr in grafi_actual_feats]
+                actual_clust_coeff = [gr[2] for gr in grafi_actual_feats]
+                actual_knn = [gr[3] for gr in grafi_actual_feats]
         else:
             grafi = []
             actual_degrees = []
             actual_clust_coeff = []
+            actual_knn = []
             for n in range(N_graphs):
-                gr0, degree, cc = self.build_cm_graph((Num_nodes, exponent))
+                gr0, degree, cc, knn = self.build_cm_graph((Num_nodes, exponent))
                 grafi.append(gr0)
                 actual_degrees.append(degree)
                 actual_clust_coeff.append(cc)
+                actual_knn.append(knn)
 
         #actual_degrees = grafi_actual_degrees[:,1]
         #print(grafi, len(grafi), type(grafi))
         #print(actual_degrees, len(actual_degrees), type(actual_degrees))
         #print(type(grafi))
         #print(f"Nodi rimanenti in media: {np.array([len(gr.nodes()) for gr in grafi]).mean()}")
-        return grafi, actual_degrees, actual_clust_coeff
+        return grafi, actual_degrees, actual_clust_coeff, actual_knn
 
     def build_cm_graph(self, Num_nodes_exponent):
         Num_nodes, exponent = Num_nodes_exponent
@@ -196,9 +202,10 @@ class GenerateGraph():
         gr0 = gr.subgraph(Gcc[0]).copy()
         gr.clear()
         cc = nx.clustering(gr0)
+        knn = nx.average_neighbor_degree(gr0)
         #print(f"Nodi rimanenti: {len(gr0.nodes())}")
         #degree = [d for v, d in gr0.degree()]
-        return gr0, gr0.degree(), cc
+        return gr0, gr0.degree(), cc, knn
 
     def get_starting_matrix(self, Num_nodes, exponent):
         # calcola p_ij che è la matrice di partenza che usa poi NEMtropy per generare il dataset
@@ -251,12 +258,15 @@ class GenerateGraph():
 
         for i, p in enumerate(list_p):
             N = nodes_per_class[i]
-            grafi_p, actual_probs, actual_degrees, actual_clust_coeff = self.create_ER(N, p, self.Num_grafi_per_tipo)
+            grafi_p, actual_probs, actual_degrees, actual_clust_coeff, actual_knn = (
+                self.create_ER(N, p, self.Num_grafi_per_tipo))
             self.dataset_grafi_nx.extend(grafi_p)
             only_degrees = [list(dict(dw).values()) for dw in actual_degrees]
             only_ccs = [list(dict(dw).values()) for dw in actual_clust_coeff]
+            only_knn = [list(dict(dw).values()) for dw in actual_knn]
             self.dataset_degree_seq.extend(only_degrees)
             self.dataset_cluster_coeff.extend(only_ccs)
+            self.dataset_knn.extend(only_knn)
             self.actual_ERprobs.extend(actual_probs)
             self.node_label.extend([[p] * N] * self.Num_grafi_per_tipo)
             # shape: Num_per_tipo*len(list_p) X N
@@ -281,7 +291,8 @@ class GenerateGraph():
                                       original_node_class=self.node_label,
                                       actual_node_class=self.dataset_degree_seq,
                                       scalar_label=self.scalar_label,
-                                      actual_cluster_coeff=self.dataset_cluster_coeff)
+                                      actual_cluster_coeff=self.dataset_cluster_coeff,
+                                      actual_knn=self.dataset_knn)
 
     def dataset_regression_ER(self):
         nodes_per_class = self.conf['graph_dataset']['Num_nodes']
@@ -358,20 +369,22 @@ class GenerateGraph():
             #else:
             #    num_nodes = int(self.N)
             N = nodes_per_class[i]
-            #grafi, actual_degrees, actual_clust_coeff = self.create_confmodel(N, self.Num_grafi_per_tipo, exponent=exp, parallel=parallel)
-            grafi, p_ij = self.create_confmodel_nemtropy(N, self.Num_grafi_per_tipo, exponent=exp)
-            #p_ij=0
+            grafi, actual_degrees, actual_clust_coeff, actual_knn = self.create_confmodel(N, self.Num_grafi_per_tipo, exponent=exp, parallel=parallel)
+            #grafi, p_ij = self.create_confmodel_nemtropy(N, self.Num_grafi_per_tipo, exponent=exp)
+            p_ij=0
             self.dataset_grafi_nx = self.dataset_grafi_nx + grafi
             self.target_labels = self.target_labels + [encoded[i]] * len(grafi)
             self.node_label.extend([[exp] * N] * self.Num_grafi_per_tipo)
             # prima di aggiungere tolgo l'id dei nodi da questo array, per ora non mi serve
             # type nx.classes.reportviews.DegreeView
-            actual_degrees = [g.degrees() for g in grafi]
+            actual_degrees = [g.degree() for g in grafi]
             only_degrees = [list(dict(dw).values()) for dw in actual_degrees]
             actual_clust_coeff = [nx.clustering(g) for g in grafi]
             only_ccs = [list(dict(dw).values()) for dw in actual_clust_coeff]
+            only_knn = [list(dict(dw).values()) for dw in actual_knn]
             self.dataset_degree_seq.extend(only_degrees)
             self.dataset_cluster_coeff.extend(only_ccs)
+            self.dataset_knn.extend(only_knn)
             self.scalar_label = self.scalar_label + [exp] * self.Num_grafi_per_tipo
 
         self.dataset = GeneralDataset(self.dataset_grafi_nx, np.array(self.target_labels),
@@ -380,7 +393,8 @@ class GenerateGraph():
                                       scalar_label=self.scalar_label,
                                       exponent=list(zip(self.scalar_label, self.target_labels)),
                                       p_ij=p_ij,
-                                      actual_cluster_coeff=self.dataset_cluster_coeff)
+                                      actual_cluster_coeff=self.dataset_cluster_coeff,
+                                      actual_knn=self.dataset_knn)
 
     def dataset_regression_CM(self, parallel=True):
         nodes_per_class = self.conf['graph_dataset']['Num_nodes']

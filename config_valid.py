@@ -314,6 +314,8 @@ class Config():
             modo = "AE_fullMLP"
         elif self.conf['model']['autoencoder_fullMLP_CM']:
             modo = "AE_fullMLP_CM"
+        elif self.conf['model']['autoencoder_degseq']:
+            modo = "fit_DEG_SEQ"
         elif self.conf['model']['autoencoder_graph_ae']:
             modo = "MIAGAE"
 
@@ -341,13 +343,20 @@ class Config():
         if self.conf['model'].get('put_graphnorm'):
             btchnrm = "grphnorm"
 
-        string_model = f"_{modo.ljust(10, '_')}_{layer_neuron_string.ljust(14,'_')}__{activation_type}+{last_activation_type}__{btchnrm}__-{init_weights.ljust(10, '_')}"
-        long_string_model = f"Modello {modo} {layer_neuron_string} - activ func: {activation_type}+{last_activation_type} - {btchnrm} - {init_weights} \n"
+        if self.conf['model'].get('normalized_adj'):
+            normalize = ''
+        else:
+            normalize = "UNnorm_adj"
+
+        string_model = f"_{modo.ljust(10, '_')}_{layer_neuron_string.ljust(14,'_')}__{activation_type}+{last_activation_type}__{btchnrm}__-{init_weights.ljust(10, '_')}__{normalize}"
+        long_string_model = f"Modello {modo} {layer_neuron_string} - activ func: {activation_type}+{last_activation_type} - {btchnrm} - {init_weights} - {normalize} \n"
         # endregion
 
         # region string trainer
         # percentuale_train = self.conf['training']['percentage_train']
         loss_string = self.conf['training']['loss']
+        if self.conf['model']['autoencoder_degseq']:
+            loss_string = "MSELoss"
         lr = self.conf['training']['learning_rate']
         optim = self.conf['training'].get('optimizer')
         shuffled = self.conf['training']['shuffle_dataset']
@@ -378,8 +387,9 @@ class Config():
         actv_f = self.conf['model'].get('last_layer_activation')
         if self.conf['model'].get('autoencoder_confmodel'):
             assert actv_f == 'RELU', f"last_layer_activation {actv_f}  -  {actv_f == 'RELU'}"
-        if self.conf['model'].get('autoencoder'):
-            assert actv_f != 'RELU', "Nel caso di autoencoder con sigmoide(z.zT) la RELU taglia i valori negativi, e dopo la sigmoide non ho mai p=ij minori di 0.5"
+        # questa condizione non serve più perché ho fissato HARDTANH come output dell'autoencoder semplice
+        #if self.conf['model'].get('autoencoder'):
+        #    assert actv_f != 'RELU', "Nel caso di autoencoder con sigmoide(z.zT) la RELU taglia i valori negativi, e dopo la sigmoide non ho mai p=ij minori di 0.5"
 
     def get_num_classes(self):
         if self.conf['graph_dataset']['ERmodel']:
@@ -409,4 +419,38 @@ class Config():
             return conf_df
         else:
             raise Exception("Configuration dictionary not initialized")
-        
+
+
+
+
+def get_dataset_trial_string(graphtype):
+    if graphtype != GraphType.REAL:
+        if graphtype == GraphType.CM:
+            label = 'graph_dataset.confmodel'
+        elif graphtype == GraphType.ER:
+            label = 'graph_dataset.ERmodel'
+        elif graphtype == GraphType.SBM:
+            label = 'graph_dataset.sbm'
+        elif graphtype == GraphType.Regular:
+            label = 'graph_dataset.regular'
+        elif graphtype == GraphType.CONST_DEG_DIST:
+            label = 'graph_dataset.const_degree_dist'
+    elif graphtype == GraphType.REAL:
+        pass
+    return label
+
+def get_model_trial_string(s):
+    if s == "AE":
+        return 'autoencoder'
+    elif s == "AE_CM":
+        return 'autoencoder_confmodel'
+    elif s == "AE_decMLP":
+        return 'autoencoder_mlpdecoder'
+    elif s == "AE_fullMLP":
+        return 'autoencoder_fullMLP'
+    elif s == "AE_fullMLP_CM":
+        return 'autoencoder_fullMLP_CM'
+    elif s == 'fit_DEG_SEQ':
+        return 'autoencoder_degseq'
+    elif s == "MIAGAE":
+        return 'autoencoder_graph_ae'

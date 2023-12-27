@@ -219,6 +219,7 @@ output/
 plot_funcs_old.py
 
 output_plots/
+output_data/
 
 load_datasets.ipynb
 Untitled*.ipynb

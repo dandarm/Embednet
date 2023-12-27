@@ -261,7 +261,9 @@ class Trainer():
         :return:
         """
         init_weigths_method = self.config_class.init_weights_mode
-        w = new_parameters(self.init_GCN(), init_weigths_method)
+        v = self.conf['model'].get('normalized_adj')
+        v = not v  # se v falso dobbiamo modificare il gain perché stiamo nel caso UNnormalized: modified_gain deve essere True
+        w = new_parameters(self.init_GCN(), init_weigths_method, modified_gain_for_UNnormalized_adj=v)
         model = self.init_GCN(init_weights_gcn=w, verbose=verbose)
         if path_model_toload is None:
             self.load_model(model)
@@ -490,6 +492,10 @@ class Trainer():
         self.last_epoch = 0
         # siamo bravi fin quì 🤪
 
+        # salvo la sequenza di grado originale (totale)
+        path_deg_seq_totale = self.run_path / f"_degseq_totale"
+        np.save(path_deg_seq_totale, self.dataset.actual_node_class)  # è il node_degree
+
         if self.epochs == 0:
             return
 
@@ -644,6 +650,17 @@ class Trainer():
             self.save_image_at_epoch(all_embeddings_arrays, model_weights, epoch,
                                      emb_pergraph_train, emb_pergraph_test,
                                      self.run_path, **kwargs)
+
+        #path_deg_seq_train = self.run_path / f"_degseq_train_epoch{epoch}"
+        #path_deg_seq_test = self.run_path / f"_degseq_test_epoch{epoch}"
+        path_totale = self.run_path / f"_degseq_tot_epoch{epoch}"
+        #train_degrees = np.array([g.out_degree_seq for g in emb_pergraph_train]).ravel().squeeze()
+        #np.save(path_deg_seq_train, train_degrees)
+        #test_degrees = np.array([g.out_degree_seq for g in emb_pergraph_test]).ravel().squeeze()
+        #np.save(path_deg_seq_test, test_degrees)
+        all_degrees = np.array([g.out_degree_seq for g in all_embeddings_arrays]).ravel().squeeze()
+        np.save(path_totale, all_degrees)
+
         return metric_object_train, metric_object_test
 
     def save_all_animations(self, animation_files, epochs_list):

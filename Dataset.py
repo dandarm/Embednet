@@ -28,6 +28,7 @@ class GeneralDataset:
         self.p_ij = kwarg.get('p_ij')
 
         self.actual_cluster_coeff = kwarg.get('actual_cluster_coeff')
+        self.actual_knn = kwarg.get('actual_knn')
 
         # devo ricalcolare il num_nodes_per_graph
         self._num_nodes_per_graph = None

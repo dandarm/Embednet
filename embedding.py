@@ -482,9 +482,11 @@ class Embedding_autoencoder_per_graph():
         self.node_label_from_dataset = None
         self.node_degree = None  # viene dai grafi di input
         self.node_cc = None   # cluster coeff dell'input
+        self.node_knn = None
 
         self.out_degree_seq = None  # viene dai grafi di output
         self.out_clust_coeff = None  # clust coeff dall'output
+        self.out_knn = None
 
         self.HardTanh = Hardtanh(0, 1)
 
@@ -525,10 +527,12 @@ class Embedding_autoencoder_per_graph():
 
         clust_coeffs = cc_einsum(self.decoder_output)
         #only_ccs = list(dict(clust_coeffs).values())  # for dw in clust_coeffs]  [
-        self.out_clust_coeff = clust_coeffs
+        self.out_clust_coeff = clust_coeffs  # np.zeros(self.decoder_output.shape[0])
         #print(f"cosa è il clust coeff?: {self.out_clust_coeff}")
 
-
+    def calc_knn(self):
+        knn = knn_einsum(self.decoder_output)
+        self.out_knn = knn
 
 
 
@@ -550,6 +554,11 @@ class Embedding_autoencoder_per_graph():
 
 
 def cc_einsum(m):
+    # impostare la diagonale a zero permette di gestire bene il fatto che
+    # i \neq j, k \neq i, j al numeratore
+    # mentre il per il denominatore devo togliere una componente che corrisponde al caso k = j
+    # perché non compare p_jk, come invece compare al nueratore
+
     np.fill_diagonal(m, 0)
     denom = np.einsum('ij,ki->i', m, m)
     correzione = np.einsum('ij,ji->i', m, m)
@@ -560,6 +569,12 @@ def cc_einsum(m):
     cc = np.divide(num, d, out=np.zeros_like(num), where=d != 0)
 
     return cc
+
+def knn_einsum(m):
+    denom = m.sum(axis=1)
+    num = np.einsum('ij,jk -> i', m, m)
+    knn = np.divide(num, denom, out=np.zeros_like(num), where= denom!=0)
+    return knn
 
 
 class Embedding_autoencoder(Embedding):
@@ -583,6 +598,7 @@ class Embedding_autoencoder(Embedding):
         self.node_label_from_dataset = dataset.original_node_class
         self.node_degree = dataset.actual_node_class
         self.node_cc = dataset.actual_cluster_coeff
+        self.node_knn = dataset.actual_knn
         self.scalar_label = dataset.scalar_label
         self.tidy_embeddings_with_labels()
 
@@ -594,6 +610,7 @@ class Embedding_autoencoder(Embedding):
             graph.node_label_from_dataset = self.node_label_from_dataset[i]
             graph.node_degree = self.node_degree[i]
             graph.node_cc = self.node_cc[i]
+            graph.node_knn = self.node_knn[i]
             graph.scalar_label = self.scalar_label[i]
 
     # def calc_decoder_output(self, model_decoder, activation_func, **kwargs):
@@ -695,6 +712,7 @@ class Embedding_AEMLP_per_graph():
         self.input_degree_seq = self.input_adj_mat.sum(axis=1)
 
         self.out_clust_coeff = self.calc_clustering_coeff(self.output_adj_mat)
+        self.out_knn = self.calc_knn(self.output_adj_mat)
         self.input_clust_coeff = self.calc_clustering_coeff(self.input_adj_mat)
 
 
