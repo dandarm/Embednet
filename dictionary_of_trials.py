@@ -6,8 +6,8 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml"):
     c = Config(nome_file_config)
     print("primo config base da estendere con i trials validato.")
     #c.conf['graph_dataset']['list_exponents'] =
-    diz_trials = {'model.autoencoder': [True],
-                  'model.autoencoder_confmodel': [False],
+    diz_trials = {'model.autoencoder': [False],
+                  'model.autoencoder_confmodel': [True],
                   'model.autoencoder_mlpdecoder': [False],
                   'model.autoencoder_fullMLP': [False],
                   'model.autoencoder_degseq': [False],
@@ -15,15 +15,15 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml"):
                   'model.autoencoder_fullMLP_CM': [False],
                   'model.last_layer_activation': ['RELU'],    #['Sigmoid'], RELU  # 'Identity'],   # una esclude l-altra con AE e AE_CM
                   'model.normalized_adj': [True],
-                  'graph_dataset.ERmodel': [True],
-                  'graph_dataset.confmodel': [False],
+                  'graph_dataset.ERmodel': [False],
+                  'graph_dataset.confmodel': [True],
                   'graph_dataset.sbm': [False],
                   'graph_dataset.const_degree_dist': [False],
                   'graph_dataset.real_dataset': [False],
                   #'graph_dataset.list_p': [[0.3], [0.5], [0.7], [0.9]],  #[0.1,0.2,0.5,0.8,0.9]
-                  #'graph_dataset.list_exponents': [[-0.3],[0.3],[-2.1]],
-                  'graph_dataset.Num_nodes': [[num_nodi]],  # [num_nodi]*5, [[num_nodi, int(num_nodi / 2)]] * 3],  # per lo SBM: num nodi * num classi * num comunità
-                  'graph_dataset.Num_grafi_per_tipo': [21],
+                  'graph_dataset.list_exponents': [[-0.3],[-0.5],[-0.7],[-0.9],[-1.1]],
+                  #'graph_dataset.Num_nodes': [[300],[500],[800]],  # [num_nodi]*5, [[num_nodi, int(num_nodi / 2)]] * 3],  # per lo SBM: num nodi * num classi * num comunità
+                  'graph_dataset.Num_grafi_per_tipo': [40],
                   'model.GCNneurons_per_layer': [
                       # [1, 32, 16, len(c.conf['graph_dataset']['list_exponents'])],
                       # [1, 32, 16, len(c.conf['graph_dataset']['list_p'])],

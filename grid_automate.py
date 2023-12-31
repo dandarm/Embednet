@@ -31,6 +31,7 @@ def get_df_from_configs(df_input):
     final_df['model.GCNneurons_per_layer'] = final_df['model.GCNneurons_per_layer'].apply(lambda x: tuple(x))
     final_df['graph_dataset.list_p'] = final_df['graph_dataset.list_p'].apply(lambda x: tuple(x))
     final_df['graph_dataset.Num_nodes'] = final_df['graph_dataset.Num_nodes'].apply(lambda x: tuple(x))
+    final_df['graph_dataset.list_exponents'] = final_df['graph_dataset.list_exponents'].apply(lambda x: tuple(x))
 
     return final_df
 
@@ -176,7 +177,7 @@ def plot_curves_vs_features(plot_data, feature='feat',
     for i, data in enumerate(plot_data):
         # plt.plot(data['x'], data['y'],  color=colors[i])  #label=data['label'],
         plot_res = ax.errorbar(data['x'], data['y'], yerr=data['errori'], label=str(data.get('label')), fmt='o', color=colors[i],
-                     ecolor='black', capsize=0, linestyle='None', alpha=0.3)
+                     ecolor='black', capsize=0, linestyle='None', alpha=0.2)
     ax.axhline(y=0, color='black', linewidth=1)  # linea orizzontale a 0 che è il desiderato
 
     node_list = [d[feature] for d in plot_data]
@@ -211,11 +212,24 @@ def get_color(plot_data):
     colors = [cm(1. * i / num_colors) for i in range(num_colors)]
     return colors, cm
 
+def find_best_seq_epoch(input_seq, pred_seq_4_epochs):
+    val = []
+    for pred in pred_seq_4_epochs:
+        diff = (pred - input_seq)**2
+        val.append(diff.sum())
+    
+    j = np.argmin(val)
+    print(j, len(pred_seq_4_epochs))
+    return pred_seq_4_epochs[j]
 
 def get_data_points_degrees_relative_difference(path):
     # carico i valori dello scarto y rispetto al grado x (con gli errori)
     pred_seq_4_epochs, epochs, input_seq, altre_prop = get_seq_4_epochs(path)
+    
     pred_seq = pred_seq_4_epochs[-1]  # prendo la sequenza di grado dell'ultima epoca
+    # ma ora voglio prendere la seq di grado all'epoca che minimizza lo scarto
+    pred_seq = find_best_seq_epoch(input_seq, pred_seq_4_epochs)
+    
     diff = (pred_seq - input_seq) / input_seq  # calcolo la differenza relativa tra la seq grado predetta e quella di input
     stats = calc_media_scarti(input_seq, diff)
     x_vals = list(stats.keys())  # contiene i valori unici del grado, mentre input_seq sono tutti i gradi di tutti i nodi (anche ripetuti)
