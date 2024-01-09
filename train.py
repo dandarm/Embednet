@@ -142,7 +142,7 @@ class Trainer():
             print(f"epoch list {lista} ")
         return np.concatenate(([0], lista))  # aggiungo anche l'elemento 0 per i plot snapshot
 
-    def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False):
+    def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False, degree_prob=None):
         """
         Returns the GCN model given the class of configurations
         :param config_class:
@@ -151,7 +151,7 @@ class Trainer():
         """
         if verbose: print("Initialize model")
 
-        model = GCN(self.config_class)
+        model = GCN(self.config_class, dataset_degree_prob=degree_prob)
         model.to(self.device)
         if init_weights_gcn is not None:
             modify_parameters(model, init_weights_gcn)
@@ -253,6 +253,9 @@ class Trainer():
                 self.dataset = Dataset.from_super_instance(self.config_class, dataset)
                 self.dataset.prepare(self.shuffle_dataset, parallel)
 
+        if self.config_class.conf['model'].get('my_normalization_adj'):
+            self.dataset.calc_degree_probabilities()
+
     def init_all(self, parallel=True, verbose=False, path_model_toload=None):
         """
         Inizializza modello e datasest
@@ -260,26 +263,32 @@ class Trainer():
         :param verbose: se True ritorna il plot object del model
         :return:
         """
-        init_weigths_method = self.config_class.init_weights_mode
-        v = self.conf['model'].get('normalized_adj')
-        v = not v  # se v falso dobbiamo modificare il gain perché stiamo nel caso UNnormalized: modified_gain deve essere True
-        w = new_parameters(self.init_GCN(), init_weigths_method, modified_gain_for_UNnormalized_adj=v)
-        model = self.init_GCN(init_weights_gcn=w, verbose=verbose)
-        if path_model_toload is None:
-            self.load_model(model)
-        else:
-            model.load_state_dict(torch.load(path_model_toload))
-            model.eval()
-            self.load_model(model)
-        
         self.init_dataset(parallel=parallel, verbose=verbose)
         self.load_dataset(self.gg.dataset, parallel=False)  # parallel false perché con load_from_networkx non c'è nulla da fare...
+        # inizializzo il modello dopo il dataset per gestire il caso d'uso "my_normalization_adj"
+        self.init_model(path_model_toload, verbose)
 
         if self.conf.get("plot").get("plot_model"):
             batch = self.dataset.sample_dummy_data()
             plot = plot_model(self.model, batch, self.unique_train_name)
             return plot
 
+    def init_model(self, path_model_toload, verbose):
+        init_weigths_method = self.config_class.init_weights_mode
+        v = self.conf['model'].get('normalized_adj')
+        v = not v  # se v falso dobbiamo modificare il gain perché stiamo nel caso UNnormalized: modified_gain deve essere True
+        w = new_parameters(self.init_GCN(), init_weigths_method, modified_gain_for_UNnormalized_adj=v)
+
+        degree_prob = None
+        if self.config_class.conf['model'].get('my_normalization_adj'):
+            degree_prob = self.dataset.degree_prob
+        model = self.init_GCN(init_weights_gcn=w, verbose=verbose, degree_prob=degree_prob)
+        if path_model_toload is None:
+            self.load_model(model)
+        else:
+            model.load_state_dict(torch.load(path_model_toload))
+            model.eval()
+            self.load_model(model)
 
     def correct_shape(self, y):
         if self.last_layer_neurons == 1:

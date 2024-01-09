@@ -1,4 +1,5 @@
 import random
+from collections import Counter
 from time import time
 from tqdm import tqdm
 import numpy as np
@@ -74,6 +75,14 @@ class Dataset(GeneralDataset):
 
         self.last_neurons = self.config_class.lastneuron
         self.all_data_loader = None
+
+
+    def calc_degree_probabilities(self):
+        # considero quì le statistiche per la normalizzazione della matrice di adiacenza della GCN
+        degree_count = Counter(self.actual_node_class)
+        # Normalizzazione dei conteggi -> probabilità!
+        total_count = sum(degree_count.values())
+        self.degree_prob = {degree: count / total_count for degree, count in degree_count.items()}
 
 
     @classmethod

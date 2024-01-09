@@ -1,6 +1,7 @@
 import random
 from time import time
 from tqdm import tqdm
+from collections import Counter
 import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
@@ -8,6 +9,8 @@ from torch_geometric.utils.convert import from_networkx
 from Dataset import Dataset
 import torch_geometric.transforms as T
 from multiprocessing import Pool
+
+
 
 
 class DatasetAutoencoder(Dataset):
@@ -22,6 +25,7 @@ class DatasetAutoencoder(Dataset):
         self.transform4ae = T.RandomLinkSplit(num_val=0.0, num_test=test_percent, is_undirected=True,
                                           split_labels=True, add_negative_train_samples=False)
         self.all_data_loader = None
+
 
     def convert_G(self, g_i):
         g, i = g_i

@@ -69,7 +69,8 @@ model:
     init_weights:  'xavier_normal' #  'kaiming_uniform'  'normal'
     activation: 'ELU'   # LeakyRELU , Hardtanh, 'RELU' Tanh'
     last_layer_activation: 'RELU'  #'5*Softsign'    #
-    normalized_adj: True
+    normalized_adj: False
+    my_normalization_adj: True
     
 graph_ae_model:
     num_kernels: 2

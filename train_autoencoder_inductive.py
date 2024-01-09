@@ -29,19 +29,6 @@ class Trainer_Autoencoder(Trainer):
 
         self.HardTanh = Hardtanh(0,1)
 
-        # la devo lasciare perche devo poter sistemare l'output dopo il prodotto scalare Z.Zt????
-        #  TODO: no non mi serve la posso cancellare, perche  l'output deve essere gia attivato
-        # self.loss_activation = None
-        # if self.conf['model']['autoencoder']:
-        #     self.loss_activation = torch.sigmoid
-        # elif self.conf['model'].get('autoencoder_confmodel'):
-        #     self.loss_activation = ReLU()    #nn.Identity()    # Hardtanh(0.01, 0.99)
-
-        #self.num_graphs = self.config_class.conf['graph_dataset']['Num_grafi_per_tipo'] * self.config_class.num_classes
-        #print(f"nodi per grafo e num grafi: {self.num_nodes_per_graph} {self.num_graphs}")
-
-
-
     def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False):
         """
         Returns the GCN model given the class of configurations

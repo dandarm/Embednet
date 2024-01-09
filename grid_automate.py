@@ -79,7 +79,8 @@ def get_other_info_from_config(folder):
     config_file_path = Path(folder) / "config.yml"
     conf = yaml.safe_load(open(config_file_path))
     num_grafi = conf['graph_dataset']['Num_grafi_per_tipo']
-    prop = (num_grafi,)
+    num_nodi = conf['graph_dataset']['Num_nodes']
+    prop = (num_grafi, num_nodi)
     return prop
     
 
@@ -177,7 +178,7 @@ def plot_curves_vs_features(plot_data, feature='feat',
     for i, data in enumerate(plot_data):
         # plt.plot(data['x'], data['y'],  color=colors[i])  #label=data['label'],
         plot_res = ax.errorbar(data['x'], data['y'], yerr=data['errori'], label=str(data.get('label')), fmt='o', color=colors[i],
-                     ecolor='black', capsize=0, linestyle='None', alpha=0.2)
+                     ecolor=colors[i], capsize=0, linestyle='None', alpha=0.2)
     ax.axhline(y=0, color='black', linewidth=1)  # linea orizzontale a 0 che è il desiderato
 
     node_list = [d[feature] for d in plot_data]
@@ -219,14 +220,14 @@ def find_best_seq_epoch(input_seq, pred_seq_4_epochs):
         val.append(diff.sum())
     
     j = np.argmin(val)
-    print(j, len(pred_seq_4_epochs))
+    #print(j, len(pred_seq_4_epochs))
     return pred_seq_4_epochs[j]
 
 def get_data_points_degrees_relative_difference(path):
     # carico i valori dello scarto y rispetto al grado x (con gli errori)
     pred_seq_4_epochs, epochs, input_seq, altre_prop = get_seq_4_epochs(path)
     
-    pred_seq = pred_seq_4_epochs[-1]  # prendo la sequenza di grado dell'ultima epoca
+    # pred_seq = pred_seq_4_epochs[-1]  # prendo la sequenza di grado dell'ultima epoca
     # ma ora voglio prendere la seq di grado all'epoca che minimizza lo scarto
     pred_seq = find_best_seq_epoch(input_seq, pred_seq_4_epochs)
     
@@ -242,13 +243,15 @@ def get_data_points_degrees_relative_difference(path):
     deg_prob = {degree: count / total_count for degree, count in degree_count.items()}
     
     num_grafi = altre_prop[0]
+    num_nodi = altre_prop[1][0]
     tot_links = sum(input_seq) / 2 / num_grafi
+    average_links = sum(input_seq) / num_nodi / num_grafi
 
     #print(f"input_seq: {type(input_seq), len(input_seq)}")
     #print(f"x_vals: {type(x_vals), len(x_vals)}")
     #print(f"deg_prob: {deg_prob, len(deg_prob)}")
 
-    return x_vals, y_vals, errori, deg_prob, tot_links
+    return x_vals, y_vals, errori, deg_prob, tot_links, average_links
 
 
 def get_plot_data(many_training_paths, many_training_configs, **kwargs):
@@ -256,7 +259,7 @@ def get_plot_data(many_training_paths, many_training_configs, **kwargs):
     for index, row in many_training_paths.iterrows():
         path = row.values[0]
 
-        x_vals, y_vals, errori, deg_prob_diz, tot_links = get_data_points_degrees_relative_difference(path)
+        x_vals, y_vals, errori, deg_prob_diz, tot_links, average_links = get_data_points_degrees_relative_difference(path)
 
         # queste variabili sono chiamate tramite i kwargs
         pER = many_training_configs.loc[index]['graph_dataset.list_p'][0]
@@ -265,15 +268,21 @@ def get_plot_data(many_training_paths, many_training_configs, **kwargs):
 
         #calcolo il numero di link dei grafi
         if kwargs.get('normalize_x'):
-            num_medio_link_grafo = num_nodes * (num_nodes - 1) / 2 * pER            
-            x_vals = np.array(x_vals) /  tot_links   # num_medio_link_grafo
+            x_vals = np.array(x_vals) / tot_links 
          
         # normalizzazione diversa: ricavo la probabilità corrispondente per ciascun grado
         if kwargs.get('probs'):
             probabilities = [deg_prob_diz[degree] for degree in x_vals]
             x_vals = probabilities
         
-        
+        if kwargs.get('distance_from_mean'):
+            #print(f"x_vals {x_vals} \t\t average {average_links} \t\t tot {tot_links}")
+            x_vals = np.abs(np.array(x_vals) - average_links) / tot_links
+            
+        if kwargs.get('dist_prob'):
+            probabilities = [deg_prob_diz[degree] for degree in x_vals]
+            dist = np.abs(np.array(x_vals) - average_links) / tot_links
+            x_vals = dist / probabilities
 
         feat = kwargs.get('feat')
 

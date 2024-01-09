@@ -345,6 +345,8 @@ class Config():
 
         if self.conf['model'].get('normalized_adj'):
             normalize = ''
+        elif self.conf['model'].get('my_normalization_adj'):
+            normalize = 'my_norm_adj'
         else:
             normalize = "UNnorm_adj"
 

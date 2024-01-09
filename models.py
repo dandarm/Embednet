@@ -16,7 +16,7 @@ from config_valid import Inits
 
 # region myGCN
 class GCN(torch.nn.Module):
-    def __init__(self, config_class):
+    def __init__(self, config_class, dataset_degree_prob=None):
         super(GCN, self).__init__()
         # torch.manual_seed(12345)
         self.config_class = config_class
@@ -55,7 +55,10 @@ class GCN(torch.nn.Module):
         rangeconv_layers = range(len(self.GCNneurons_per_layer) - 1)
         norm = self.conf['model'].get('normalized_adj')
         for i in rangeconv_layers:
-            self.convs.append(GCNConv(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1], normalize=norm))
+            if self.conf['model'].get('my_normalization_adj'):
+                self.convs.append(GCNConv(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1], normalize=norm))
+            else:
+                self.convs.append(GCN_custom_norm(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1], dataset_degree_prob))
             if self.put_batchnorm:
                 self.GCNbatchnorms.append(BatchNorm1d(self.GCNneurons_per_layer[i]))
             elif self.put_graphnorm:
@@ -150,6 +153,28 @@ class GCN(torch.nn.Module):
             x = self.n_layers_linear(x)
         #print(f"after linear: {x.shape}")
         return x
+
+class GCN_custom_norm(GCNConv):
+    def __init__(self, in_channels, out_channels, degree_prob):
+        super(GCN_custom_norm, self).__init__(in_channels, out_channels)
+
+        self.degree_prob_dict = degree_prob
+
+    def forward(self, x, edge_index, edge_weight=None):
+        # x è la matrice delle features dei nodi
+        # edge_index è la matrice di adiacenza (nodo di partenza, nodo di arrivo)
+
+        # Calcola la matrice dei gradi D
+        row, col = edge_index
+        node_degrees = row.bincount(minlength=x.size(0))
+        weights = torch.tensor([1.0 / self.degree_prob.get(int(d), 1.0) for d in node_degrees])
+        D = torch.diag(weights)
+
+        A = torch.sparse_coo_tensor(edge_index, edge_weight, (x.size(0), x.size(0)))
+        A_norm = torch.mm(torch.mm(D, A.to_dense()), D)
+
+        return super(GCN_custom_norm, self).forward(x, edge_index, A_norm)
+
 
 # endregion
 

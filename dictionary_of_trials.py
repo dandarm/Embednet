@@ -15,6 +15,7 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml"):
                   'model.autoencoder_fullMLP_CM': [False],
                   'model.last_layer_activation': ['RELU'],    #['Sigmoid'], RELU  # 'Identity'],   # una esclude l-altra con AE e AE_CM
                   'model.normalized_adj': [True],
+                  'model.my_normalization_adj': [True],
                   'graph_dataset.ERmodel': [False],
                   'graph_dataset.confmodel': [True],
                   'graph_dataset.sbm': [False],
