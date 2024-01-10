@@ -29,7 +29,7 @@ class Trainer_Autoencoder(Trainer):
 
         self.HardTanh = Hardtanh(0,1)
 
-    def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False):
+    def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False, dataset_degree_prob_infos=None):
         """
         Returns the GCN model given the class of configurations
         :param config_class:
@@ -38,7 +38,7 @@ class Trainer_Autoencoder(Trainer):
         """
         if verbose: print("Initialize model")
 
-        encoder = GCN(self.config_class)
+        encoder = GCN(self.config_class, dataset_degree_prob_infos=dataset_degree_prob_infos)
         model = AutoencoderGCN.from_parent_instance(dic_attr="dict_attr", parent_instance=encoder)
         self.init_decoder(encoder, model)
 

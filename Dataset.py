@@ -76,14 +76,22 @@ class Dataset(GeneralDataset):
         self.last_neurons = self.config_class.lastneuron
         self.all_data_loader = None
 
+        self.num_grafi = int(self.conf['graph_dataset']['Num_grafi_per_tipo'])
+        self.num_nodi = int(self.conf['graph_dataset']['Num_nodes'][0])
+
 
     def calc_degree_probabilities(self):
         # considero quì le statistiche per la normalizzazione della matrice di adiacenza della GCN
-        degree_count = Counter(self.actual_node_class)
+        flat_list = [x for l in self.actual_node_class for x in l]
+        degree_count = Counter(flat_list)
         # Normalizzazione dei conteggi -> probabilità!
         total_count = sum(degree_count.values())
         self.degree_prob = {degree: count / total_count for degree, count in degree_count.items()}
+        self.tot_links_per_graph = sum(flat_list) / 2 / self.num_grafi
+        self.average_links_per_graph = sum(flat_list) / self.num_nodi / self.num_grafi
 
+        #for key, value in self.degree_prob.items():
+        #    self.degree_prob[key] = self.degree_prob[key].to(self.device)
 
     @classmethod
     def from_super_instance(cls, config_class, super_instance, verbose):

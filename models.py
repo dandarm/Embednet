@@ -16,7 +16,7 @@ from config_valid import Inits
 
 # region myGCN
 class GCN(torch.nn.Module):
-    def __init__(self, config_class, dataset_degree_prob=None):
+    def __init__(self, config_class, **kwargs):
         super(GCN, self).__init__()
         # torch.manual_seed(12345)
         self.config_class = config_class
@@ -49,6 +49,7 @@ class GCN(torch.nn.Module):
         activation_function = get_activ_func_from_config(self.conf['model'].get('activation'))
         self.last_act_func = get_activ_func_from_config(self.conf['model'].get('last_layer_activation'))
 
+        self.dataset_degree_prob_infos = kwargs.get('dataset_degree_prob_infos')
 
         ###########   COSTRUISCO L'ARCHITETTURA      ###############
         ############################################################
@@ -56,9 +57,9 @@ class GCN(torch.nn.Module):
         norm = self.conf['model'].get('normalized_adj')
         for i in rangeconv_layers:
             if self.conf['model'].get('my_normalization_adj'):
-                self.convs.append(GCNConv(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1], normalize=norm))
+                self.convs.append(GCN_custom_norm(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1], self.dataset_degree_prob_infos))
             else:
-                self.convs.append(GCN_custom_norm(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1], dataset_degree_prob))
+                self.convs.append(GCNConv(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1], normalize=norm))
             if self.put_batchnorm:
                 self.GCNbatchnorms.append(BatchNorm1d(self.GCNneurons_per_layer[i]))
             elif self.put_graphnorm:
@@ -155,10 +156,13 @@ class GCN(torch.nn.Module):
         return x
 
 class GCN_custom_norm(GCNConv):
-    def __init__(self, in_channels, out_channels, degree_prob):
+    def __init__(self, in_channels, out_channels, degree_prob_infos):
         super(GCN_custom_norm, self).__init__(in_channels, out_channels)
 
-        self.degree_prob_dict = degree_prob
+        self.degree_prob_dict = degree_prob_infos[0]
+        self.tot_links_per_graph = degree_prob_infos[1]
+        self.average_links_per_graph = degree_prob_infos[2]
+
 
     def forward(self, x, edge_index, edge_weight=None):
         # x è la matrice delle features dei nodi
@@ -167,13 +171,23 @@ class GCN_custom_norm(GCNConv):
         # Calcola la matrice dei gradi D
         row, col = edge_index
         node_degrees = row.bincount(minlength=x.size(0))
-        weights = torch.tensor([1.0 / self.degree_prob.get(int(d), 1.0) for d in node_degrees])
-        D = torch.diag(weights)
+        probabilities = torch.tensor([1.0 / self.degree_prob_dict.get(int(d), 1.0) for d in node_degrees], device=torch.device('cuda'))
+        distance_from_mean = torch.abs(node_degrees - self.average_links_per_graph) / self.tot_links_per_graph
+        weights = torch.sqrt(1.0 / (distance_from_mean / probabilities))
 
-        A = torch.sparse_coo_tensor(edge_index, edge_weight, (x.size(0), x.size(0)))
-        A_norm = torch.mm(torch.mm(D, A.to_dense()), D)
+        edge_weight_normalized = weights[row] * (edge_weight if edge_weight is not None else 1.0) * weights[col]
 
-        return super(GCN_custom_norm, self).forward(x, edge_index, A_norm)
+        # D = torch.diag(weights)
+
+        # Controllo se edge_weight è None e in tal caso impostare tutti i pesi a 1
+        # if edge_weight is None:
+        #     edge_weight = torch.ones((edge_index.size(1),), dtype=x.dtype, device=x.device)
+
+        # A = torch.sparse_coo_tensor(edge_index, edge_weight, (x.size(0), x.size(0)))
+        # A_norm = torch.mm(torch.mm(D, A.to_dense()), D)
+
+
+        return super(GCN_custom_norm, self).forward(x, edge_index, edge_weight_normalized)
 
 
 # endregion
@@ -469,7 +483,8 @@ class AutoencoderGCN(GCN):
     @classmethod
     def from_parent_instance(cls, dic_attr, parent_instance):
         #return cls(dic_attr, **parent_instance.__dict__)
-        return cls(encoder=parent_instance, config_class=parent_instance.config_class)
+        return cls(encoder=parent_instance, #config_class=parent_instance.config_class,
+                   **parent_instance.__dict__,)
 
 
 # Definiamo la classe dell'autoencoder

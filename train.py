@@ -142,7 +142,7 @@ class Trainer():
             print(f"epoch list {lista} ")
         return np.concatenate(([0], lista))  # aggiungo anche l'elemento 0 per i plot snapshot
 
-    def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False, degree_prob=None):
+    def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False):
         """
         Returns the GCN model given the class of configurations
         :param config_class:
@@ -151,7 +151,7 @@ class Trainer():
         """
         if verbose: print("Initialize model")
 
-        model = GCN(self.config_class, dataset_degree_prob=degree_prob)
+        model = GCN(self.config_class)
         model.to(self.device)
         if init_weights_gcn is not None:
             modify_parameters(model, init_weights_gcn)
@@ -274,15 +274,17 @@ class Trainer():
             return plot
 
     def init_model(self, path_model_toload, verbose):
+        # gestisco il caso della normalizzazione custom che dipende dal dataset
+        degree_prob_infos = None
+        if self.config_class.conf['model'].get('my_normalization_adj'):
+            degree_prob_infos = self.dataset.degree_prob, self.dataset.tot_links_per_graph, self.dataset.average_links_per_graph
+
         init_weigths_method = self.config_class.init_weights_mode
         v = self.conf['model'].get('normalized_adj')
         v = not v  # se v falso dobbiamo modificare il gain perché stiamo nel caso UNnormalized: modified_gain deve essere True
-        w = new_parameters(self.init_GCN(), init_weigths_method, modified_gain_for_UNnormalized_adj=v)
+        w = new_parameters(self.init_GCN(dataset_degree_prob_infos=degree_prob_infos), init_weigths_method, modified_gain_for_UNnormalized_adj=v)
 
-        degree_prob = None
-        if self.config_class.conf['model'].get('my_normalization_adj'):
-            degree_prob = self.dataset.degree_prob
-        model = self.init_GCN(init_weights_gcn=w, verbose=verbose, degree_prob=degree_prob)
+        model = self.init_GCN(init_weights_gcn=w, verbose=verbose, dataset_degree_prob_infos=degree_prob_infos)
         if path_model_toload is None:
             self.load_model(model)
         else:

@@ -11,11 +11,11 @@ graph_dataset:
     list_p: [0.01] #, 0.2, 0.15, 0.1] #, 0.01]
     range_p: [0.01, 0.5]
     community_probs: [[[0.25, 0.01], [0.01, 0.1]], [[0.4, 0.01], [0.01, 0.3]], [[0.4, 0.01], [0.01, 0.1]]]  # num nodi * num classi * num comunità
-    Num_nodes: [800] #, 200, 200, 200] # , 200]
+    Num_nodes: [300] #, 200, 200, 200] # , 200]
     Num_grafi_per_tipo: 20
     Num_grafi_totali: 1000
     list_degree: [7]
-    list_exponents: [-3.8]  #, -2.5, -2.8, -3.0, -3.2]  #, -3.5, -3.7]
+    list_exponents: [-2.5]  #, -2.5, -2.8, -3.0, -3.2]  #, -3.5, -3.7]
     #max_degree_const_dist: 50
     
     
@@ -45,7 +45,7 @@ training:
 plot:
     x_axis_log: True
     plot_model: False
-    plot_embeddings: False
+    plot_embeddings: True
     
 model:
     last_layer_dense: False

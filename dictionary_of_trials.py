@@ -14,7 +14,7 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml"):
                   'model.autoencoder_MLPCM': [False],
                   'model.autoencoder_fullMLP_CM': [False],
                   'model.last_layer_activation': ['RELU'],    #['Sigmoid'], RELU  # 'Identity'],   # una esclude l-altra con AE e AE_CM
-                  'model.normalized_adj': [True],
+                  'model.normalized_adj': [False],
                   'model.my_normalization_adj': [True],
                   'graph_dataset.ERmodel': [False],
                   'graph_dataset.confmodel': [True],
@@ -22,7 +22,7 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml"):
                   'graph_dataset.const_degree_dist': [False],
                   'graph_dataset.real_dataset': [False],
                   #'graph_dataset.list_p': [[0.3], [0.5], [0.7], [0.9]],  #[0.1,0.2,0.5,0.8,0.9]
-                  'graph_dataset.list_exponents': [[-0.3],[-0.5],[-0.7],[-0.9],[-1.1]],
+                  #'graph_dataset.list_exponents': [[-0.3],[-0.5],[-0.7],[-0.9],[-1.1]],
                   #'graph_dataset.Num_nodes': [[300],[500],[800]],  # [num_nodi]*5, [[num_nodi, int(num_nodi / 2)]] * 3],  # per lo SBM: num nodi * num classi * num comunità
                   'graph_dataset.Num_grafi_per_tipo': [40],
                   'model.GCNneurons_per_layer': [
