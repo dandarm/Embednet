@@ -43,6 +43,7 @@ class Embedding():
         self.graph_emb_dims = None
         self.total_node_emb_dim = None
         self.total_graph_emb_dim = None
+        self.total_node_emb_dim_pca = None
 
         self.dataset_nx = dataset.dataset_list
         self.numgrafi = len(self.dataset_nx)
@@ -381,7 +382,7 @@ class Embedding():
         # metodo = skdim.id.ESS() troppo tempo
         # metodo = skdim.id.FisherS()
         # metodo = skdim.id.CorrInt() quasi 10 minuti per 20 punti
-        # metodo = skdim.id.lPCA()
+        metodoPCA = skdim.id.lPCA()
 
         node_emb_dims = []
         graph_emb_dims = []
@@ -401,19 +402,20 @@ class Embedding():
 
         total_graph_emb_dim = metodo.fit(self.graph_embedding_array).dimension_
         total_node_emb_dim = metodo.fit(self.node_embedding_array).dimension_
+        total_node_emb_dim_pca = metodoPCA(self.node_embedding_array).dimension_
 
-        return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_graph_emb_dim
+        return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_node_emb_dim_pca
 
     def get_metrics(self, num_emb_neurons):
         if num_emb_neurons == 1:
             self.calc_graph_emb_correlation()  # calcola self.graph_correlation_per_class o self.total_graph_correlation
             self.calc_node_emb_correlation()
-            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_graph_emb_dim = 0, 0, 0, 0
+            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_graph_emb_dim, self.total_node_emb_dim_pca = 0, 0, 0, 0, 0
             #if training_mode == TrainingMode.mode3:
             #    self.calc_regression_error()
         else:
             #self.calc_distances(num_emb_neurons)  # calcola self.difference_of_means
-            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_graph_emb_dim = self.calc_instrinsic_dimension(num_emb_neurons)
+            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_node_emb_dim_pca = self.calc_instrinsic_dimension(num_emb_neurons)
 
 
 class Embedding_per_graph():
@@ -590,6 +592,7 @@ class Embedding_autoencoder(Embedding):
         self.graph_emb_dims = None
         self.total_node_emb_dim = None
         self.total_graph_emb_dim = None
+        self.total_node_emb_dim_pca = None
         self.total_graph_correlation = None
         self.total_node_correlation = None
         self.config_class = config_c
@@ -627,7 +630,7 @@ class Embedding_autoencoder(Embedding):
         # metodo = skdim.id.ESS() troppo tempo
         # metodo = skdim.id.FisherS()
         # metodo = skdim.id.CorrInt() quasi 10 minuti per 20 punti
-        # metodo = skdim.id.lPCA()
+        metodo_pca = skdim.id.lPCA()
 
         node_emb_dims = []
         graph_emb_dims = []
@@ -647,10 +650,11 @@ class Embedding_autoencoder(Embedding):
         #print(f"shape di graph emb array: {total_graph_emb_array.shape}")
         total_graph_emb_dim = metodo.fit(total_graph_emb_array).dimension_
         total_node_emb_dim = metodo.fit(total_node_emb_array).dimension_
+        total_node_emb_dim_pca = metodo_pca.fit(total_node_emb_array).dimension_
         #print(f"total_node_emb_dim {total_node_emb_dim}")
         #sys.stdout.flush()
 
-        return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_graph_emb_dim
+        return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_node_emb_dim_pca
 
     def calc_node_emb_correlation(self):
         pass

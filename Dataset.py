@@ -9,6 +9,9 @@ from torch_geometric.utils.convert import from_networkx
 from multiprocessing import Pool
 import itertools
 from torch_geometric.utils import to_dense_adj
+import matplotlib.pyplot as plt
+#import matplotlib as mpl
+#mpl.use('Qt5Agg')
 
 class SingleGraph():
     def __init__(self, nx_graph, graph_label, node_labels):
@@ -79,9 +82,15 @@ class Dataset(GeneralDataset):
         self.num_grafi = int(self.conf['graph_dataset']['Num_grafi_per_tipo'])
         self.num_nodi = int(self.conf['graph_dataset']['Num_nodes'][0])
 
+        if self.config_class.conf['model'].get('my_normalization_adj'):
+            # calcolo le statistiche per la normalizzazione della matrice di adiacenza
+            # che sarà contenuta dentro ogni elemento Data
+            self.calc_degree_probabilities()
+
 
     def calc_degree_probabilities(self):
-        # considero quì le statistiche per la normalizzazione della matrice di adiacenza della GCN
+        # considero quì le statistiche per la normalizzazione della matrice di adiacenza
+        # che ora viene calcolata prima e non on-the-fly durante il training
         flat_list = [x for l in self.actual_node_class for x in l]
         degree_count = Counter(flat_list)
         # Normalizzazione dei conteggi -> probabilità!
@@ -180,6 +189,12 @@ class Dataset(GeneralDataset):
                     pyg_graph = self.convert_G_random_feature((g, i))
                 else:
                     pyg_graph = self.convert_G((g, i))
+                if self.config_class.conf['model'].get('my_normalization_adj'):
+                    # associo all'elemento Data un edge_weights per la normalizzazione custom
+                    self.calc_custom_normalization_weights(pyg_graph)
+                else:
+                    pyg_graph.edge_weight_normalized = None
+
                 dataset_pyg.append(pyg_graph)
                 i += 1
 
@@ -198,6 +213,42 @@ class Dataset(GeneralDataset):
         #print(f"Tempo impiegato per spostare su GPU: {durata}")
 
         return dataset_pyg
+
+    def get_distance_from_mean(self, node_degrees):
+        distance_from_mean = torch.abs(node_degrees - self.average_links_per_graph) / self.tot_links_per_graph
+        return distance_from_mean
+
+    def get_norm_probability(self, node_degrees):
+        probabilities = torch.tensor([self.degree_prob.get(int(d), 1.0) for d in node_degrees])
+        max_prob = max(probabilities)
+        max_inv_prob = max(1 / probabilities)
+        return max_prob / probabilities / max_inv_prob
+    def calc_custom_normalization_weights(self, pyg_graph):
+        num_nodes = pyg_graph.num_nodes
+        num_edges = pyg_graph.edge_index.size(1)
+
+        # Aggiungi self-loop a 'edge_index'
+        self_loop_edge_index = torch.arange(0, num_nodes).unsqueeze(0).repeat(2, 1)
+        updated_edge_index = torch.cat([pyg_graph.edge_index, self_loop_edge_index], dim=1)
+
+        existing_edge_weight = torch.ones(num_edges) if pyg_graph.edge_weight is None else pyg_graph.edge_weight
+        assert existing_edge_weight.size(0) == num_edges
+        updated_edge_weight = torch.cat([existing_edge_weight, torch.ones(num_nodes)])
+
+        row, col = updated_edge_index
+        node_degrees = row.bincount(minlength=num_nodes)
+
+        norm_probs = self.get_norm_probability(node_degrees)
+        distance_from_mean = self.get_distance_from_mean(node_degrees)
+        w = distance_from_mean  #   norm_probs
+        weights = torch.sqrt(w/(max(w)))
+        assert weights.size(0) == num_nodes
+        norm_edge_weight = weights[row] * updated_edge_weight * weights[col]
+        #print(np.histogram(norm_edge_weight))
+        #print(min(norm_edge_weight))
+
+        pyg_graph.edge_weight_normalized = norm_edge_weight
+        pyg_graph.edge_index = updated_edge_index
 
     def prepare(self, shuffle=True, parallel=False):
         starttime = time()

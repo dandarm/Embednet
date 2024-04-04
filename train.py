@@ -96,9 +96,12 @@ class Trainer():
         if self.conf['training'].get('every_epoch_embedding'):
             self.total_node_emb_dim = multiprocessing.Array('f', range(self.epochs+1))
             self.total_graph_emb_dim = multiprocessing.Array('f', range(self.epochs+1))
+            self.total_node_emb_dim_pca = multiprocessing.Array('f', range(self.epochs + 1))
+
             for i in range(self.epochs):
                 self.total_node_emb_dim[i] = -1.0
                 self.total_graph_emb_dim[i] = -1.0
+                self.total_node_emb_dim_pca[i] = -1.0
 
     def create_runpath_dir(self):
         run_path = self.rootsave / self.unique_train_name
@@ -253,8 +256,7 @@ class Trainer():
                 self.dataset = Dataset.from_super_instance(self.config_class, dataset)
                 self.dataset.prepare(self.shuffle_dataset, parallel)
 
-        if self.config_class.conf['model'].get('my_normalization_adj'):
-            self.dataset.calc_degree_probabilities()
+
 
     def init_all(self, parallel=True, verbose=False, path_model_toload=None):
         """
@@ -280,8 +282,8 @@ class Trainer():
             degree_prob_infos = self.dataset.degree_prob, self.dataset.tot_links_per_graph, self.dataset.average_links_per_graph
 
         init_weigths_method = self.config_class.init_weights_mode
-        v = self.conf['model'].get('normalized_adj')
-        v = not v  # se v falso dobbiamo modificare il gain perché stiamo nel caso UNnormalized: modified_gain deve essere True
+        v = (not self.conf['model'].get('normalized_adj'))  # or self.conf['model'].get('my_normalization_adj')
+        #v = not v  # se v falso dobbiamo modificare il gain perché stiamo nel caso UNnormalized: modified_gain deve essere True
         w = new_parameters(self.init_GCN(dataset_degree_prob_infos=degree_prob_infos), init_weigths_method, modified_gain_for_UNnormalized_adj=v)
 
         model = self.init_GCN(init_weights_gcn=w, verbose=verbose, dataset_degree_prob_infos=degree_prob_infos)
@@ -492,8 +494,9 @@ class Trainer():
         self.train_loss_list.append(test_loss)
         self.test_loss_list.append(test_loss)
         print("Prima snapshot...")   # self.epochs if self.epochs > 0 else 1,
+        parallel_processes_save_images = []
         if self.conf['training'].get('every_epoch_embedding'):
-            self.produce_traning_snapshot(0, False, [],
+            self.produce_traning_snapshot(0, True, parallel_processes_save_images,
                                       plot_embeddings=self.conf['plot'].get('plot_embeddings'))
             file_path = self.run_path / f"_epoch0.png"
             animation_files.append(file_path)
@@ -544,7 +547,7 @@ class Trainer():
         #summary_writer = tf.compat.v1.summary.FileWriter(log_dir_variance) TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
 
 
-        parallel_processes_save_images = []
+
 
         for epoch in tqdm(range(1, self.epochs+1), total=self.epochs):
 
@@ -811,19 +814,20 @@ class Trainer():
         # graph_emb_dims = embedding_class.graph_emb_dims
         #p = self.mapping_of_snap_epochs[epoch]
         self.total_node_emb_dim[epoch] = embedding_class.total_node_emb_dim
-        self.total_graph_emb_dim[epoch] = embedding_class.total_graph_emb_dim
+        self.total_graph_emb_dim[epoch] = 0 # embedding_class.total_graph_emb_dim
+        self.total_node_emb_dim_pca[epoch] = embedding_class.total_node_emb_dim_pca
         node_correlation = embedding_class.total_node_correlation  # node_correlation_per_class
         graph_correlation = embedding_class.total_graph_correlation  # graph_correlation_per_class
 
         try:
             (all_range_epochs_list, metric_epoch_list,
              metric_obj_list_test, metric_obj_list_train,
-             testll, total_graph_emb_dim, total_node_emb_dim, trainll,
+             testll, total_node_emb_dim_pca, total_node_emb_dim, trainll,
              intr_dim_epoch_list) = self.handle_lists_for_plots(epoch, kwargs)
 
             fig = plot_metrics(data, self.embedding_dimension,
                                testll, all_range_epochs_list,
-                               total_node_emb_dim, total_graph_emb_dim,
+                               total_node_emb_dim, total_node_emb_dim_pca,
                                model_pars, param_labels,
                                node_correlation, graph_correlation, sequential_colors=True,
                                showplot=False, last_epoch=self.epochs_list[-1], metric_name=self.name_of_metric,
@@ -874,6 +878,7 @@ class Trainer():
             metric_obj_list_test = self.metric_obj_list_test
             total_node_emb_dim = self.total_node_emb_dim
             total_graph_emb_dim = self.total_graph_emb_dim
+            total_node_emb_dim_pca = self.total_node_emb_dim_pca
             intr_dim_epoch_list = range(self.epochs_list[-1]+1)
 
             if kwargs.get("last_plot"):
@@ -891,15 +896,17 @@ class Trainer():
             metric_obj_list_test = [self.metric_obj_list_test[0]]
             total_node_emb_dim = [self.total_node_emb_dim[0]]
             total_graph_emb_dim = [self.total_graph_emb_dim[0]]
+            total_node_emb_dim_pca = [self.total_node_emb_dim_pca[0]]
             intr_dim_epoch_list = range(self.epochs_list[-1] + 1)
 
-        return all_range_epochs_list, metric_epoch_list, metric_obj_list_test, metric_obj_list_train, testll, total_graph_emb_dim, total_node_emb_dim, trainll, intr_dim_epoch_list
+        return all_range_epochs_list, metric_epoch_list, metric_obj_list_test, metric_obj_list_train, testll, total_node_emb_dim_pca, total_node_emb_dim, trainll, intr_dim_epoch_list
 
     def save_metrics2file(self):
         self.savelist2pickle(self.metric_obj_list_train, "metrics_train")
         self.savelist2pickle(self.metric_obj_list_test, "metrics_test")
         self.savelist2pickle(self.total_node_emb_dim[:], "totale_node_dim")
         self.savelist2pickle(self.total_graph_emb_dim[:], "totale_graph_dim")
+        self.savelist2pickle(self.total_node_emb_dim_pca[:], "totale_node_dim_pca")
         self.savelist2pickle(self.train_loss_list, "train_loss")
         self.savelist2pickle(self.test_loss_list, "test_loss")
         Path(self.run_path / "§training_ended§").touch()

@@ -343,7 +343,7 @@ class Config():
         if self.conf['model'].get('put_graphnorm'):
             btchnrm = "grphnorm"
 
-        if self.conf['model'].get('normalized_adj'):
+        if self.conf['model'].get('normalized_adj') and not self.conf['model'].get('my_normalization_adj'):
             normalize = ''
         elif self.conf['model'].get('my_normalization_adj'):
             normalize = 'my_norm_adj'

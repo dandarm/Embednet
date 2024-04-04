@@ -234,6 +234,7 @@ class Trainer_AutoencoderMLP(Trainer):
                 metric_obj_list_test = [self.metric_obj_list_test[0]]
                 total_node_emb_dim = [self.total_node_emb_dim[0]]
                 total_graph_emb_dim = [self.total_graph_emb_dim[0]]
+                total_node_emb_dim_pca = [self.total_node_emb_dim_pca[0]]
 
 
             fig = plot_metrics(data, self.embedding_dimension,

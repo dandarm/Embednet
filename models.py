@@ -14,7 +14,50 @@ from torch_geometric.nn.models.autoencoder import InnerProductDecoder
 
 from config_valid import Inits
 
+from torch import Tensor
+from torch_geometric.typing import Adj, OptTensor
+from torch_sparse import SparseTensor
+from torch_geometric.nn.conv.gcn_conv import gcn_norm
 # region myGCN
+class extended4test_GCN(GCNConv):
+    def forward(self, x: Tensor, edge_index: Adj,
+                edge_weight: OptTensor = None) -> Tensor:
+        """"""
+
+        if self.normalize:
+            if isinstance(edge_index, Tensor):
+                cache = self._cached_edge_index
+                if cache is None:
+                    edge_index, edge_weight = gcn_norm(  # yapf: disable
+                        edge_index, edge_weight, x.size(self.node_dim),
+                        self.improved, self.add_self_loops)
+                    if self.cached:
+                        self._cached_edge_index = (edge_index, edge_weight)
+                else:
+                    edge_index, edge_weight = cache[0], cache[1]
+
+            elif isinstance(edge_index, SparseTensor):
+                cache = self._cached_adj_t
+                if cache is None:
+                    edge_index = gcn_norm(  # yapf: disable
+                        edge_index, edge_weight, x.size(self.node_dim),
+                        self.improved, self.add_self_loops)
+                    if self.cached:
+                        self._cached_adj_t = edge_index
+                else:
+                    edge_index = cache
+        #print(min(edge_weight))
+        x = self.lin(x)
+
+        # propagate_type: (x: Tensor, edge_weight: OptTensor)
+        out = self.propagate(edge_index, x=x, edge_weight=edge_weight, size=None)
+
+        if self.bias is not None:
+            out += self.bias
+
+        return edge_weight
+
+
 class GCN(torch.nn.Module):
     def __init__(self, config_class, **kwargs):
         super(GCN, self).__init__()
@@ -57,7 +100,7 @@ class GCN(torch.nn.Module):
         norm = self.conf['model'].get('normalized_adj')
         for i in rangeconv_layers:
             if self.conf['model'].get('my_normalization_adj'):
-                self.convs.append(GCN_custom_norm(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1], self.dataset_degree_prob_infos))
+                self.convs.append(GCN_custom_norm(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1], self.dataset_degree_prob_infos, normalize=False))
             else:
                 self.convs.append(GCNConv(self.GCNneurons_per_layer[i], self.GCNneurons_per_layer[i + 1], normalize=norm))
             if self.put_batchnorm:
@@ -102,14 +145,14 @@ class GCN(torch.nn.Module):
                     p.requires_grad = False
 
 
-    def n_layers_gcn(self, x, edge_index):
+    def n_layers_gcn(self, x, edge_index, edge_weight_normalized=None):
         for i, layer in enumerate(self.convs[:-1]):
-            x = layer(x, edge_index)
+            x = layer(x, edge_index, edge_weight_normalized)
             if self.put_batchnorm and i > 1:
                 x = self.GCNbatchnorms[i](x)
             x = self.act_func[i](x)
             # x, edge_index, _, batch, _, _ = self.pools[i](x, edge_index, None, batch)
-        x = self.convs[-1](x, edge_index)
+        x = self.convs[-1](x, edge_index, edge_weight_normalized)
         # così posso specificare una activation func specifica per l'ultimo layer
         x = self.last_act_func(x)
         return x
@@ -134,8 +177,8 @@ class GCN(torch.nn.Module):
     #
     # self.encoder = torch.nn.Sequential(*encoder_layers)
 
-    def forward(self, x, edge_index, batch=None, graph_embedding=False, node_embedding=False):
-        x = self.n_layers_gcn(x, edge_index)
+    def forward(self, x, edge_index, batch=None, graph_embedding=False, node_embedding=False, edge_weight_normalized=None):
+        x = self.n_layers_gcn(x, edge_index, edge_weight_normalized)
 
         if (node_embedding or self.config_class.autoencoding) and not graph_embedding:
             return x
@@ -155,20 +198,26 @@ class GCN(torch.nn.Module):
         #print(f"after linear: {x.shape}")
         return x
 
+class extended4test_myGCNencoder(GCN):
+    def forward(self, x, edge_index, **kwargs):
+        edge_weigths = self.convs[0](x, edge_index)
+        return edge_weigths
+
+
 class GCN_custom_norm(GCNConv):
-    def __init__(self, in_channels, out_channels, degree_prob_infos):
-        super(GCN_custom_norm, self).__init__(in_channels, out_channels)
+    def __init__(self, in_channels, out_channels, degree_prob_infos, normalize):
+        super(GCN_custom_norm, self).__init__(in_channels, out_channels, normalize=normalize)
 
         self.degree_prob_dict = degree_prob_infos[0]
         self.tot_links_per_graph = degree_prob_infos[1]
         self.average_links_per_graph = degree_prob_infos[2]
 
 
-    def forward(self, x, edge_index, edge_weight=None):
+    def forward(self, x, edge_index, edge_weight):
         # x è la matrice delle features dei nodi
         # edge_index è la matrice di adiacenza (nodo di partenza, nodo di arrivo)
 
-        # Calcola la matrice dei gradi D
+        """ Calcola la matrice dei gradi D
         row, col = edge_index
         node_degrees = row.bincount(minlength=x.size(0))
         probabilities = torch.tensor([1.0 / self.degree_prob_dict.get(int(d), 1.0) for d in node_degrees], device=torch.device('cuda'))
@@ -176,7 +225,7 @@ class GCN_custom_norm(GCNConv):
         weights = torch.sqrt(1.0 / (distance_from_mean / probabilities))
 
         edge_weight_normalized = weights[row] * (edge_weight if edge_weight is not None else 1.0) * weights[col]
-
+        """
         # D = torch.diag(weights)
 
         # Controllo se edge_weight è None e in tal caso impostare tutti i pesi a 1
@@ -187,7 +236,7 @@ class GCN_custom_norm(GCNConv):
         # A_norm = torch.mm(torch.mm(D, A.to_dense()), D)
 
 
-        return super(GCN_custom_norm, self).forward(x, edge_index, edge_weight_normalized)
+        return super(GCN_custom_norm, self).forward(x, edge_index, edge_weight)
 
 
 # endregion
@@ -470,8 +519,8 @@ class AutoencoderGCN(GCN):
 
     #def forward(self, x, edge_index, batch=None, graph_embedding=False, node_embedding=False):
     #    return self.decoder(x, edge_index, batch, graph_embedding, node_embedding)
-    def encode(self, x, edge_index, batch, node_embedding=False, graph_embedding=False):
-        return self.decoder.encode(x, edge_index, batch, graph_embedding, node_embedding)
+    def encode(self, x, edge_index, batch, node_embedding=False, graph_embedding=False, edge_weight_normalized=None):
+        return self.decoder.encode(x, edge_index, batch, graph_embedding, node_embedding, edge_weight_normalized)
     def test(self, z, pos_edge_label_index, neg_edge_label_index):
         return self.decoder.test(z, pos_edge_label_index, neg_edge_label_index)
     def recon_loss(self, z, pos_edge_label_index, neg_edge_index=None):

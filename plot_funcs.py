@@ -521,7 +521,7 @@ class DataAutoenc2Plot(Data2Plot):
 # i plot specifici per l'autoencoder sono dentro DataAutoenc2Plot
 
 def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
-                 node_intrinsic_dimensions_total=None, graph_intrinsic_dimensions_total=None,
+                 node_intrinsic_dimensions_total=None, total_node_emb_dim_pca=None,
                  model_pars=None, param_labels=None,
                  node_correlation=None, graph_correlation=None,
                  sequential_colors=False, log=False, **kwargs):
@@ -575,8 +575,8 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
                     data.plot_output_degree_sequence(ax=ax0100)
                     data.plot_output_clust_coeff(ax=ax0101)
                     data.plot_output_knn(ax=ax0102)
-                if node_intrinsic_dimensions_total is not None and graph_intrinsic_dimensions_total is not None:
-                    plot_intrinsic_dimension(ax11, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, intr_dim_epoch_list, **kwargs)
+                if node_intrinsic_dimensions_total is not None and total_node_emb_dim_pca is not None:
+                    plot_intrinsic_dimension(ax11, total_node_emb_dim_pca, node_intrinsic_dimensions_total, intr_dim_epoch_list, **kwargs)
         else:
             data.plot_output_degree_sequence(ax=ax0100)
             data.plot_output_clust_coeff(ax=ax0101)
@@ -675,7 +675,8 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
     ax2.legend(loc='upper center')
 
 
-def plot_intrinsic_dimension(ax, graph_intrinsic_dimensions_total, node_intrinsic_dimensions_total, epochs_list, **kwargs):
+def plot_intrinsic_dimension(ax, total_node_emb_dim_pca, node_intrinsic_dimensions_total,
+                             epochs_list, **kwargs):
     last_epoch = kwargs.get("last_epoch")
     is_x_axis_log = kwargs.get("x_axis_log")
     #metric_epoch_list = kwargs.get("metric_epoch_list")
@@ -683,11 +684,11 @@ def plot_intrinsic_dimension(ax, graph_intrinsic_dimensions_total, node_intrinsi
     #    epochs_list = metric_epoch_list
 
     if is_x_axis_log:
-        ax.semilogx(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
-        ax.semilogx(epochs_list, graph_intrinsic_dimensions_total, linestyle='None', marker='.', color='blue', label='graph id')
+        ax.semilogx(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node ID')
+        ax.semilogx(epochs_list, total_node_emb_dim_pca, linestyle='None', marker='.', color='blue', label='PCA node ID')
     else:
-        ax.plot(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node id')
-        ax.plot(epochs_list, graph_intrinsic_dimensions_total, linestyle='None', marker='.', color='blue', label='graph id')
+        ax.plot(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node ID')
+        ax.plot(epochs_list, total_node_emb_dim_pca, linestyle='None', marker='.', color='blue', label='PCA node ID')
     ax.set_xlim(0, last_epoch)
     #massimo = max(max(node_intrinsic_dimensions_total), max(graph_intrinsic_dimensions_total))
     ax.set_ylim(-0.1, 5)

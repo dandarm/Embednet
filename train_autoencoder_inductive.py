@@ -192,7 +192,10 @@ class Trainer_Autoencoder(Trainer):
 
     def encode_decode_inputadj(self, data, i, batch_size, num_nodes_batch):
         # encoding su tutti i grafi del batch, tutte le edges di ciascun grafo:
-        total_batch_z = self.model.encode(data.x, data.edge_index, data.batch)
+        if self.conf['model'].get('my_normalization_adj'):
+            total_batch_z = self.model.encode(data.x, data.edge_index, data.batch, edge_weight_normalized=data.edge_weight_normalized)
+        else:
+            total_batch_z = self.model.encode(data.x, data.edge_index, data.batch)
         # total batch ha dimensione:  ( (nodipergrafo * grafi del batch), dim_embedding )
         # plt.hist(total_batch_z.detach().cpu().numpy().squeeze(), bins=50);
         # plt.show()
