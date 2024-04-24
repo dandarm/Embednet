@@ -97,11 +97,13 @@ class Trainer():
             self.total_node_emb_dim = multiprocessing.Array('f', range(self.epochs+1))
             self.total_graph_emb_dim = multiprocessing.Array('f', range(self.epochs+1))
             self.total_node_emb_dim_pca = multiprocessing.Array('f', range(self.epochs + 1))
+            self.total_node_emb_dim_pca_mia = multiprocessing.Array('f', range(self.epochs + 1))
 
             for i in range(self.epochs):
                 self.total_node_emb_dim[i] = -1.0
                 self.total_graph_emb_dim[i] = -1.0
                 self.total_node_emb_dim_pca[i] = -1.0
+                self.total_node_emb_dim_pca_mia[i] = -1.0
 
     def create_runpath_dir(self):
         run_path = self.rootsave / self.unique_train_name
@@ -573,7 +575,7 @@ class Trainer():
 
             if self.conf['training'].get('every_epoch_embedding'):
                 if epoch in self.epochs_list:
-                    parallel = True
+                    parallel = self.conf['training'].get('parallel')
                     self.produce_traning_snapshot(epoch, parallel, parallel_processes_save_images,
                                                   plot_embeddings=self.conf['plot'].get('plot_embeddings'))
                     file_path = self.run_path / f"_epoch{epoch}.png"
@@ -652,7 +654,12 @@ class Trainer():
                                                     #metric_object=metric_object,
                                                     metric_object_test=metric_object_test,
                                                     metric_object_train=metric_object_train)
-        model_weights = self.provide_model_weights()
+
+        if self.conf['plot'].get('plot_model_weights'):
+            model_weights = self.provide_model_weights()
+        else:
+            model_weights = None, None
+
         if parallel:
             p = multiprocessing.Process(target=self.save_image_at_epoch,
                                         args=(all_embeddings_arrays, model_weights, epoch,
@@ -816,18 +823,19 @@ class Trainer():
         self.total_node_emb_dim[epoch] = embedding_class.total_node_emb_dim
         self.total_graph_emb_dim[epoch] = 0 # embedding_class.total_graph_emb_dim
         self.total_node_emb_dim_pca[epoch] = embedding_class.total_node_emb_dim_pca
+        self.total_node_emb_dim_pca_mia[epoch] = embedding_class.total_node_emb_dim_pca_mia
         node_correlation = embedding_class.total_node_correlation  # node_correlation_per_class
         graph_correlation = embedding_class.total_graph_correlation  # graph_correlation_per_class
 
         try:
             (all_range_epochs_list, metric_epoch_list,
              metric_obj_list_test, metric_obj_list_train,
-             testll, total_node_emb_dim_pca, total_node_emb_dim, trainll,
+             testll, total_node_emb_dim_pca, total_node_emb_dim_pca_mia,  total_node_emb_dim, trainll,
              intr_dim_epoch_list) = self.handle_lists_for_plots(epoch, kwargs)
 
             fig = plot_metrics(data, self.embedding_dimension,
                                testll, all_range_epochs_list,
-                               total_node_emb_dim, total_node_emb_dim_pca,
+                               total_node_emb_dim, total_node_emb_dim_pca, total_node_emb_dim_pca_mia,
                                model_pars, param_labels,
                                node_correlation, graph_correlation, sequential_colors=True,
                                showplot=False, last_epoch=self.epochs_list[-1], metric_name=self.name_of_metric,
@@ -847,7 +855,9 @@ class Trainer():
                 fig.show()
             else:
                 file_name = path / f"_epoch{epoch}"
-                plt.savefig(file_name)
+                #plt.subplots_adjust(left=0.03, right=0.97, top=0.9, bottom=0.05, wspace=0.15, hspace=0.15)
+                #plt.tight_layout()
+                plt.savefig(file_name, bbox_inches='tight')
                 #fig.clf()
                 #plt.cla()
                 #plt.clf()
@@ -879,6 +889,7 @@ class Trainer():
             total_node_emb_dim = self.total_node_emb_dim
             total_graph_emb_dim = self.total_graph_emb_dim
             total_node_emb_dim_pca = self.total_node_emb_dim_pca
+            total_node_emb_dim_pca_mia = self.total_node_emb_dim_pca_mia
             intr_dim_epoch_list = range(self.epochs_list[-1]+1)
 
             if kwargs.get("last_plot"):
@@ -897,9 +908,10 @@ class Trainer():
             total_node_emb_dim = [self.total_node_emb_dim[0]]
             total_graph_emb_dim = [self.total_graph_emb_dim[0]]
             total_node_emb_dim_pca = [self.total_node_emb_dim_pca[0]]
+            total_node_emb_dim_pca_mia = [self.total_node_emb_dim_pca_mia[0]]
             intr_dim_epoch_list = range(self.epochs_list[-1] + 1)
 
-        return all_range_epochs_list, metric_epoch_list, metric_obj_list_test, metric_obj_list_train, testll, total_node_emb_dim_pca, total_node_emb_dim, trainll, intr_dim_epoch_list
+        return all_range_epochs_list, metric_epoch_list, metric_obj_list_test, metric_obj_list_train, testll, total_node_emb_dim_pca, total_node_emb_dim_pca_mia, total_node_emb_dim, trainll, intr_dim_epoch_list
 
     def save_metrics2file(self):
         self.savelist2pickle(self.metric_obj_list_train, "metrics_train")
@@ -907,6 +919,7 @@ class Trainer():
         self.savelist2pickle(self.total_node_emb_dim[:], "totale_node_dim")
         self.savelist2pickle(self.total_graph_emb_dim[:], "totale_graph_dim")
         self.savelist2pickle(self.total_node_emb_dim_pca[:], "totale_node_dim_pca")
+        self.savelist2pickle(self.total_node_emb_dim_pca_mia[:], "totale_node_dim_pca_mia")
         self.savelist2pickle(self.train_loss_list, "train_loss")
         self.savelist2pickle(self.test_loss_list, "test_loss")
         Path(self.run_path / "§training_ended§").touch()

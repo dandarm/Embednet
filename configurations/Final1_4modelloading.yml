@@ -54,6 +54,9 @@ model:
     autoencoder_graph_ae: False
     autoencoder_mlpdecoder: False
     autoencoder_fullMLP: False
+    autoencoder_fullMLP_CM: False
+    autoencoder_degseq: False
+    autoencoder_MLPCM: False
     put_batchnorm: True
     put_graphnorm: False
     final_pool_aggregator: True

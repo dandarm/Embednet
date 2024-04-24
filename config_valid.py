@@ -90,9 +90,9 @@ class Config():
 
         self.modo = self.get_mode()
         self.set_graphtype()
-        self.unique_train_name, self.long_string_experiment = self.create_unique_train_name()
 
         self.valid_conf()
+        self.unique_train_name, self.long_string_experiment = self.create_unique_train_name()
 
 
 

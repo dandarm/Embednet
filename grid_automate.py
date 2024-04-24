@@ -149,6 +149,7 @@ def calc_media_scarti(input_seq, diff_seq):
     accumulo = {}
     for i, valore_int in enumerate(input_seq):
         float_val = diff_seq[i]
+        abs_val = np.abs(diff_seq[i])
 
         if valore_int in accumulo:
             prev_somma = accumulo[valore_int]['somma']
@@ -156,18 +157,19 @@ def calc_media_scarti(input_seq, diff_seq):
             nuova_media = (prev_somma + float_val) / (prev_conteggio + 1)
             diff = float_val - nuova_media
             accumulo[valore_int]['somma'] += float_val
+            accumulo[valore_int]['somma_assoluta'] += abs_val
             accumulo[valore_int]['conteggio'] += 1
             accumulo[valore_int]['somma_quad'] += diff ** 2
 
         else:
-            accumulo[valore_int] = {'somma': float_val, 'conteggio': 1, 'somma_quad': 0}
+            accumulo[valore_int] = {'somma': float_val, 'conteggio': 1, 'somma_quad': 0, 'somma_assoluta':abs_val}
 
     statistiche = {}
     for k, v in accumulo.items():
         media = v['somma'] / v['conteggio']
         varianza = v['somma_quad'] / v['conteggio']
         dev_std = np.sqrt(varianza)
-        statistiche[k] = {'media': media, 'dev_std': dev_std}
+        statistiche[k] = {'media': media, 'dev_std': dev_std, 'somma':v['somma'], 'somma_assoluta':v['somma_assoluta']}
 
     return statistiche
 
@@ -225,6 +227,8 @@ def plot_curves_vs_features(plot_data, feature=None,
         plt.figure(figsize=(10, 6))
         ax = plt.gca()
 
+    #if feature is None:
+    #    feature = plot_data[0]['feat_name']
     plot_data.sort(key=lambda x: x[feature])
 
     color_map, cm = get_color(plot_data, feature)
@@ -235,10 +239,13 @@ def plot_curves_vs_features(plot_data, feature=None,
     # Creazione del grafico
     #plt.figure(figsize=(10, 6))
     for i, data in enumerate(plot_data):
-        color = color_map[data[feature]]
+        if feature is not None:
+            color = color_map[data[feature]]
+        else:
+            color = color_map[i]
         if data.get('errori') is not None:
             plot_res = ax.errorbar(data['x'], data['y'], yerr=data['errori'], label=str(data.get('label')), fmt='o',
-                                   color=color, ecolor=color_map[i], capsize=0, linestyle='None', alpha=0.2)
+                                   color=color, ecolor=color, capsize=0, linestyle='None', alpha=0.2)
         else:
             if noline:
                 linestyle = 'None'
@@ -348,21 +355,25 @@ def get_data_points_degrees_relative_difference(path):
     y_vals = [stats[k]['media'] for k in x_vals]
     errori = [stats[k]['dev_std'] for k in x_vals]
     
-    degree_count = Counter(input_seq)
+    degree_count = Counter(input_seq)  # np.unique  è simile: ritorna le keys nella prima posizione della tupla, e values in seconda posizione
+    #print(f"degree_count {degree_count}")  es: {30: 982, 29: 909, 31: 879, 32: 846, 28: 845,...., 13: 5, 14: 2, 47: 1, 51: 1, 54: 1, 10: 1}  (in tutto il dataset)
     # Normalizzazione dei conteggi -> probabilità!
-    total_count = sum(degree_count.values())
-    deg_prob = {degree: count / total_count for degree, count in degree_count.items()}
+    total_count = sum(degree_count.values())  # è anche uguale al numero di nodi (in tutto il dataset)
+    #print(f"total_count {total_count}")
+    #print(f"input_seq: {input_seq} - somma: {sum(input_seq)} - lungh: {len(input_seq)}")
+    deg_prob = {degree: count / total_count for degree, count in degree_count.items()}  # a ogni grado associo la probabilità (in tutto il dataset, ma è approx la stessa prob di ogni singola rete)
     
     num_grafi = altre_prop[0]
     num_nodi = altre_prop[1][0]
-    tot_links = sum(input_seq) / 2 / num_grafi
-    average_links = sum(input_seq) / num_nodi / num_grafi
+    average_num_links_per_graph = sum(input_seq) / 2 / num_grafi
+    #print(f"tot_links {average_num_links_per_graph}")
+    average_links_per_node = sum(input_seq) / num_nodi / num_grafi
 
     #print(f"input_seq: {type(input_seq), len(input_seq)}")
     #print(f"x_vals: {type(x_vals), len(x_vals)}")
     #print(f"deg_prob: {deg_prob, len(deg_prob)}")
 
-    return x_vals, y_vals, errori, deg_prob, tot_links, average_links
+    return x_vals, y_vals, errori, deg_prob, average_num_links_per_graph, average_links_per_node
 
 def get_distance_from_mean(x_vals, average_links, tot_links):
      return (np.abs(np.array(x_vals) - average_links)**1) / tot_links
@@ -371,7 +382,8 @@ def get_norm_probability(x_vals, degree_prob_dict):
     probabilities = np.array([degree_prob_dict[degree] for degree in x_vals])
     max_prob = max(probabilities)
     max_inv_prob = max(1/probabilities)
-    return max_prob / probabilities / max_inv_prob
+    #return max_prob / probabilities / max_inv_prob
+    return probabilities
 
 def get_plot_data(many_training_paths, many_training_configs, **kwargs):
     """
@@ -387,6 +399,7 @@ def get_plot_data(many_training_paths, many_training_configs, **kwargs):
         path = row.values[0]
 
         x_vals, y_vals, errori, degree_prob_dict, tot_links, average_links = get_data_points_degrees_relative_difference(path)
+        x_vals = np.array(x_vals)
 
         # queste variabili sono chiamate tramite i kwargs
         pER = many_training_configs.loc[index]['graph_dataset.list_p'][0]
@@ -395,12 +408,17 @@ def get_plot_data(many_training_paths, many_training_configs, **kwargs):
  
         #calcolo il numero di link dei grafi
         if kwargs.get('normalize_x'):
-            x_vals = np.array(x_vals) / tot_links 
+            #x_vals = x_vals / tot_links  TODO: rimettere a posto!!!!
+            # introduco un max scaler
+            x_vals = np.log(x_vals)
+            massimo, minimo = np.max(x_vals), np.min(x_vals)
+            x_vals = (x_vals - minimo) / (massimo - minimo)
+            #x_vals = ((x_vals / np.log(tot_links)) * (massimo - minimo)) + minimo / np.log(tot_links)
          
         # normalizzazione diversa: ricavo la probabilità corrispondente per ciascun grado
         if kwargs.get('probs'):           
             x_vals = get_norm_probability(x_vals, degree_prob_dict)
-            
+            x_vals = x_vals
         
         if kwargs.get('distance_from_mean'):
             #print(f"x_vals {x_vals} \t\t average {average_links} \t\t tot {tot_links}")
@@ -410,13 +428,13 @@ def get_plot_data(many_training_paths, many_training_configs, **kwargs):
             dist = get_distance_from_mean(x_vals, average_links, tot_links)
             norm_probs = get_norm_probability(x_vals, degree_prob_dict)
             
-            new_var = dist + norm_probs
+            new_var = norm_probs + dist
             norm = max(new_var)
-            x_vals = new_var #                      / norm
+            x_vals = new_var  #/ norm
             
 
         feat = kwargs.get('feat')
 
-        plot_data.append({'x': x_vals, 'feat': eval(feat), 'y': y_vals, 'errori': errori})
+        plot_data.append({'x': x_vals,  feat: eval(feat), 'y': y_vals, 'errori': errori})  # 'feat_name': feat,
 
     return plot_data

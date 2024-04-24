@@ -8,7 +8,11 @@ import networkx as nx
 from config_valid import Config, TrainingMode
 #from graph_generation import GraphType
 from scipy.stats import kendalltau
+
 import skdim
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
 from torch.nn import Hardtanh
 
 import torch
@@ -44,6 +48,7 @@ class Embedding():
         self.total_node_emb_dim = None
         self.total_graph_emb_dim = None
         self.total_node_emb_dim_pca = None
+        self.total_node_emb_dim_pca_mia = None
 
         self.dataset_nx = dataset.dataset_list
         self.numgrafi = len(self.dataset_nx)
@@ -403,19 +408,22 @@ class Embedding():
         total_graph_emb_dim = metodo.fit(self.graph_embedding_array).dimension_
         total_node_emb_dim = metodo.fit(self.node_embedding_array).dimension_
         total_node_emb_dim_pca = metodoPCA(self.node_embedding_array).dimension_
+        total_node_emb_dim_pca_mia = estimate_dimensionality_pca(self.node_embedding_array)
 
-        return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_node_emb_dim_pca
+        return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_node_emb_dim_pca, total_node_emb_dim_pca_mia
 
     def get_metrics(self, num_emb_neurons):
         if num_emb_neurons == 1:
             self.calc_graph_emb_correlation()  # calcola self.graph_correlation_per_class o self.total_graph_correlation
             self.calc_node_emb_correlation()
-            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_graph_emb_dim, self.total_node_emb_dim_pca = 0, 0, 0, 0, 0
+            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_graph_emb_dim, \
+                self.total_node_emb_dim_pca, self.total_node_emb_dim_pca_mia = 0, 0, 0, 0, 0, 0
             #if training_mode == TrainingMode.mode3:
             #    self.calc_regression_error()
         else:
             #self.calc_distances(num_emb_neurons)  # calcola self.difference_of_means
-            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_node_emb_dim_pca = self.calc_instrinsic_dimension(num_emb_neurons)
+            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_node_emb_dim_pca, self.total_node_emb_dim_pca_mia = \
+                self.calc_instrinsic_dimension(num_emb_neurons)
 
 
 class Embedding_per_graph():
@@ -593,6 +601,7 @@ class Embedding_autoencoder(Embedding):
         self.total_node_emb_dim = None
         self.total_graph_emb_dim = None
         self.total_node_emb_dim_pca = None
+        self.total_node_emb_dim_pca_mia = None
         self.total_graph_correlation = None
         self.total_node_correlation = None
         self.config_class = config_c
@@ -651,10 +660,11 @@ class Embedding_autoencoder(Embedding):
         total_graph_emb_dim = metodo.fit(total_graph_emb_array).dimension_
         total_node_emb_dim = metodo.fit(total_node_emb_array).dimension_
         total_node_emb_dim_pca = metodo_pca.fit(total_node_emb_array).dimension_
+        total_node_emb_dim_pca_mia = estimate_dimensionality_pca(total_node_emb_array)
         #print(f"total_node_emb_dim {total_node_emb_dim}")
         #sys.stdout.flush()
 
-        return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_node_emb_dim_pca
+        return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_node_emb_dim_pca, total_node_emb_dim_pca_mia
 
     def calc_node_emb_correlation(self):
         pass
@@ -733,3 +743,17 @@ class Embedding_AEMLP_per_graph():
         only_ccs = list(dict(clust_coeffs).values())  # for dw in clust_coeffs]  [
         return only_ccs
 
+def estimate_dimensionality_pca(data, variance_threshold=0.95):
+    """
+    Estimate the number of principal components needed to capture a given percentage of the variance in a dataset.
+    """
+    scaler = StandardScaler()
+    data_scaled = scaler.fit_transform(data)
+
+    pca = PCA()
+    pca.fit(data_scaled)
+
+    cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
+    num_components = np.argmax(cumulative_variance >= variance_threshold) + 1
+
+    return num_components

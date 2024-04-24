@@ -118,7 +118,7 @@ def findMinDiff(arr):
     return diff
 
 
-def is_outlier(points, thresh=7.5):
+def is_outlier(points, threshold=7.5):
     """
     Returns a boolean array with True if points are outliers and False
     otherwise.
@@ -149,11 +149,11 @@ def is_outlier(points, thresh=7.5):
 
     modified_z_score = 0.6745 * diff / med_abs_deviation
 
-    return modified_z_score > thresh
+    return modified_z_score > threshold
 
-def array_wo_outliers(x_array):
+def array_wo_outliers(x_array, threshold=7.5):
     x_array = np.array(x_array)
-    filtered = x_array[~is_outlier(x_array)]
+    filtered = x_array[~is_outlier(x_array, threshold)]
     return filtered
 
 def adjust_lightness(color, amount=0.5):

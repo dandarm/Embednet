@@ -17,13 +17,15 @@ from models import view_parameters, get_parameters, new_parameters, modify_param
 #from Dataset_autoencoder import DatasetAutoencoder
 from embedding import Embedding_autoencoder_per_graph, Embedding_autoencoder
 from Metrics import Metrics
+
+from grid_automate import calc_media_scarti
 from torchmetrics import HammingDistance
 
 class Trainer_Autoencoder(Trainer):
     def __init__(self, config_class, verbose=False, rootsave="."):
         super().__init__(config_class, verbose, rootsave)
         #self.name_of_metric = ["auc", "pr_auc", "f1_score", "euclid"]
-        self.name_of_metric = ["pr_auc", "euclid"]  # "auc",  "f1_score"
+        self.name_of_metric = ["diff_deg_seq"]  # "auc",  "f1_score" pr_auc euclid
 
         #self.HD = HammingDistance(task="binary")
 
@@ -468,8 +470,8 @@ class Trainer_Autoencoder(Trainer):
                 e.calc_decoder_output(self.model.forward_all, sigmoid=False)
             e.to_cpu()
             e.calc_degree_sequence()
-            e.calc_clustering_coeff()
-            e.calc_knn()
+            #e.calc_clustering_coeff()
+            #e.calc_knn()
             e.sample_without_threshold()
 
 
@@ -477,6 +479,29 @@ class Trainer_Autoencoder(Trainer):
 
 
     def calc_metric(self, loader):
+        # calcola soltanto la differenza della sequenza di grado
+        input_seq_train = np.array(self.dataset.actual_node_class_train).ravel()
+        input_seq_test = np.array(self.dataset.actual_node_class_test).ravel()
+        embeddings = self.get_embedding_autoencoder(loader)
+        pred_seq = np.array([g.out_degree_seq for g in embeddings]).ravel().squeeze()
+
+        # train o test loader? :
+        l = len(pred_seq)
+        if l == len(input_seq_train):
+            diff = (pred_seq - input_seq_train) / input_seq_train  # calcolo la differenza relativa tra la seq grado predetta e quella di input
+            stats = calc_media_scarti(input_seq_train, diff)
+        elif l == len(input_seq_test):
+            diff = (pred_seq - input_seq_test) / input_seq_test
+            stats = calc_media_scarti(input_seq_test, diff)
+
+        x_vals = list(stats.keys())  # contiene i valori unici del grado, mentre input_seq sono tutti i gradi di tutti i nodi (anche ripetuti)
+        y_vals = [stats[k]['somma_assoluta'] for k in x_vals]
+        errore_totale_per_grafo = sum(y_vals) / len(loader.dataset)
+
+        metriche = Metrics(diff_deg_seq=errore_totale_per_grafo)
+        return metriche
+
+    def calc_metric_prauc_euclid(self, loader):
         """
         Calcola una AUC per la ricostruzione dell'intera matrice
         :param loader:

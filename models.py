@@ -360,9 +360,11 @@ def new_parameters(model, method=Inits.xavier_uniform, const_value=1.0, **kwargs
 
 def get_weights_from_init_method(custom_weight, method, const_value=1.0, **kwargs):
     if kwargs.get('modified_gain_for_UNnormalized_adj'):
-        gain = 0.003
+        n_params = torch.tensor(custom_weight.numel())
+        gain = 1 / torch.sqrt(n_params.float())
     else:
         gain = 1.0
+    print(f"Gain for init_weights: {gain}")
     if method is Inits.kaiming_normal:
         gain = torch.nn.init.calculate_gain(nonlinearity='relu', param=None)  # nonlinearity – the non-linear function (nn.functional name)
         torch.nn.init.kaiming_normal_(custom_weight, mode='fan_out', nonlinearity='relu')
@@ -379,7 +381,7 @@ def get_weights_from_init_method(custom_weight, method, const_value=1.0, **kwarg
     elif method == Inits.dirac:
         torch.nn.init.dirac_(custom_weight)  # tensor deve essere almeno 3D
     elif method == Inits.xavier_uniform:
-        torch.nn.init.xavier_uniform_(custom_weight, gain=1.0)
+        torch.nn.init.xavier_uniform_(custom_weight, gain=gain)
     elif method == Inits.xavier_normal:
         torch.nn.init.xavier_normal_(custom_weight, gain=gain)  #gain=1.0
     elif method == Inits.trunc_normal:

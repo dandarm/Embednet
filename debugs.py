@@ -4,18 +4,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from multiprocessing import Pool
-import time
+from time import time
 from tqdm import tqdm
 
 from models import Inits
 from train import Trainer, GeneralDataset
-from embedding import Embedding, NodeEmbedding
-from experiments import Experiments, experiment_node_embedding, all_seeds
+from embedding import Embedding
+from experiments import Experiments, all_seeds
 from config_valid import Config, TrainingMode
 from graph_generation import GenerateGraph
+from GridConfigurations import GridConfigurations
+from dictionary_of_trials import get_diz_trials, get_diz_trial4test
+from train_autoencoder_inductive import Trainer_Autoencoder
 #from experiments import (train_take_embedding, plot_dim1, plot_dimN, plot_correlation_error, get_metrics,
 #                         init_GCN, init_model_dataset, train_take_embedding_alreadyinit)
-from plot_funcs import (plot_dim1, plot_dimN, plot_correlation_error, get_metrics, plot_node_emb_1D, scatter_node_emb,
+from plot_funcs import (plot_dim1, plot_dimN, plot_correlation_error,  plot_node_emb_1D, scatter_node_emb,
                         plot_graph_emb_1D, plot_data_degree_sequence)
 
 import torch
@@ -63,9 +66,39 @@ def debug2():
     plt.scatter(embs_by_class[i][j].actual_node_class, embs_by_class[i][j].node_embedding_array)
     print(embs_by_class[i][j].graph_label)
 
+def debug3():
+    """ funzione per  calcolare la loss interna al dataset: ogni grafo rispetto a ogni altro"""
+    base_path = "output_plots/autoencoder/85/"
+    config_class, diz_trials = get_diz_trial4test("configurations/Final1.yml") #_4modelloading.yml")
+
+    gc = GridConfigurations(config_class, diz_trials)
+    gc.make_configs()
+
+    losses = []
+    ps = []
+    nodi = []
+    grafi = []
+    for config_class in gc.configs:
+        start = time()
+        p = config_class.conf['graph_dataset']['list_p']
+        n = config_class.conf['graph_dataset']['Num_nodes'][0]
+        gs = config_class.conf['graph_dataset']['Num_grafi_per_tipo']
+        ps.append(p)
+        nodi.append(n)
+        grafi.append(gs)
+
+        trainer = Trainer_Autoencoder(config_class, rootsave=Path(base_path))
+        trainer.init_dataset()
+        trainer.load_dataset(trainer.gg.dataset)
+        final_loss = trainer.calc_loss_input_dataset_ER(trainer.dataset.all_data_loader)
+        losses.append(final_loss)
+        end = time()
+        print(f"Tempo: {round(end - start, 2)}")
+
+
 if __name__ == "__main__":
     #debug1()
-    debug2()
-
+    #debug2()
+    debug3()
 
 

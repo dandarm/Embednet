@@ -1,25 +1,32 @@
 import os
+import sys
+from collections import Counter
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.transforms import Bbox
 import numpy as np
+
 from scipy import stats
 from plt_parameters import get_colors_to_cycle_rainbow8, get_colors_to_cycle_rainbowN, get_colors_to_cycle_sequential
 from matplotlib.lines import Line2D
 from config_valid import TrainingMode, GraphType
+from normalizations import probability_transform, barre_errore, get_unique_ys_4_unique_errors, get_summed_ys_at_unique_probs
 import umap
 from matplotlib import ticker
 from cycler import cycler
 from utils_embednet import array_wo_outliers, adjust_lightness
+
 formatter = ticker.ScalarFormatter(useMathText=True)
 formatter.set_scientific(True)
 formatter.set_powerlimits((-1,1))
 
+np.set_printoptions(threshold=sys.maxsize)
+
 font_for_text = {'family': 'serif',
-        'color':  'darkred',
-        'weight': 'normal',
-        'size': 12,
-        }
+                'color':  'darkred',
+                'weight': 'normal',
+                'size': 12,
+                }
 
 sc1 = None
 class Data2Plot():
@@ -322,81 +329,111 @@ class DataAutoenc2Plot(Data2Plot):
             self.custom_legend_lines = [(Line2D([0], [0], color=color, lw=3)) for color in self.colors.values()]
         #print(f"len di ar2p: {len(self.array2plot)}, type: {type}")
 
-    def plot_adj_entries_hist(self, ax1, threshold=None, threshold2=None, bis_ax=None):
+
+    def norm_hist(self, array, bins, ax, color, xrange, label=None, edgecolor=None, shift=0, alpha=1.0):
+        # Calcolo dell'istogramma senza normalizzazione
+        counts, bin_edges = np.histogram(array, bins=bins)
+        # Normalizzazione per ottenere la frequenza relativa
+        frequencies = counts / counts.sum()
+        # Creazione dell'istogramma
+        ax.bar(bin_edges[:-1]+shift, frequencies, width=np.diff(bin_edges), edgecolor=edgecolor, align='edge', color=color,  label=label, alpha=alpha)
+        ax.set_xlim(xrange)
+        ax.set_ylim(min(frequencies),1)
+        ax.set_yscale('log')
+
+    def plot_adj_entries_hist(self, ax_test, threshold=None, threshold2=None, bis_ax=None):
         if self.array2plot_test is None and self.array2plot_train is None:
             input_adj_flat, pred_adj_flat, sampled_adjs_from_output = self.array2plot
             # input_adj_flat, pred_adj_flat = input_adj_flat[0], pred_adj_flat[0]
             input_adj_flat, pred_adj_flat, pred_after_sigm_flat = input_adj_flat.ravel(), pred_adj_flat.ravel(), sampled_adjs_from_output.ravel()
-            ax1.hist((input_adj_flat, pred_adj_flat, pred_after_sigm_flat), bins=25, range=[-0.25, 1.25]);
+            ax_test.hist((input_adj_flat, pred_adj_flat, pred_after_sigm_flat), bins=25, range=[-0.25, 1.25]);
             if threshold:
-                ax1.text(1.2, 1.0, f"soglia {round(threshold, 2)}", fontdict=font_for_text)
+                ax_test.text(1.2, 1.0, f"soglia {round(threshold, 2)}", fontdict=font_for_text)
         else:
             input_adj_flat, pred_adj_flat, sampled_adjs_from_output = self.array2plot_train
             input_adj_flat_train, pred_adj_flat_train, pred_after_sampling_flat_train = input_adj_flat.ravel(), pred_adj_flat.ravel(), sampled_adjs_from_output.ravel()
             input_adj_flat, pred_adj_flat, sampled_adjs_from_output = self.array2plot_test
             input_adj_flat_test, pred_adj_flat_test, pred_after_sampling_flat_test = input_adj_flat.ravel(), pred_adj_flat.ravel(), sampled_adjs_from_output.ravel()
 
-            #fig = plt.gcf()
-            axes = [ax1]
-            N, bins, patches = ax1.hist(input_adj_flat_test, bins=60, color='crimson', range=[-0.25, 1.25], label="Test set");
-            N, bins, patches = ax1.hist(pred_adj_flat_test, bins=100, color='darkorange', range=[-0.25, 1.25]);
-            N, bins, patches = ax1.hist(pred_after_sampling_flat_test, bins=100, color='mediumblue', range=[-0.25, 1.25]);
+            range_x_axis = [-0.1, 1.1]
+            #axes = [ax1]
+
+            self.norm_hist(input_adj_flat_test, 30, ax_test, 'crimson', range_x_axis, "Test set", edgecolor='black', shift=0.02)
+            self.norm_hist(pred_adj_flat_test, 50, ax_test, 'darkorange', range_x_axis) #, alpha=0.5)
+            self.norm_hist(pred_after_sampling_flat_test, 30, ax_test, 'mediumblue', range_x_axis, edgecolor='black', shift=-0.02)
+            #N, bins, patches = ax_test.hist(input_adj_flat_test, bins=50,  density=False, color='crimson', range=range_x_axis, label="Test set");
+            #N, bins, patches = ax_test.hist(pred_adj_flat_test, bins=50, density=True, color='darkorange', range=range_x_axis);
+            #N, bins, patches = ax_test.hist(pred_after_sampling_flat_test, density=True, bins=50, color='mediumblue', range=range_x_axis);
+            #ax_test.set_yscale('log')
             #for p in patches[0]:  # colore dell'input
             #    p.set_facecolor('red')
             #for p in patches[2]:  # colore del predicted
             #    p.set_facecolor('royalblue')
             if threshold:
-                ax1.text(1.2, 1.0, f"soglia {round(threshold2, 2)}", fontdict=font_for_text)
+                ax_test.text(1.2, 1.0, f"soglia {round(threshold2, 2)}", fontdict=font_for_text)
 
             # secondo asse del test
-            #asse = fig.add_subplot(233, sharex=ax1, sharey=ax1, label=f"ax2")
-            asse = bis_ax
-            axes.append(asse)
-            N, bins, patches2 = asse.hist(input_adj_flat_train, bins=60, color='orangered', range=[-0.25, 1.25], label="Train set");
-            N, bins, patches2 = asse.hist(pred_adj_flat_train, bins=100, color='#FDB147', range=[-0.25, 1.25]);
-            N, bins, patches2 = asse.hist(pred_after_sampling_flat_train, bins=100, color='cornflowerblue', range=[-0.25, 1.25]);
+            fig = plt.gcf()
+            ax_train = fig.add_subplot(235, sharex=ax_test, sharey=ax_test, label=f"ax2")
+            #asse = bis_ax
+            #axes.append(ax2)
+            self.norm_hist(input_adj_flat_train, 30, ax_train, 'orangered', range_x_axis, "Train set", edgecolor='black', shift=0.02)
+            self.norm_hist(pred_adj_flat_train, 50, ax_train, '#FDB147', range_x_axis, alpha=0.7)
+            self.norm_hist(pred_after_sampling_flat_train, 30, ax_train, 'cornflowerblue', range_x_axis, edgecolor='black', shift=-0.02)
+            #N, bins, patches2 = ax_train.hist(input_adj_flat_train, density=False,  bins=50, color='orangered', range=range_x_axis, label="Train set");
+            #N, bins, patches2 = ax_train.hist(pred_adj_flat_train, density=False, bins=50, color='#FDB147', range=range_x_axis);
+            #N, bins, patches2 = ax_train.hist(pred_after_sampling_flat_train, density=True, bins=50, color='cornflowerblue', range=range_x_axis);
+
             #for p in patches2[0]:  # colore dell'input
             #    p.set_facecolor('lightcoral')
             #for p in patches2[2]:  # colore del predicted
             #    p.set_facecolor('lightskyblue')
             if threshold2:
-                asse.text(1.2, 1.0, f"soglia {round(threshold,2)}", fontdict=font_for_text)
+                ax_train.text(1.2, 1.0, f"soglia {round(threshold,2)}", fontdict=font_for_text)
 
-            ax1.legend()
-            asse.legend()
+            ax_test.legend(loc='lower right')
+            ax_train.legend(loc='lower right')
 
-            xshift = 0.06;
-            yshift = 0.06
-            for i, ax in enumerate(axes[::-1]):
-                ax.patch.set_visible(False)
-                pos = ax.get_position()
-                newpos = Bbox.from_bounds(pos.x0 + i * xshift, pos.y0 + i * yshift, pos.width, pos.height)
-                ax.set_position(newpos)
-                for sp in ["top", "right"]:
-                    ax.spines[sp].set_visible(False)
+            xshift = 0.04
+            yshift = 0.03
+            #for i, ax in enumerate(axes[::-1]):
+            ax_test.patch.set_visible(False)
+            pos = ax_test.get_position()
+            newpos = Bbox.from_bounds(pos.x0 + xshift, pos.y0 + yshift, pos.width, pos.height)
+            ax_test.set_position(newpos)
 
-                if i > 0:
-                    ax.spines["left"].set_visible(False)
-                    ax.tick_params(labelleft=False, left=False, labelbottom=False)
+            ax_train.patch.set_visible(False)
+            xshift = 0.02
+            yshift = 0.02
+            pos = ax_train.get_position()
+            newpos = Bbox.from_bounds(pos.x0 - xshift, pos.y0 - yshift, pos.width, pos.height)
+            ax_train.set_position(newpos)
+
+
+            for sp in ["top", "right"]:
+                ax_test.spines[sp].set_visible(False)
+                ax_train.spines[sp].set_visible(False)
+            #ax_test.spines["left"].set_visible(False)
+            #ax_test.tick_params(labelleft=False, left=False, labelbottom=False)
 
     def plot_output_degree_sequence(self, filename_save=None, ax=None):
-        # voglio plottare anche altre cose tipo la sequenza di grado
-        # prendo la seq grado delloutput
+
         pred_degrees = np.array([g.out_degree_seq for g in self.input_obj]).ravel().squeeze()
         input_degree = np.array(self.wrapper_obj.node_degree).ravel().squeeze()
 
         # print(pred_degrees.shape, input_degree.shape)
-        if ax is not None:
-            ax.set_title(f'Degree Seq.', fontsize='small')
-            ax.scatter(input_degree, pred_degrees, label="Predicted")
-            ax.scatter(input_degree, input_degree, label="Input", color='red')
-            ax.set_ylim(min(input_degree), max(input_degree))
-            ax.legend()
-        else:
-            plt.scatter(input_degree, pred_degrees, label="Predicted")
-            plt.scatter(input_degree, input_degree, label="Input", color='red')
-            plt.ylim(min(input_degree), max(input_degree))
-            plt.legend()
+        if ax is None:
+            ax = plt.gca()
+
+        ax.set_title(f'Degree Seq.')  #, fontsize='small')
+        ax.scatter(input_degree, pred_degrees, label="Predicted", s=7)
+        ax.scatter(input_degree, input_degree, label="Input", color='red', s=2)
+        ax.set_ylim(min(input_degree), max(input_degree))
+        if self.config_class.conf['graph_dataset']['confmodel']:  # se lavoriamo con le power law mettiamo gli assi logaritmici
+            ax.set_xscale('log')
+            ax.set_yscale('log')
+        ax.legend()
+
         if filename_save:
             plt.savefig(filename_save)
         else:
@@ -450,6 +487,32 @@ class DataAutoenc2Plot(Data2Plot):
         else:
             if ax is None:
                 plt.show()
+
+    def plot_normalized_degrees(self, filename_save=None, ax=None):
+        pred_degrees = np.array([g.out_degree_seq for g in self.input_obj]).ravel().squeeze()
+        input_degree = np.array(self.wrapper_obj.node_degree).ravel().squeeze()
+        diffs = pred_degrees - input_degree
+
+        probs_transf = probability_transform(input_degree)
+        unique_mean_errors, unique_prob, integer_values, unique_abs_mean_errors = barre_errore(diffs, probs_transf)
+        #unique_prob = get_unique_ys_4_unique_errors(probs_transf, unique_xrank, integer_values)
+        #summed_ys = get_summed_ys_at_unique_probs(probs_transf, unique_xrank, integer_values)
+
+        #ax.errorbar(unique_xrank, unique_prob, yerr=unique_errors/100, linestyle='', marker='.', markersize=3, alpha=0.9)
+        ax.plot(unique_prob, unique_mean_errors, linestyle='', marker='.', markersize=8, alpha=0.9, label='Mean difference')
+
+        axt = ax.twinx()
+        p, = axt.plot(unique_prob, unique_abs_mean_errors, color='red', linestyle='', marker='.', markersize=8, alpha=0.9, label='Mean absolute differences')
+        axt.tick_params(axis='y', colors=p.get_color())
+
+        if self.config_class.conf['graph_dataset']['confmodel']:
+            ax.set_xscale('log')
+        #ax.set_ylim(0,1)
+        ax.legend()
+        axt.legend()
+        ax.set_title("Reconstructed degree difference vs. Degree probability")
+        ax.set_xlabel("Degree probability")
+
 
 
     def get_color(self, i):
@@ -522,6 +585,7 @@ class DataAutoenc2Plot(Data2Plot):
 
 def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
                  node_intrinsic_dimensions_total=None, total_node_emb_dim_pca=None,
+                 total_node_emb_dim_pca_mia=None,
                  model_pars=None, param_labels=None,
                  node_correlation=None, graph_correlation=None,
                  sequential_colors=False, log=False, **kwargs):
@@ -529,77 +593,84 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
     intr_dim_epoch_list = kwargs.get('intr_dim_epoch_list')
 
     figure_size = (20, 12)
-    #fig, axes = plt.subplots(2, 3, figsize=figure_size)
-    fig = plt.figure(constrained_layout=True, figsize=figure_size)
-    subfigs = fig.subfigures(2, 3)
-    figs_i = subfigs.flat
+    fig, axes = plt.subplots(2, 3, figsize=figure_size)
+    # in caso voglio tornare ai 4 boxes
+    # fig = plt.figure(constrained_layout=True, figsize=figure_size)
+    #subfigs = fig.subfigures(2, 3)
+    #figs_i = subfigs.flat
 
-    #ax00 = axes[0][0]
-    #ax01 = axes[0][1]
-    #ax02 = axes[0][2]
-    #ax10 = axes[1][0]
-    #ax11 = axes[1][1]
-    #ax12 = axes[1][2]
+    # prima riga
+    ax00 = axes[0][0]
+    ax01 = axes[0][1]
+    ax02 = axes[0][2]
+    # seconda riga
+    ax10 = axes[1][0]
+    ax11 = axes[1][1]
+    ax12 = axes[1][2]
 
-    ax00 = figs_i[0].subplots(1, 1)
-    ax01s = figs_i[1].subplots(2, 2)
-    ax02 = figs_i[2].subplots(1, 1)
-    ax10 = figs_i[3].subplots(1, 1)
-    ax11 = figs_i[4].subplots(1, 1)
-    ax12 = figs_i[5].subplots(1, 1)
+    #ax00 = figs_i[0].subplots(1, 1)
+    #ax01s = figs_i[1].subplots(2, 2)
+    #ax02 = figs_i[2].subplots(1, 1)
+    #ax10 = figs_i[3].subplots(1, 1)
+    #ax11 = figs_i[4].subplots(1, 1)
+    #ax12 = figs_i[5].subplots(1, 1)
 
-    ax0100 = ax01s.flat[0]
-    ax0101 = ax01s.flat[1]
-    ax0102 = ax01s.flat[2]
+    #ax0100 = ax01s.flat[0]
+    ax0100 = ax01
+    #ax0101 = ax01s.flat[1]
+    #ax0102 = ax01s.flat[2]
 
     if data is not None:
         if not data.fullMLP:
             if num_emb_neurons == 1:
                 #print("Plotting 1D embeddings...")
-                data.plot(datatype='node_embedding', type='scatter', ax=ax00, sequential_colors=sequential_colors, title="Node Embedding")
+                data.plot(datatype='node_embedding', type='scatter', ax=ax01, sequential_colors=sequential_colors, title="Node Embedding")
                 if not kwargs.get('plot_reconstructed_degree_scatter'):
-                    data.plot(datatype='graph_embedding', type='histogram', ax=ax0100, sequential_colors=sequential_colors, title="Graph Embedding")
+                    data.plot(datatype='graph_embedding', type='histogram', ax=ax10, sequential_colors=sequential_colors, title="Graph Embedding")
                 else:
-                    data.plot_output_degree_sequence(ax=ax0100)
-                    data.plot_output_clust_coeff(ax=ax0101)
-                    data.plot_output_knn(ax=ax0102)
+                    data.plot_output_degree_sequence(ax=ax10)
+                    #data.plot_output_clust_coeff(ax=ax0101)
+                    #data.plot_output_knn(ax=ax0102)
                 # TODO: rimettere
                 #plot_node_and_graph_correlations(axes, graph_correlation, node_correlation, epochs_list, **kwargs)
             else:
                 #print("Plotting 2D or n>=2 embeddings...")
                 #if num_emb_neurons < 3:     # per evitare di calcolare UMAP per ogni frame   #kwargs.get('plot_node_embedding', True):
-                data.plot(datatype='node_embedding', type='plot', ax=ax00, sequential_colors=sequential_colors, title="Node Embedding")
+                data.plot(datatype='node_embedding', type='plot', ax=ax01, sequential_colors=sequential_colors, title="Node Embedding")
                 if not kwargs.get('plot_reconstructed_degree_scatter'):
-                    data.plot(datatype='graph_embedding', type='plot', ax=ax0100, sequential_colors=sequential_colors, title="Graph Embedding")
+                    data.plot(datatype='graph_embedding', type='plot', ax=ax01, sequential_colors=sequential_colors, title="Graph Embedding")
                 else:
-                    data.plot_output_degree_sequence(ax=ax0100)
-                    data.plot_output_clust_coeff(ax=ax0101)
-                    data.plot_output_knn(ax=ax0102)
-                if node_intrinsic_dimensions_total is not None and total_node_emb_dim_pca is not None:
-                    plot_intrinsic_dimension(ax11, total_node_emb_dim_pca, node_intrinsic_dimensions_total, intr_dim_epoch_list, **kwargs)
+                    data.plot_output_degree_sequence(ax=ax10)
+                    #data.plot_output_clust_coeff(ax=ax0101)
+                    #data.plot_output_knn(ax=ax0102)
+                if node_intrinsic_dimensions_total is not None and total_node_emb_dim_pca is not None and total_node_emb_dim_pca_mia is not None:
+                    plot_intrinsic_dimension(ax02, total_node_emb_dim_pca, total_node_emb_dim_pca_mia, node_intrinsic_dimensions_total, intr_dim_epoch_list, **kwargs)
         else:
-            data.plot_output_degree_sequence(ax=ax0100)
-            data.plot_output_clust_coeff(ax=ax0101)
-            data.plot_output_knn(ax=ax0102)
+            data.plot_output_degree_sequence(ax=ax10)
+            #data.plot_output_clust_coeff(ax=ax0101)
+            #data.plot_output_knn(ax=ax0102)
 
         if data.config_class.autoencoding:
-            ax02_bis = figs_i[2].add_subplot(111, sharex=ax02, sharey=ax02, label=f"ax02bis")
-            data.plot(datatype='adj_entries', type='hist', ax=ax02, sequential_colors=sequential_colors, title="Adj matrix entries", bis_ax=ax02_bis)
+            #ax02_bis = figs_i[2].add_subplot(111, sharex=ax02, sharey=ax02, label=f"ax02bis")
+            data.plot(datatype='adj_entries', type='hist', ax=ax11, sequential_colors=sequential_colors, title="Adj matrix entries", bis_ax=None)
         else:
-            data.plot(datatype='final_output', type='plot', ax=ax02, sequential_colors=sequential_colors, title="Final Output")
+            data.plot(datatype='final_output', type='plot', ax=ax11, sequential_colors=sequential_colors, title="Final Output")
 
 
-    plot_test_loss_and_metric(ax10, test_loss_list, epochs_list, **kwargs)
+    plot_test_loss_and_metric(ax00, test_loss_list, epochs_list, **kwargs)
 
     if model_pars is not None:
         plot_weights_multiple_hist(model_pars, param_labels, ax12, absmin=-2, absmax=2, sequential_colors=False)
+    else:
+        data.plot_normalized_degrees(ax=ax12)
+        pass # plot su ax02 la sequenza di grado col grado normalizzato a mio piacimento
 
     fig.suptitle(f"{kwargs['long_string_experiment']}")
 
     if kwargs['showplot']:
         plt.show()
 
-    return subfigs
+    return fig #subfigs
 
 
 def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
@@ -643,16 +714,16 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
     # ax.yaxis.label.set_color(ploss.get_color())
 
     axt = ax.twinx()
-    ax2 = ax.twinx()  # questo lo tengo per Euclide
+    #ax2 = ax.twinx()  # questo lo tengo per Euclide
 
 
-    # Plot metriche
+    ################################àà# Plot metriche
     marker = '.'
     m_size = 5.0
     for i, metric_name in enumerate(metric_names):
         asse = axt
-        if i == 1:
-            asse = ax2
+        #if i == 1:
+        #    asse = ax2
         metricatrain = [m.get_metric(metric_name) for m in metric_obj_list_train]
         metricatest = [m.get_metric(metric_name) for m in metric_obj_list_test]
         color = get_colors_to_cycle_rainbow8()[i % 8]
@@ -668,14 +739,21 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
         asse.set_xlim(0, x_max)
         #    axt.set_yticklabels([0.0,1.0])
         # axt.yaxis.label.set_color(pmetric.get_color())
-        asse.tick_params(axis='y', colors=pmetric.get_color())
-    #axt.set_ylim(0, 1)
-    ax2.set_ylim(0, max(metricatest))
-    axt.legend(loc='upper right')
-    ax2.legend(loc='upper center')
+        asse.tick_params(axis='y', colors=color)  #pmetric.get_color())
+
+    # limiti per l'ase y
+    test_metric_list_min, test_metric_list_max = min(array_wo_outliers(metricatest, 2)), max(array_wo_outliers(metricatest, 2))
+    train_metric_list_min, train_metric_list_max = min(array_wo_outliers(metricatrain, 2)), max(array_wo_outliers(metricatrain, 2))
+    minimo = min(test_metric_list_min, test_metric_list_max)
+    massimo = max(train_metric_list_min, train_metric_list_max)
+    tol = (massimo - minimo) * 0.1
+    axt.set_ylim(minimo - tol, massimo + tol)
+    #ax2.set_ylim(0, max(metricatest))
+    axt.legend(loc='lower left')
+    #ax2.legend(loc='upper center')
 
 
-def plot_intrinsic_dimension(ax, total_node_emb_dim_pca, node_intrinsic_dimensions_total,
+def plot_intrinsic_dimension(ax, total_node_emb_dim_pca, total_node_emb_dim_pca_mia, node_intrinsic_dimensions_total,
                              epochs_list, **kwargs):
     last_epoch = kwargs.get("last_epoch")
     is_x_axis_log = kwargs.get("x_axis_log")
@@ -686,9 +764,11 @@ def plot_intrinsic_dimension(ax, total_node_emb_dim_pca, node_intrinsic_dimensio
     if is_x_axis_log:
         ax.semilogx(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node ID')
         ax.semilogx(epochs_list, total_node_emb_dim_pca, linestyle='None', marker='.', color='blue', label='PCA node ID')
+        ax.semilogx(epochs_list, total_node_emb_dim_pca_mia, linestyle='None', marker='.', color='green', label='PCA simple node ID')
     else:
         ax.plot(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node ID')
         ax.plot(epochs_list, total_node_emb_dim_pca, linestyle='None', marker='.', color='blue', label='PCA node ID')
+        ax.plot(epochs_list, total_node_emb_dim_pca_mia, linestyle='None', marker='.', color='green', label='PCA simple node ID')
     ax.set_xlim(0, last_epoch)
     #massimo = max(max(node_intrinsic_dimensions_total), max(graph_intrinsic_dimensions_total))
     ax.set_ylim(-0.1, 5)

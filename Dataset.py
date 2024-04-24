@@ -284,6 +284,10 @@ class Dataset(GeneralDataset):
         self.train_len = len(self.train_dataset)
         self.test_len = len(self.test_dataset)
 
+        #aggiungo anche le actual_node_clas ( le degree sequences) divise per traine  test
+        self.actual_node_class_train = self.actual_node_class[:self.tt_split]
+        self.actual_node_class_test = self.actual_node_class[self.tt_split:]
+
         #print(self.train_dataset[0].y, self.train_len)
         #print(self.test_dataset[0].y, self.test_len)
 
