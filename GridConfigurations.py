@@ -64,7 +64,13 @@ class GridConfigurations():
         num_trials = df_cum.shape[0]
         for i in range(num_trials):
             row = df_cum.iloc[i:i+1]  # se droppo nel ciclo iloc dà errore perché conta le righe vere, non l'indice: devo droppare dopo
-            stacked = pd.DataFrame(row.stack(level=[0, 1], dropna=True)).reset_index(0).drop('level_0', axis=1)
+            try:
+                res = row.stack(level=[0, 1], dropna=True)
+            except KeyError as e:
+                self.solve_nan_device_col(row)
+            finally:
+                res = row.stack(level=[0, 1], dropna=True)
+            stacked = pd.DataFrame(res).reset_index(0).drop('level_0', axis=1)
             # ottengo un dizionario pronto da salvare in stringa json
             result = self.nested_dict()
             for r in stacked.itertuples():
@@ -99,6 +105,10 @@ class GridConfigurations():
         self.config_dataframe = df_cum
         self.sistema_dataframe_fields()
 
+    def solve_nan_device_col(self, row):
+        # Sostituisci NaN con un valore specifico (es. 'unknown') per tutte le colonne
+        new_columns = [(col[0], 'vuoto' if pd.isna(col[1]) else col[1]) for col in row.columns]
+        row.columns = pd.MultiIndex.from_tuples(new_columns)
 
     def sistema_dataframe_fields(self):
         self.config_dataframe[('risultati', 'test_loss')] = '_'

@@ -391,7 +391,7 @@ class Experiments():
                 self.trainer.model = self.trainer.best_model
         graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output = self.trainer.take_embedding_all_data()
         if self.config_class.conf['model']['autoencoder_graph_ae']:
-            embedding_edges = get_embedding_edges(self.trainer.dataset.get_all_data_loader())
+            embedding_edges = None  #get_embedding_edges(self.trainer.dataset.get_all_data_loader())
             embedding_class = self.elaborate_embedding_autoencoder_ae(graph_embeddings_array, node_embeddings_array, embedding_edges)
         else:
             embedding_class = self.elaborate_embedding(graph_embeddings_array, node_embeddings_array, node_embeddings_array_id, final_output, self.trainer.model.linears)

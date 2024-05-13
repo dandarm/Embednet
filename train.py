@@ -68,6 +68,7 @@ class Trainer():
         self.device = None
 
         self.name_of_metric = "accuracy"
+        #from torch.nn import Softmax
         self.softmax = Softmax(dim=1)
 
         self.gg = None  # class generate_graph
@@ -209,9 +210,9 @@ class Trainer():
             self.is_weighted = True  # self.config_class.conf['training'].get('weigths4unbalanced_dataset')
         else:
             self.is_weighted = False
-        #if self.verbose:
-        print(self.criterion)
-        print(f"loss reduction: {getattr(self.criterion, 'reduction')}, -> is_weighted: {self.is_weighted}")
+        if self.verbose:
+            print(self.criterion)
+            print(f"loss reduction: {getattr(self.criterion, 'reduction')}, -> is_weighted: {self.is_weighted}")
 
         if self.conf['device'] == 'gpu':
             self.device = torch.device('cuda')
@@ -493,7 +494,7 @@ class Trainer():
 
         print("Epoca 0...")
         test_loss = self.test(self.dataset.test_loader)
-        self.train_loss_list.append(test_loss)
+        self.train_loss_list.append(test_loss)  # voluto per avere la stessa lunghezza
         self.test_loss_list.append(test_loss)
         print("Prima snapshot...")   # self.epochs if self.epochs > 0 else 1,
         parallel_processes_save_images = []
@@ -571,7 +572,7 @@ class Trainer():
             # writer.add_scalars(f'Accuracy', {'Train': train_acc, 'Test': test_acc}, epoch)
             # print(f'Epoch: {epoch:03d}, Train Acc: {train_acc:.4f}, Test Acc: {test_acc:.4f}')
             self.train_loss_list.append(train_loss)
-            self.test_loss_list.append(test_loss)
+            self.test_loss_list.append(test_loss)  # appendo lo stesso valore di test per avere stessa lungh.
 
             if self.conf['training'].get('every_epoch_embedding'):
                 if epoch in self.epochs_list:
