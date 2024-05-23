@@ -1,6 +1,6 @@
 import random
 from time import time
-from tqdm import tqdm
+#from tqdm import tqdm
 from collections import Counter
 import numpy as np
 import torch
@@ -52,7 +52,8 @@ class DatasetAutoencoder(Dataset):
         train_pos_edge_index = []
         total = len(graph_list_nx)
         i = 0
-        for g in tqdm(graph_list_nx, total=total):
+        #for g in tqdm(graph_list_nx, total=total):
+        for g in graph_list_nx:
             train_edges, test_edges = self.convert_G((g, i))
             train_edges = train_edges.to(self.device)
             test_edges = test_edges.to(self.device)

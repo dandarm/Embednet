@@ -8,6 +8,7 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import torch
+import torch.profiler
 
 #torch.multiprocessing.set_start_method('spawn')# good solution !!!!
 from multiprocessing import Pool, Process, Manager
@@ -148,8 +149,6 @@ class Experiments():
                 self.just_train(verbose=self.verbose)
 
 
-    def stesso_init_diversi_dataset(self):
-        self.GS_same_weight_inits_different_datasets(test_same_training=False)
     def GS_same_weight_inits_different_datasets(self):
         # modello di base per avere l'architettura dei parametri da impostare
         modello_base = self.trainer.init_GCN()
@@ -384,6 +383,19 @@ class Experiments():
     def just_train(self, parallel=True, verbose=False):
         self.trainer.init_all(parallel=parallel, verbose=verbose)
         self.trainer.launch_training()
+        # Uso del profiler con meno overhead
+        # with torch.profiler.profile(
+        #         activities=[
+        #             torch.profiler.ProfilerActivity.CPU,
+        #             torch.profiler.ProfilerActivity.CUDA],
+        #         schedule=torch.profiler.schedule(wait=1, warmup=1, active=1, repeat=2),  # Ridurre il numero di iterazioni attive
+        #         on_trace_ready=torch.profiler.tensorboard_trace_handler('./log_dir'),
+        #         record_shapes=False,  # Disabilita la registrazione delle forme dei tensori se non necessaria
+        #         profile_memory=False,  # Disabilita il profiling della memoria se non necessario
+        #         with_stack=False  # Disabilita la registrazione degli stack trace se non necessario
+        # ) as profiler:
+        #     self.trainer.launch_training(profiler=profiler)
+        #     print(profiler.key_averages().table(sort_by="cuda_time_total"))
         
     def embedding(self):
         if self.config_class.conf['training']['save_best_model']:

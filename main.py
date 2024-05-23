@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import multiprocessing as mp
 from multiprocessing import Pool, SimpleQueue
 import time
-from tqdm import tqdm
+#from tqdm import tqdm
 from pathlib import Path
 from config_valid import Inits
 from train import Trainer, GeneralDataset

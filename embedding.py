@@ -399,13 +399,11 @@ class Embedding():
             for n in node_emb_perclass:
                 dim = metodo.fit(n).dimension_
                 node_emb_dims.append(dim)
-
             graph_emb_perclass = np.array(self.get_all_graph_emb_per_class())
             for n in graph_emb_perclass:
                 dim = metodo.fit(n).dimension_
                 graph_emb_dims.append(dim)
-
-        total_graph_emb_dim = metodo.fit(self.graph_embedding_array).dimension_
+        #total_graph_emb_dim = metodo.fit(self.graph_embedding_array).dimension_
         total_node_emb_dim = metodo.fit(self.node_embedding_array).dimension_
         total_node_emb_dim_pca = metodoPCA(self.node_embedding_array).dimension_
         total_node_emb_dim_pca_mia = estimate_dimensionality_pca(self.node_embedding_array)
@@ -422,8 +420,9 @@ class Embedding():
             #    self.calc_regression_error()
         else:
             #self.calc_distances(num_emb_neurons)  # calcola self.difference_of_means
-            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_node_emb_dim_pca, self.total_node_emb_dim_pca_mia = \
-                self.calc_instrinsic_dimension(num_emb_neurons)
+            res = self.calc_instrinsic_dimension(num_emb_neurons)
+
+            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_node_emb_dim_pca, self.total_node_emb_dim_pca_mia = res
 
 
 class Embedding_per_graph():
@@ -655,15 +654,19 @@ class Embedding_autoencoder(Embedding):
 
         total_node_emb_array = np.array([graph_emb.node_embedding for graph_emb in self.list_emb_autoenc_per_graph])
         total_node_emb_array = total_node_emb_array.reshape(-1, total_node_emb_array.shape[-1])
-        total_graph_emb_array = np.array([graph_emb.graph_embedding for graph_emb in self.list_emb_autoenc_per_graph])
+        #total_graph_emb_array = np.array([graph_emb.graph_embedding for graph_emb in self.list_emb_autoenc_per_graph])
         #print(f"shape di graph emb array: {total_graph_emb_array.shape}")
-        total_graph_emb_dim = metodo.fit(total_graph_emb_array).dimension_
-        total_node_emb_dim = metodo.fit(total_node_emb_array).dimension_
+        #total_graph_emb_dim = metodo.fit(total_graph_emb_array).dimension_
+        try:
+            total_node_emb_dim = metodo.fit(total_node_emb_array).dimension_
+        except Exception as e:
+            print(e)
+            print("Non riesco a usare TwoNN, salto...")
+            total_node_emb_dim = 0
         total_node_emb_dim_pca = metodo_pca.fit(total_node_emb_array).dimension_
         total_node_emb_dim_pca_mia = estimate_dimensionality_pca(total_node_emb_array)
         #print(f"total_node_emb_dim {total_node_emb_dim}")
         #sys.stdout.flush()
-
         return node_emb_dims, graph_emb_dims, total_node_emb_dim, total_node_emb_dim_pca, total_node_emb_dim_pca_mia
 
     def calc_node_emb_correlation(self):

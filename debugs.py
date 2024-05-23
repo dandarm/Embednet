@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from multiprocessing import Pool
 from time import time
-from tqdm import tqdm
+#from tqdm import tqdm
 
 from models import Inits
 from train import Trainer, GeneralDataset
@@ -79,7 +79,6 @@ def debug3():
     nodi = []
     grafi = []
     for config_class in gc.configs:
-        start = time()
         p = config_class.conf['graph_dataset']['list_p']
         n = config_class.conf['graph_dataset']['Num_nodes'][0]
         gs = config_class.conf['graph_dataset']['Num_grafi_per_tipo']
@@ -90,6 +89,7 @@ def debug3():
         trainer = Trainer_Autoencoder(config_class, rootsave=Path(base_path))
         trainer.init_dataset()
         trainer.load_dataset(trainer.gg.dataset)
+        start = time()
         final_loss = trainer.calc_loss_input_dataset_ER(trainer.dataset.all_data_loader)
         losses.append(final_loss)
         end = time()

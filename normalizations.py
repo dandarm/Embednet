@@ -75,12 +75,15 @@ def barre_errore(diffs, norm_rank):
         # ora ho tutte le differenze (errori) per ogni valore unico del rank norm
         # cioè un valore di errore per ogni nodo che ha quello stesso grado
 
+    # quì eseguo la media sui nodi che hanno lo stesso grado
     errori_mean = {k: np.mean(v) for k, v in grouped_differences.items()}
     errori_abs = {k: np.abs(v).mean() for k, v in grouped_differences.items()}
+    dev_std = {k: np.std(v) for k, v in grouped_differences.items()}
     unique_mean_errors = [errori_mean[f] for f in unique_ranks]  # errori ordinati come unique_ranks
     unique_abs_mean_errors = [errori_abs[f] for f in unique_ranks]  # errori ordinati come unique_ranks
+    unique_dev_std = [dev_std[f] for f in unique_ranks]  # deviazioni std ordinate
 
-    return np.array(unique_mean_errors), unique_ranks, integer_values, unique_abs_mean_errors
+    return np.array(unique_mean_errors), unique_ranks, integer_values, unique_abs_mean_errors, unique_dev_std
 
 
 def get_unique_ys_4_unique_errors(degrees, unique_floats, integer_values):
@@ -93,7 +96,7 @@ def get_summed_ys_at_unique_probs(degrees, unique_ranks_avg, integer_values):
 
 def get_error_bars_2plot(pred_deg, orig_deg, rank_norm, scale_norm, log_norm, probs_transf):
     diffs = pred_deg - orig_deg
-    unique_mean_errors, unique_floats, integer_values, unique_sum_errors = barre_errore(diffs, rank_norm)
+    unique_mean_errors, unique_floats, integer_values, unique_sum_errors, unique_dev_std = barre_errore(diffs, rank_norm)
     unique_degrees = get_unique_ys_4_unique_errors(orig_deg, unique_floats, integer_values)
     unique_norm = get_unique_ys_4_unique_errors(scale_norm, unique_floats, integer_values)
     unique_logs = get_unique_ys_4_unique_errors(log_norm, unique_floats, integer_values)

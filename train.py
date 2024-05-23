@@ -4,24 +4,25 @@ import sys
 import traceback
 import copy
 from pathlib import Path
-from time import time
+import time
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import imageio
 import multiprocessing
 import pickle
+import yaml
 
 import numpy as np
 import torch
 from torch.nn import Softmax
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_dense_adj
-from torch.utils.tensorboard import SummaryWriter
-from tensorboardX import SummaryWriter as WriterX
+#from torch.utils.tensorboard import SummaryWriter
+#from tensorboardX import SummaryWriter as WriterX
 from pytorchtools import EarlyStopping
 #import tensorflow as tf
 from torchmetrics import Accuracy
-from sklearn.metrics import f1_score
+#from sklearn.metrics import f1_score
 
 from metrics import ExplainedVarianceMetric
 from TorchPCA import PCA
@@ -38,7 +39,8 @@ from Metrics import Metrics
 from plot_funcs import Data2Plot, DataAutoenc2Plot, plot_metrics, save_ffmpeg
 from embedding import Embedding, Embedding_autoencoder
 
-
+# prova a evitare il conflitto con la parallelizzazione di sklearn
+os.environ["OMP_NUM_THREADS"] = "1"
 
 class Trainer():
 
@@ -87,7 +89,10 @@ class Trainer():
 
 
         # CONFIGURAZIONI BASE PER OGNI EVENTUALE TRIAL
-        self.run_path = self.create_runpath_dir()
+        if self.rootsave == '':
+            pass
+        else:
+            self.run_path = self.create_runpath_dir()
         # scrivo la lista delle epoche sulla quale esegui i calcoli
         self.epochs_list_points = self.conf["training"].get("epochs_list_points")
         self.epochs_list = self.make_epochs_list_for_embedding_tracing(self.epochs_list_points)
@@ -270,6 +275,13 @@ class Trainer():
         """
         self.init_dataset(parallel=parallel, verbose=verbose)
         self.load_dataset(self.gg.dataset, parallel=False)  # parallel false perché con load_from_networkx non c'è nulla da fare...
+
+        # raccolgo la loss di riferimento
+        if self.gg.graphtype == GraphType.ER:
+            self.total_dataset_reference_loss = self.calc_loss_input_dataset_ER(self.dataset.all_data_loader)
+        elif self.gg.graphtype == GraphType.CM:
+            self.total_dataset_reference_loss = self.calc_loss_input_dataset_CM(self.dataset.all_data_loader)
+
         # inizializzo il modello dopo il dataset per gestire il caso d'uso "my_normalization_adj"
         self.init_model(path_model_toload, verbose)
 
@@ -477,14 +489,14 @@ class Trainer():
             pred = torch.argmax(y_pred, dim=1)  # Use the class with highest probability.
             label = torch.argmax(y_true, dim=1)
         #print(y_true, y_pred)
-        f1 = f1_score(label, pred, average=None)
+        f1 = 0  #f1_score(label, pred, average=None)
         #print(f"f1:{f1}")
         return f1
 
 
 
 
-    def launch_training(self, verbose=0):
+    def launch_training(self, verbose=0, profiler=None):
         self.train_loss_list = []
         self.test_loss_list = []
         #self.metric_obj_list = []
@@ -492,14 +504,15 @@ class Trainer():
         self.metric_obj_list_test = []
         animation_files = []
 
-        print("Epoca 0...")
+        parallel = self.conf['training'].get('parallel')
+
         test_loss = self.test(self.dataset.test_loader)
         self.train_loss_list.append(test_loss)  # voluto per avere la stessa lunghezza
         self.test_loss_list.append(test_loss)
         print("Prima snapshot...")   # self.epochs if self.epochs > 0 else 1,
         parallel_processes_save_images = []
         if self.conf['training'].get('every_epoch_embedding'):
-            self.produce_traning_snapshot(0, True, parallel_processes_save_images,
+            self.produce_traning_snapshot(0, parallel, parallel_processes_save_images,
                                       plot_embeddings=self.conf['plot'].get('plot_embeddings'))
             file_path = self.run_path / f"_epoch0.png"
             animation_files.append(file_path)
@@ -520,8 +533,8 @@ class Trainer():
         nowstr = datetime.datetime.now().strftime("%d%b_%H-%M-%S")
         LOG_DIR = f"runs/{self.unique_train_name}__{nowstr}"
         if verbose > 0: print(LOG_DIR)
-        writer = SummaryWriter(LOG_DIR)
-        writerX = WriterX(LOG_DIR)
+        #writer = SummaryWriter(LOG_DIR)
+        #writerX = WriterX(LOG_DIR)
 
         log_dir_variance = f"runs/ExpVar_{nowstr}"
         #writer_variance = SummaryWriter(log_dir_variance)
@@ -553,16 +566,18 @@ class Trainer():
 
 
         for epoch in tqdm(range(1, self.epochs+1), total=self.epochs):
+        #for epoch in range(1, self.epochs + 1):
 
             if epoch % self.conf['training'].get('test_loss_every_epochs') == 0:
+                #print(f"Testing at epoch: {epoch}")
                 test_loss = self.test(self.dataset.test_loader)
-                writer.add_scalar("Test Loss", test_loss, epoch)
+                #writer.add_scalar("Test Loss", test_loss, epoch)
                 #writer.add_scalar(f"Test {self.name_of_metric}", metric_object.get_metric(self.name_of_metric), epoch)
             # VOGLIO AGGIORNARE I PESI COL TRAINING DOPO AVER CALCOLATO LA LOSS DI TEST,
             # ALTRIMENTI LA LOSS DI TEST SARÀ SEMPRE PIÙ AVVANTAGGIATA RISPETTO ALLA LOSS DI TRAINING
             # PERCHÈ ARRIVEREBBE DOPO L'AGGIORNAMENTO APPUNTO
             train_loss = self.train()
-            writer.add_scalar("Train Loss", train_loss, epoch)
+            #writer.add_scalar("Train Loss", train_loss, epoch)
 
 
             #for i, v in enumerate(test_f1score):
@@ -576,17 +591,10 @@ class Trainer():
 
             if self.conf['training'].get('every_epoch_embedding'):
                 if epoch in self.epochs_list:
-                    parallel = self.conf['training'].get('parallel')
                     self.produce_traning_snapshot(epoch, parallel, parallel_processes_save_images,
                                                   plot_embeddings=self.conf['plot'].get('plot_embeddings'))
                     file_path = self.run_path / f"_epoch{epoch}.png"
                     animation_files.append(file_path)
-
-
-            #expvar = self.myExplained_variance.compute()
-            # add explained variance to tensorboard
-            #add_histogram(summary_writer, "Explained variance", var_exp, step=epoch)  TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
-
 
             # print_each_step = self.conf['logging']['train_step_print']
             # if epoch % print_each_step == 0:
@@ -605,6 +613,9 @@ class Trainer():
 
             # endregion
 
+            #profiler.step()  # Registra i dati di profiling raccolti finora
+            #print(f"Profiling step completed for epoch {epoch}")
+
             # TODO: rimettere l'early stopping!  check per performance
             # early_stopping(test_loss)
             # if early_stopping.early_stop:
@@ -617,7 +628,7 @@ class Trainer():
         print(f'Epoch: {epoch}\tTest loss: {round(test_loss, 3)} \t\tTrain loss: {round(train_loss, 3)} FINE TRAINING')
 
 
-        writer.flush()
+        #writer.flush()
         if self.best_model is not None:
             torch.save(self.best_model.state_dict(), self.run_path / "model")
 
@@ -638,29 +649,33 @@ class Trainer():
             #self.produce_traning_snapshot(self.last_epoch, False, [], last_plot=True)
 
         # salvo le metriche su pickle
-        self.save_metrics2file()
+        if self.conf['training'].get('every_epoch_embedding'):
+            self.save_metrics2file()
+
+        Path(self.run_path / "§training_ended§").touch()
 
         return
 
     def produce_traning_snapshot(self, epoch, parallel, parallel_processes_save_images, **kwargs):
+        # Calcola e raccoglie gli embedding
+        emb_pergraph_test, emb_pergraph_train, all_embeddings_arrays = \
+            self.provide_all_embeddings_and_metrics(give_emb_train=True, give_emb_test=True)
+
+        # Calcola e Raccoglie le metriche all'epoca data
         if self.conf['training'].get('calculate_metrics'):
             #metric_object = self.calc_metric(self.dataset.all_data_loader)
-            metric_object_train = self.calc_metric(self.dataset.train_loader)
-            metric_object_test = self.calc_metric(self.dataset.test_loader)
+            metric_object_train = self.calc_metric(self.dataset.actual_node_class_train, emb_pergraph_train)
+            metric_object_test = self.calc_metric(self.dataset.actual_node_class_test, emb_pergraph_test)
             self.metric_obj_list_train.append(metric_object_train)
             self.metric_obj_list_test.append(metric_object_test)
 
-        emb_pergraph_test, emb_pergraph_train, all_embeddings_arrays = \
-            self.provide_all_embeddings_and_metrics(give_emb_train=True, give_emb_test=True,
-                                                    #metric_object=metric_object,
-                                                    metric_object_test=metric_object_test,
-                                                    metric_object_train=metric_object_train)
 
         if self.conf['plot'].get('plot_model_weights'):
             model_weights = self.provide_model_weights()
         else:
             model_weights = None, None
 
+        # lancia il salvataggio immagini parallelo
         if parallel:
             p = multiprocessing.Process(target=self.save_image_at_epoch,
                                         args=(all_embeddings_arrays, model_weights, epoch,
@@ -683,12 +698,14 @@ class Trainer():
         all_degrees = np.array([g.out_degree_seq for g in all_embeddings_arrays]).ravel().squeeze()
         np.save(path_totale, all_degrees)
 
-        return metric_object_train, metric_object_test
+        return #metric_object_train, metric_object_test
 
     def save_all_animations(self, animation_files, epochs_list):
         nomefile = self.run_path / str(self.unique_train_name)
 
-        self.save_gif_snapshots(animation_files, nomefile)
+        # verifico che tutti i file immagine siano disponibili
+        if self.check_files_ready(animation_files):
+            self.save_gif_snapshots(animation_files, nomefile)
 
         # degree seq
         #self.save_degree_seq_animation(epochs_list)
@@ -737,12 +754,17 @@ class Trainer():
 
     def save_gif_snapshots(self, animation_files, nomefile):
         ims = []
-        try:
-            for f in animation_files:
+        for f in animation_files:
+            try:
                 ims.append(imageio.imread(f))
-        except FileNotFoundError as e:
-            print(f"Errore in save animations: {e}")
-        imageio.mimwrite(nomefile.with_suffix(".gif"), ims, duration=0.1)
+            except FileNotFoundError as e:
+                print(f"Errore in save animations: {e}")
+        try:
+            imageio.mimwrite(nomefile.with_suffix(".gif"), ims, duration=0.1)
+        except Exception as e:
+            print(f"Errore in save gif: {e}")
+            print(f"length images: {[len(i) for i in ims]}")
+            #np.stack(ims)
         # non cancello i file perché servono a salvare anche il video
 
 
@@ -756,30 +778,22 @@ class Trainer():
         model_weights = model_pars, param_labels
         return model_weights
 
-    def provide_all_embeddings_and_metrics(self, give_emb_train=False, give_emb_test=False, metric_object=None, metric_object_test=None, metric_object_train=None):
+    def provide_all_embeddings_and_metrics(self, give_emb_train=False, give_emb_test=False):  #  metric_object=None, metric_object_test=None, metric_object_train=None)
         """
-
         :param give_emb_train:
         :param give_emb_test:
-        :param metric_object:
-        :param metric_object_test:  serve solo per calcolare la soglia con cui ottenere la binary adjacency matrix
-        :param metric_object_train: serve solo per calcolare la soglia con cui ottenere la binary adjacency matrix
         :return:
         """
         if self.config_class.autoencoding:
             all_embeddings_arrays = self.get_embedding_autoencoder(self.dataset.all_data_loader)
 
-            """NON devo piu calcolare i valori a soglia"""
-            # if metric_object is not None:
-            #     [e.calc_thresholded_values(threshold=metric_object.get_metric("soglia")) for e in all_embeddings_arrays]
-            # else:
-            #     [e.calc_thresholded_values(threshold=0.5) for e in all_embeddings_arrays]
-
-            if give_emb_train:
-                emb_pergraph_train = self.get_embedding_autoencoder(self.dataset.train_loader)
+            if give_emb_train:  # quì c'era un errore forse da sempre: il train_loader è shuffle=True -> gli embedding_train non erano mai ordinati con le label
+                emb_pergraph_train = self.get_embedding_autoencoder(self.dataset.train_dataloader_ORDINATO)
             if give_emb_test:
                 emb_pergraph_test = self.get_embedding_autoencoder(self.dataset.test_loader)
 
+            # NON devo piu calcolare i valori a soglia
+            # metric_object_test:  serve solo per calcolare la soglia con cui ottenere la binary adjacency matrix
             # if metric_object_train is not None:
             #     [e.calc_thresholded_values(threshold=metric_object_train.get_metric("soglia")) for e in emb_pergraph_train]
             # else:
@@ -792,6 +806,7 @@ class Trainer():
         else:
             graph_embeddings_array, node_embeddings_array, _, final_output = self.get_embedding(self.dataset.all_data_loader)
             all_embeddings_arrays = graph_embeddings_array, node_embeddings_array, final_output
+
         return emb_pergraph_test, emb_pergraph_train, all_embeddings_arrays
 
     def save_image_at_epoch(self, embedding_arrays, model_weights_and_labels, epoch,
@@ -822,7 +837,7 @@ class Trainer():
         # graph_emb_dims = embedding_class.graph_emb_dims
         #p = self.mapping_of_snap_epochs[epoch]
         self.total_node_emb_dim[epoch] = embedding_class.total_node_emb_dim
-        self.total_graph_emb_dim[epoch] = 0 # embedding_class.total_graph_emb_dim
+        self.total_graph_emb_dim[epoch] = 0  # embedding_class.total_graph_emb_dim
         self.total_node_emb_dim_pca[epoch] = embedding_class.total_node_emb_dim_pca
         self.total_node_emb_dim_pca_mia[epoch] = embedding_class.total_node_emb_dim_pca_mia
         node_correlation = embedding_class.total_node_correlation  # node_correlation_per_class
@@ -848,6 +863,7 @@ class Trainer():
                                metric_epoch_list=metric_epoch_list,
                                plot_reconstructed_degree_scatter=True,
                                intr_dim_epoch_list=intr_dim_epoch_list,
+                               reference_loss=self.total_dataset_reference_loss,
                                **kwargs)
 
             #data.plot_output_clust_coeff(filename_save=path / f"clust_coeff_{epoch}.png")
@@ -866,6 +882,7 @@ class Trainer():
                     # salvo solo lultima immagine e la rinomino:
                     os.rename(f"{file_name}.png", path / f"{self.unique_train_name}.png")
 
+                Path(f"{file_name}.done").touch()
             # salvo la sequneza di grado
             #if not kwargs.get("notsave"):
             #    data.plot_output_degree_sequence(ax=axes[0][1], path / f"Degree_seq.{self.unique_train_name}_{epoch}.png")
@@ -878,6 +895,15 @@ class Trainer():
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
 
         return
+
+    def check_files_ready(self, files, timeout=60):
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if all(os.path.exists(Path(file).with_suffix('.done')) for file in files):
+                return True
+            time.sleep(1)  # Aspetta un secondo prima di riprovare
+            print("Non tutti i file erano pronti, riprovo...")
+        return False
 
     def handle_lists_for_plots(self, epoch, kwargs):
         metric_epoch_list = self.epochs_list[:np.where(self.epochs_list == epoch)[0][0] + 1]
@@ -923,7 +949,14 @@ class Trainer():
         self.savelist2pickle(self.total_node_emb_dim_pca_mia[:], "totale_node_dim_pca_mia")
         self.savelist2pickle(self.train_loss_list, "train_loss")
         self.savelist2pickle(self.test_loss_list, "test_loss")
-        Path(self.run_path / "§training_ended§").touch()
+
+        #### Salvo la reference loss
+        diz_training_variables = {}
+        diz_training_variables['ref_loss'] = self.total_dataset_reference_loss
+        path_file = self.run_path / "training_variables.yaml"
+        with open(path_file, 'w') as file:
+            yaml.dump(diz_training_variables, file)
+
 
     def savelist2pickle(self, list, nomefile):
         with open(f'{self.run_path / nomefile}.pkl', 'wb') as f:

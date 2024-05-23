@@ -432,6 +432,7 @@ class DataAutoenc2Plot(Data2Plot):
         if self.config_class.conf['graph_dataset']['confmodel']:  # se lavoriamo con le power law mettiamo gli assi logaritmici
             ax.set_xscale('log')
             ax.set_yscale('log')
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
         ax.legend()
 
         if filename_save:
@@ -491,25 +492,29 @@ class DataAutoenc2Plot(Data2Plot):
     def plot_normalized_degrees(self, filename_save=None, ax=None):
         pred_degrees = np.array([g.out_degree_seq for g in self.input_obj]).ravel().squeeze()
         input_degree = np.array(self.wrapper_obj.node_degree).ravel().squeeze()
-        diffs = pred_degrees - input_degree
+        diffs = (pred_degrees - input_degree)  # / input_degree
 
         probs_transf = probability_transform(input_degree)
-        unique_mean_errors, unique_prob, integer_values, unique_abs_mean_errors = barre_errore(diffs, probs_transf)
+        unique_mean_errors, unique_prob, integer_values, unique_abs_mean_errors, unique_dev_std = barre_errore(diffs, probs_transf)
         #unique_prob = get_unique_ys_4_unique_errors(probs_transf, unique_xrank, integer_values)
         #summed_ys = get_summed_ys_at_unique_probs(probs_transf, unique_xrank, integer_values)
 
         #ax.errorbar(unique_xrank, unique_prob, yerr=unique_errors/100, linestyle='', marker='.', markersize=3, alpha=0.9)
-        ax.plot(unique_prob, unique_mean_errors, linestyle='', marker='.', markersize=8, alpha=0.9, label='Mean difference')
+        p, = ax.plot(unique_prob, unique_abs_mean_errors, linestyle='', marker='.', markersize=8, alpha=0.9, label='Mean absolute difference')
+        ax.tick_params(axis='y', colors=p.get_color())
 
-        axt = ax.twinx()
-        p, = axt.plot(unique_prob, unique_abs_mean_errors, color='red', linestyle='', marker='.', markersize=8, alpha=0.9, label='Mean absolute differences')
-        axt.tick_params(axis='y', colors=p.get_color())
+        ax.errorbar(unique_prob, unique_abs_mean_errors, yerr=unique_dev_std,  alpha=0.5, linestyle='', marker='.', markersize=8)
+
+        #axt = ax.twinx()
+        #p, = axt.plot(unique_prob, unique_mean_errors, color='red', linestyle='', marker='.', markersize=8, alpha=0.9, label='Mean differences')
+        #axt.tick_params(axis='y', colors=p.get_color())
+        #axt.tick_params(axis='y', colors=p.get_color())
 
         if self.config_class.conf['graph_dataset']['confmodel']:
             ax.set_xscale('log')
         #ax.set_ylim(0,1)
         ax.legend()
-        axt.legend()
+        #axt.legend()
         ax.set_title("Reconstructed degree difference vs. Degree probability")
         ax.set_xlabel("Degree probability")
 
@@ -663,7 +668,7 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
         plot_weights_multiple_hist(model_pars, param_labels, ax12, absmin=-2, absmax=2, sequential_colors=False)
     else:
         data.plot_normalized_degrees(ax=ax12)
-        pass # plot su ax02 la sequenza di grado col grado normalizzato a mio piacimento
+        pass  # plot su ax02 la sequenza di grado col grado normalizzato a mio piacimento
 
     fig.suptitle(f"{kwargs['long_string_experiment']}")
 
@@ -682,6 +687,7 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
     is_x_axis_log = kwargs.get("x_axis_log")
     metric_epoch_list = kwargs.get("metric_epoch_list")
     unico_plot = kwargs.get("unico_plot")
+    ref_loss = kwargs.get("reference_loss")
     if unico_plot:
         marker = 'o'
         #mtest = metric_obj_list_test[0].get_metric(metric_names[0])
@@ -707,17 +713,20 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
     else:
         ax.plot(epochs_list, train_loss_list, marker=marker,color='darkgray', label='Train Loss')
 
+    # plot reference loss
+    ax.axhline(y=ref_loss, color='darkgrey', linestyle='--') #, label=f'Retta orizzontale a y={y_value}')
+
     ax.set_ylim(minimo - (0.1*minimo), massimo + (0.1*massimo))
     ax.set_xlim(0, x_max)
     # ax.set_ylabel('Test Loss', fontsize=12);
     ax.legend(loc='upper left')
     # ax.yaxis.label.set_color(ploss.get_color())
 
-    axt = ax.twinx()
+
     #ax2 = ax.twinx()  # questo lo tengo per Euclide
+    axt = ax.twinx()
 
-
-    ################################àà# Plot metriche
+    ################################# Plot metriche
     marker = '.'
     m_size = 5.0
     for i, metric_name in enumerate(metric_names):
@@ -730,11 +739,11 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
         if metric_epoch_list is not None:
             epochs_list = metric_epoch_list
         if is_x_axis_log:
-            pmetric, = asse.semilogx(epochs_list, metricatest, linestyle='None',marker='.',markersize=m_size,color=color, label=metric_name)
-            pmetric_train, = asse.semilogx(epochs_list, metricatrain, linestyle='None',marker='+',markersize=m_size,color=adjust_lightness(color, 1.5), label=metric_name)
+            pmetric, = asse.semilogx(epochs_list, metricatest, linestyle='None',marker='.',markersize=m_size,color=color, label=metric_name + " test")
+            pmetric_train, = asse.semilogx(epochs_list, metricatrain, linestyle='None',marker='+',markersize=m_size,color=adjust_lightness(color, 1.5), label=metric_name + " train")
         else:
-            pmetric, = asse.plot(epochs_list, metricatest, linestyle='None',marker='.',markersize=m_size,color=color, label=metric_name)
-            pmetric_train, = asse.plot(epochs_list, metricatrain, linestyle='None',marker='+',markersize=m_size,color=adjust_lightness(color, 1.5), label=metric_name)
+            pmetric, = asse.plot(epochs_list, metricatest, linestyle='None',marker='.',markersize=m_size,color=color, label=metric_name + " test")
+            pmetric_train, = asse.plot(epochs_list, metricatrain, linestyle='None',marker='+',markersize=m_size,color=adjust_lightness(color, 1.5), label=metric_name + " train")
         # axt.set_ylabel('Test metric', fontsize=12);
         asse.set_xlim(0, x_max)
         #    axt.set_yticklabels([0.0,1.0])
@@ -744,10 +753,13 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
     # limiti per l'ase y
     test_metric_list_min, test_metric_list_max = min(array_wo_outliers(metricatest, 2)), max(array_wo_outliers(metricatest, 2))
     train_metric_list_min, train_metric_list_max = min(array_wo_outliers(metricatrain, 2)), max(array_wo_outliers(metricatrain, 2))
-    minimo = min(test_metric_list_min, test_metric_list_max)
+    minimo = 0.0  #  min(test_metric_list_min, test_metric_list_max)
     massimo = max(train_metric_list_min, train_metric_list_max)
     tol = (massimo - minimo) * 0.1
-    axt.set_ylim(minimo - tol, massimo + tol)
+    try:
+        axt.set_ylim(minimo - 0.05, massimo + tol)
+    except ValueError as e:
+        print(e)
     #ax2.set_ylim(0, max(metricatest))
     axt.legend(loc='lower left')
     #ax2.legend(loc='upper center')
@@ -829,7 +841,8 @@ def parallel_coord(ys, host, titolo_grafico, **kwargs):
             ax.yaxis.set_major_locator(ticker.NullLocator())
 
     host.set_xlim(0, ys.shape[1] - 1)
-    host.set_xticks(range(ys.shape[1]))
+    #host.set_xticks(range(ys.shape[1]))
+    host.xaxis.set_ticks([])
     #host.set_xticklabels(ynames, fontsize=14)
     host.tick_params(axis='x', which='major', pad=7)
     host.spines['right'].set_visible(False)
@@ -1265,6 +1278,8 @@ def plot_deg_seq(alpha_value, ax1, ax2, color, degree_sequence, log, plot_label)
     else:
         ax1.plot(*counts, c=color, alpha=alpha_value, label=plot_label, linewidth=3)
         ax2.plot(degree_sorted, '.', c=color, alpha=alpha_value, label=plot_label)
+
+    ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
 
 
 def plot_corr_epoch(avg_corr_classes, config_c, ax=None):

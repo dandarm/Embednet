@@ -183,6 +183,7 @@ class Dataset(GeneralDataset):
         else:
             i = 0
             for g in tqdm(graph_list_nx, total=len(graph_list_nx)):
+            #for g in graph_list_nx:
                 #if self.config['model']['autoencoder']:
                 #    pyg_graph = self.convert_G_autoencoder((g, i))
                 if self.conf['graph_dataset']['random_node_feat']:
@@ -284,7 +285,7 @@ class Dataset(GeneralDataset):
         self.train_len = len(self.train_dataset)
         self.test_len = len(self.test_dataset)
 
-        #aggiungo anche le actual_node_clas ( le degree sequences) divise per traine  test
+        #aggiungo anche le actual_node_clas ( le degree sequences) divise per train e test
         self.actual_node_class_train = self.actual_node_class[:self.tt_split]
         self.actual_node_class_test = self.actual_node_class[self.tt_split:]
 
@@ -295,10 +296,12 @@ class Dataset(GeneralDataset):
         g = torch.Generator()
         g.manual_seed(0)
 
-        self.train_loader = DataLoader(self.train_dataset, batch_size=self.bs, shuffle=shuffle, worker_init_fn=self.seed_worker, num_workers=0)
+        self.train_loader = DataLoader(self.train_dataset, batch_size=self.bs, shuffle=True, worker_init_fn=self.seed_worker, num_workers=0)
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.bs, shuffle=False, worker_init_fn=self.seed_worker, num_workers=0)
         
         self.all_data_loader = self.get_all_data_loader()
+
+        self.train_dataloader_ORDINATO = DataLoader(self.train_dataset, batch_size=self.bs, shuffle=False, worker_init_fn=self.seed_worker, num_workers=0)
 
         """
         for step, data in enumerate(self.train_loader):

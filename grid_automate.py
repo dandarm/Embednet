@@ -13,7 +13,8 @@ import yaml
 import pickle
 from collections import Counter
 from config_valid import GraphType, get_dataset_trial_string, get_model_trial_string
-
+from train import Trainer
+from dictionary_of_trials import get_diz_trials
 
 root_task = Path("/home/daniele/Documenti/Progetti/Networks/Embednet/head_train_tasks")
 all_runs_csv = root_task / "head_run_tasks.csv"
@@ -149,7 +150,7 @@ def calc_media_scarti(input_seq, diff_seq):
     accumulo = {}
     for i, valore_int in enumerate(input_seq):
         float_val = diff_seq[i]
-        abs_val = np.abs(diff_seq[i])
+        abs_val = np.abs(float_val)
 
         if valore_int in accumulo:
             prev_somma = accumulo[valore_int]['somma']
@@ -167,9 +168,10 @@ def calc_media_scarti(input_seq, diff_seq):
     statistiche = {}
     for k, v in accumulo.items():
         media = v['somma'] / v['conteggio']
+        media_assoluta = v['somma_assoluta'] / v['conteggio']
         varianza = v['somma_quad'] / v['conteggio']
         dev_std = np.sqrt(varianza)
-        statistiche[k] = {'media': media, 'dev_std': dev_std, 'somma':v['somma'], 'somma_assoluta':v['somma_assoluta']}
+        statistiche[k] = {'media': media, 'dev_std': dev_std, 'somma':v['somma'], 'somma_assoluta':v['somma_assoluta'], 'media_assoluta':media_assoluta}
 
     return statistiche
 
@@ -438,3 +440,49 @@ def get_plot_data(many_training_paths, many_training_configs, **kwargs):
         plot_data.append({'x': x_vals,  feat: eval(feat), 'y': y_vals, 'errori': errori})  # 'feat_name': feat,
 
     return plot_data
+
+
+
+#####  Carico i file per i plot della Diff deg_seq vs. BCELoss
+
+def init_trainer(base_path, path):
+    config_class, diz_trials = get_diz_trials(path / "config.yml")
+    trainer = Trainer(config_class, rootsave=Path(base_path))
+    return config_class, trainer
+
+def load_metrics_loss(path):
+    with open(path / 'metrics_test.pkl', 'rb') as handle:
+        metrics_test = pickle.load(handle)
+    with open(path / 'metrics_train.pkl', 'rb') as handle:
+        metrics_train = pickle.load(handle)
+    with open(path / 'test_loss.pkl', 'rb') as handle:
+        test_loss = pickle.load(handle)
+    with open(path / 'train_loss.pkl', 'rb') as handle:
+        train_loss = pickle.load(handle)
+    try:
+        with open(path / 'training_variables.yaml', 'r') as file:
+            training_variables = yaml.safe_load(file)
+    except:
+        training_variables = {'ref_loss': 0.0}
+
+    return metrics_test, metrics_train, test_loss, train_loss, training_variables
+
+
+def get_diff_deg_seq_vs_loss(base_path, path):
+    config_class, trainer = init_trainer(base_path, path)
+    metrics_test, metrics_train, test_loss, train_loss, training_variables = load_metrics_loss(path)
+
+    # prendo le reconstruction errors
+    diff_deg_seq_train = [m.attributi['diff_deg_seq'] for m in metrics_train]
+    diff_deg_seq_test = [m.attributi['diff_deg_seq'] for m in metrics_test]
+
+    # prendo le liste di loss alle epoche corrispondenti al calcolo delle metriche
+    epochs_list_points = config_class.conf["training"].get("epochs_list_points")
+    epochs_list = trainer.make_epochs_list_for_embedding_tracing(epochs_list_points)
+    corresponding_loss_test = np.array(test_loss)[epochs_list]
+    corresponding_loss_train = np.array(train_loss)[epochs_list]
+
+    # prendo la loss di riferimento
+    reference_loss = training_variables['ref_loss']
+
+    return corresponding_loss_test, diff_deg_seq_test, corresponding_loss_train, diff_deg_seq_train, reference_loss

@@ -31,6 +31,8 @@ class Trainer_Autoencoder(Trainer):
 
         self.HardTanh = Hardtanh(0,1)
 
+        self.total_dataset_reference_loss = None
+
     def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False, dataset_degree_prob_infos=None):
         """
         Returns the GCN model given the class of configurations
@@ -478,27 +480,26 @@ class Trainer_Autoencoder(Trainer):
         return embeddings_per_graph
 
 
-    def calc_metric(self, loader):
+    def calc_metric(self, actual_node_class, embeddings):
         # calcola soltanto la differenza della sequenza di grado
-        input_seq_train = np.array(self.dataset.actual_node_class_train).ravel()
-        input_seq_test = np.array(self.dataset.actual_node_class_test).ravel()
-        embeddings = self.get_embedding_autoencoder(loader)
+        input_seq = np.array(actual_node_class).ravel()
         pred_seq = np.array([g.out_degree_seq for g in embeddings]).ravel().squeeze()
 
-        # train o test loader? :
         l = len(pred_seq)
-        if l == len(input_seq_train):
-            diff = (pred_seq - input_seq_train) / input_seq_train  # calcolo la differenza relativa tra la seq grado predetta e quella di input
-            stats = calc_media_scarti(input_seq_train, diff)
-        elif l == len(input_seq_test):
-            diff = (pred_seq - input_seq_test) / input_seq_test
-            stats = calc_media_scarti(input_seq_test, diff)
+        assert len(input_seq) == l
 
-        x_vals = list(stats.keys())  # contiene i valori unici del grado, mentre input_seq sono tutti i gradi di tutti i nodi (anche ripetuti)
-        y_vals = [stats[k]['somma_assoluta'] for k in x_vals]
-        errore_totale_per_grafo = sum(y_vals) / len(loader.dataset)
+        diff = (pred_seq - input_seq)  # / input_seq  # calcolo la differenza relativa tra la seq grado predetta e quella di input
+        #print(f"sum(diff): {np.abs(diff).sum()}")
+        #stats = calc_media_scarti(input_seq, diff)
 
-        metriche = Metrics(diff_deg_seq=errore_totale_per_grafo)
+        #x_vals = list(stats.keys())  # contiene i valori unici del grado, mentre input_seq sono tutti i gradi di tutti i nodi (anche ripetuti)
+        #y_vals = [stats[k]['media_assoluta'] for k in x_vals]
+        #y_val_abs = [stats[k]['somma_assoluta'] for k in x_vals]
+
+        #errore_medio_assoluto_per_grado = sum(y_vals) / l
+        errore_totale_assoluto_per_nodo = np.abs(diff).sum() / l
+        metriche = Metrics(diff_deg_seq=errore_totale_assoluto_per_nodo)
+        #print(f"debug diff: sum(y_vals) = {sum(y_val_abs)} \t len sequence: {l} \t valore plot: {errore_medio_assoluto_per_grado} ")
         return metriche
 
     def calc_metric_prauc_euclid(self, loader):
