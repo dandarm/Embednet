@@ -11,7 +11,7 @@ from plt_parameters import get_colors_to_cycle_rainbow8, get_colors_to_cycle_rai
 from matplotlib.lines import Line2D
 from config_valid import TrainingMode, GraphType
 from normalizations import probability_transform, barre_errore, get_unique_ys_4_unique_errors, get_summed_ys_at_unique_probs
-import umap
+#import umap
 from matplotlib import ticker
 from cycler import cycler
 from utils_embednet import array_wo_outliers, adjust_lightness
@@ -184,6 +184,7 @@ class Data2Plot():
                             ax.plot(np.log10(np.array(self.allgraph_class_labels)), np.log10(classe + 1), marker='.', linestyle='None', color=color, alpha=alpha_value)
                         else:
                             ax.plot(self.all_node_degree[i], classe, marker='.', linestyle='None', color=color, alpha=alpha_value)
+                        ax.set_xlabel('Degree sequence')
 
                 ax.legend(custom_lines, [f"class {e}" for e in self.unique_class_labels])
 
@@ -243,7 +244,8 @@ class Data2Plot():
     def calc_umap(self, data):
         print("UMAP...")
         #print(f"shape array: {data.shape}")
-        embedding = umap.UMAP(n_epochs=10, n_neighbors=10, n_jobs=32, verbose=False).fit_transform(data)
+        #embedding = umap.UMAP(n_epochs=10, n_neighbors=10, n_jobs=32, verbose=False).fit_transform(data)
+        embedding = None
         return embedding
 
 
@@ -259,8 +261,8 @@ class DataAutoenc2Plot(Data2Plot):
         # oggetti embedding separati per train e test
         self.emb_pergraph_train = kwargs.get("emb_pergraph_train")
         self.emb_pergraph_test = kwargs.get("emb_pergraph_test")
-        self.array2plot_train = []
-        self.array2plot_test = []
+        self.array2plot_train = None
+        self.array2plot_test = None
 
         if self.wrapper_obj is not None:
             self.input_obj = wrapper_obj.list_emb_autoenc_per_graph
@@ -341,21 +343,26 @@ class DataAutoenc2Plot(Data2Plot):
         ax.set_ylim(min(frequencies),1)
         ax.set_yscale('log')
 
-    def plot_adj_entries_hist(self, ax_test, threshold=None, threshold2=None, bis_ax=None):
+    def plot_adj_entries_hist(self, ax_test, bis_ax=None):
+        range_x_axis = [-0.1, 1.1]
+        
         if self.array2plot_test is None and self.array2plot_train is None:
-            input_adj_flat, pred_adj_flat, sampled_adjs_from_output = self.array2plot
-            # input_adj_flat, pred_adj_flat = input_adj_flat[0], pred_adj_flat[0]
-            input_adj_flat, pred_adj_flat, pred_after_sigm_flat = input_adj_flat.ravel(), pred_adj_flat.ravel(), sampled_adjs_from_output.ravel()
-            ax_test.hist((input_adj_flat, pred_adj_flat, pred_after_sigm_flat), bins=25, range=[-0.25, 1.25]);
-            if threshold:
-                ax_test.text(1.2, 1.0, f"soglia {round(threshold, 2)}", fontdict=font_for_text)
+            input_adj, pred_adj, sampled_adjs_from_output = self.array2plot
+            input_adj_flat, pred_adj_flat, sampled_adjs_from_output_flat = input_adj.ravel(), pred_adj.ravel(), sampled_adjs_from_output.ravel()
+            
+ 
+            self.norm_hist(input_adj_flat, 30, ax_test, 'orangered', range_x_axis, "Train set", edgecolor='black', shift=0.02)
+            self.norm_hist(pred_adj_flat, 50, ax_test, '#FDB147', range_x_axis, alpha=0.7)
+            self.norm_hist(sampled_adjs_from_output_flat, 30, ax_test, 'cornflowerblue', range_x_axis, edgecolor='black', shift=-0.02)
+            
+            #ax_test.hist((input_adj_flat, pred_adj_flat, pred_after_sigm_flat), bins=25, range=[-0.25, 1.25]);
+
         else:
             input_adj_flat, pred_adj_flat, sampled_adjs_from_output = self.array2plot_train
             input_adj_flat_train, pred_adj_flat_train, pred_after_sampling_flat_train = input_adj_flat.ravel(), pred_adj_flat.ravel(), sampled_adjs_from_output.ravel()
             input_adj_flat, pred_adj_flat, sampled_adjs_from_output = self.array2plot_test
             input_adj_flat_test, pred_adj_flat_test, pred_after_sampling_flat_test = input_adj_flat.ravel(), pred_adj_flat.ravel(), sampled_adjs_from_output.ravel()
 
-            range_x_axis = [-0.1, 1.1]
             #axes = [ax1]
 
             self.norm_hist(input_adj_flat_test, 30, ax_test, 'crimson', range_x_axis, "Test set", edgecolor='black', shift=0.02)
@@ -369,8 +376,6 @@ class DataAutoenc2Plot(Data2Plot):
             #    p.set_facecolor('red')
             #for p in patches[2]:  # colore del predicted
             #    p.set_facecolor('royalblue')
-            if threshold:
-                ax_test.text(1.2, 1.0, f"soglia {round(threshold2, 2)}", fontdict=font_for_text)
 
             # secondo asse del test
             fig = plt.gcf()
@@ -388,8 +393,6 @@ class DataAutoenc2Plot(Data2Plot):
             #    p.set_facecolor('lightcoral')
             #for p in patches2[2]:  # colore del predicted
             #    p.set_facecolor('lightskyblue')
-            if threshold2:
-                ax_train.text(1.2, 1.0, f"soglia {round(threshold,2)}", fontdict=font_for_text)
 
             ax_test.legend(loc='lower right')
             ax_train.legend(loc='lower right')
@@ -425,9 +428,11 @@ class DataAutoenc2Plot(Data2Plot):
         if ax is None:
             ax = plt.gca()
 
-        ax.set_title(f'Degree Seq.')  #, fontsize='small')
-        ax.scatter(input_degree, pred_degrees, label="Predicted", s=7)
-        ax.scatter(input_degree, input_degree, label="Input", color='red', s=2)
+        ax.set_title(f'Degree Sequence')  #, fontsize='small')
+        ax.scatter(input_degree, pred_degrees, label="Predicted", color='cornflowerblue', s=7)
+        ax.scatter(input_degree, input_degree, label="Input", color='orangered', s=2)   #orangered cornflowerblue
+        ax.xaxis.get_major_locator().set_params(integer=True) 
+        ax.yaxis.get_major_locator().set_params(integer=True)
         ax.set_ylim(min(input_degree), max(input_degree))
         if self.config_class.conf['graph_dataset']['confmodel']:  # se lavoriamo con le power law mettiamo gli assi logaritmici
             ax.set_xscale('log')
@@ -494,23 +499,24 @@ class DataAutoenc2Plot(Data2Plot):
         diffs = pred_degrees - input_degree
 
         probs_transf = probability_transform(input_degree)
-        unique_mean_errors, unique_prob, integer_values, unique_abs_mean_errors = barre_errore(diffs, probs_transf)
+        unique_mean_errors, unique_prob, unique_std_on_errors, unique_abs_mean_errors = barre_errore(diffs, probs_transf)
         #unique_prob = get_unique_ys_4_unique_errors(probs_transf, unique_xrank, integer_values)
         #summed_ys = get_summed_ys_at_unique_probs(probs_transf, unique_xrank, integer_values)
 
-        #ax.errorbar(unique_xrank, unique_prob, yerr=unique_errors/100, linestyle='', marker='.', markersize=3, alpha=0.9)
-        ax.plot(unique_prob, unique_mean_errors, linestyle='', marker='.', markersize=8, alpha=0.9, label='Mean difference')
+        ax.errorbar(unique_prob, unique_abs_mean_errors, yerr=unique_std_on_errors, linestyle='', marker='.', markersize=3, alpha=0.9)
+        #ax.plot(unique_prob, unique_mean_errors, linestyle='', marker='.', markersize=8, alpha=0.9, label='Mean difference')
 
-        axt = ax.twinx()
-        p, = axt.plot(unique_prob, unique_abs_mean_errors, color='red', linestyle='', marker='.', markersize=8, alpha=0.9, label='Mean absolute differences')
-        axt.tick_params(axis='y', colors=p.get_color())
+        #axt = ax.twinx()
+        axt = ax
+        p, = axt.plot(unique_prob, unique_abs_mean_errors, color='cornflowerblue', linestyle='', marker='.', markersize=8, alpha=0.9, label='Mean absolute error')
+        #axt.tick_params(axis='y', colors=p.get_color())
 
         if self.config_class.conf['graph_dataset']['confmodel']:
             ax.set_xscale('log')
-        #ax.set_ylim(0,1)
+        ax.set_ylim(0,6)
         ax.legend()
         axt.legend()
-        ax.set_title("Reconstructed degree difference vs. Degree probability")
+        ax.set_title("Degree sequence error")
         ax.set_xlabel("Degree probability")
 
 
@@ -645,6 +651,8 @@ def plot_metrics(data, num_emb_neurons, test_loss_list=None, epochs_list=None,
                     #data.plot_output_knn(ax=ax0102)
                 if node_intrinsic_dimensions_total is not None and total_node_emb_dim_pca is not None and total_node_emb_dim_pca_mia is not None:
                     plot_intrinsic_dimension(ax02, total_node_emb_dim_pca, total_node_emb_dim_pca_mia, node_intrinsic_dimensions_total, intr_dim_epoch_list, **kwargs)
+                else:
+                    ax02.set_title('Embedding dimension = 1')
         else:
             data.plot_output_degree_sequence(ax=ax10)
             #data.plot_output_clust_coeff(ax=ax0101)
@@ -730,8 +738,8 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
         if metric_epoch_list is not None:
             epochs_list = metric_epoch_list
         if is_x_axis_log:
-            pmetric, = asse.semilogx(epochs_list, metricatest, linestyle='None',marker='.',markersize=m_size,color=color, label=metric_name)
-            pmetric_train, = asse.semilogx(epochs_list, metricatrain, linestyle='None',marker='+',markersize=m_size,color=adjust_lightness(color, 1.5), label=metric_name)
+            pmetric, = asse.semilogx(epochs_list, metricatest, marker='.',markersize=m_size,color=color, label="Test " + metric_name)  #linestyle='None',
+            pmetric_train, = asse.semilogx(epochs_list, metricatrain, marker='+',markersize=m_size,color=adjust_lightness(color, 1.5), label="Train " + metric_name)
         else:
             pmetric, = asse.plot(epochs_list, metricatest, linestyle='None',marker='.',markersize=m_size,color=color, label=metric_name)
             pmetric_train, = asse.plot(epochs_list, metricatrain, linestyle='None',marker='+',markersize=m_size,color=adjust_lightness(color, 1.5), label=metric_name)
@@ -744,7 +752,8 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
     # limiti per l'ase y
     test_metric_list_min, test_metric_list_max = min(array_wo_outliers(metricatest, 2)), max(array_wo_outliers(metricatest, 2))
     train_metric_list_min, train_metric_list_max = min(array_wo_outliers(metricatrain, 2)), max(array_wo_outliers(metricatrain, 2))
-    minimo = min(test_metric_list_min, test_metric_list_max)
+    #minimo = min(test_metric_list_min, test_metric_list_max)
+    minimo = 0
     massimo = max(train_metric_list_min, train_metric_list_max)
     tol = (massimo - minimo) * 0.1
     axt.set_ylim(minimo - tol, massimo + tol)
@@ -762,9 +771,9 @@ def plot_intrinsic_dimension(ax, total_node_emb_dim_pca, total_node_emb_dim_pca_
     #    epochs_list = metric_epoch_list
 
     if is_x_axis_log:
-        ax.semilogx(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node ID')
-        ax.semilogx(epochs_list, total_node_emb_dim_pca, linestyle='None', marker='.', color='blue', label='PCA node ID')
-        ax.semilogx(epochs_list, total_node_emb_dim_pca_mia, linestyle='None', marker='.', color='green', label='PCA simple node ID')
+        ax.semilogx(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label="Node ID TwoNN") #linestyle='None',
+        ax.semilogx(epochs_list, total_node_emb_dim_pca, linestyle='None', marker='*', color='blue', label="Node ID PCA 'FO'")
+        ax.semilogx(epochs_list, total_node_emb_dim_pca_mia, linestyle='None', marker='+', color='green', label="Node ID PCA") 
     else:
         ax.plot(epochs_list, node_intrinsic_dimensions_total, linestyle='None', marker='.', color='red', label='node ID')
         ax.plot(epochs_list, total_node_emb_dim_pca, linestyle='None', marker='.', color='blue', label='PCA node ID')

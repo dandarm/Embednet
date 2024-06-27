@@ -16,8 +16,8 @@ import torch
 from torch.nn import Softmax
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_dense_adj
-from torch.utils.tensorboard import SummaryWriter
-from tensorboardX import SummaryWriter as WriterX
+#from torch.utils.tensorboard import SummaryWriter
+#from tensorboardX import SummaryWriter as WriterX
 from pytorchtools import EarlyStopping
 #import tensorflow as tf
 from torchmetrics import Accuracy
@@ -32,7 +32,7 @@ from models import GCN, view_parameters, get_parameters, new_parameters, modify_
 from Dataset import Dataset, GeneralDataset
 from Dataset_autoencoder import DatasetReady
 from graph_generation import GenerateGraph
-from take_real_data import TakeRealDataset
+#from take_real_data import TakeRealDataset
 from plot_model import plot_model
 from Metrics import Metrics
 from plot_funcs import Data2Plot, DataAutoenc2Plot, plot_metrics, save_ffmpeg
@@ -242,9 +242,10 @@ class Trainer():
             self.gg.initialize_dataset(parallel=parallel)  # instanzia il dataset networkx
         else:
             # TakeRealDataset si occupa di ottenere il dataset reale
-            real_dataset_taker = TakeRealDataset(self.config_class, self.verbose)
-            real_dataset_taker.get_dataset()  # imposta gg.dataset
-            self.gg = real_dataset_taker.gg
+            #real_dataset_taker = TakeRealDataset(self.config_class, self.verbose)
+            #real_dataset_taker.get_dataset()  # imposta gg.dataset
+            #self.gg = real_dataset_taker.gg
+            raise NotImplementedError("Al momento quì nessun dataset reale") 
 
     def load_dataset(self, dataset, parallel=False):  # dataset è di classe GeneralDataset
         print("Loading Dataset...")
@@ -520,10 +521,10 @@ class Trainer():
         nowstr = datetime.datetime.now().strftime("%d%b_%H-%M-%S")
         LOG_DIR = f"runs/{self.unique_train_name}__{nowstr}"
         if verbose > 0: print(LOG_DIR)
-        writer = SummaryWriter(LOG_DIR)
-        writerX = WriterX(LOG_DIR)
+        #writer = SummaryWriter(LOG_DIR)
+        #writerX = WriterX(LOG_DIR)
 
-        log_dir_variance = f"runs/ExpVar_{nowstr}"
+        #log_dir_variance = f"runs/ExpVar_{nowstr}"
         #writer_variance = SummaryWriter(log_dir_variance)
         # summary_variance = tf.summary.create_file_writer(log_dir_variance)
         # endregion
@@ -556,13 +557,13 @@ class Trainer():
 
             if epoch % self.conf['training'].get('test_loss_every_epochs') == 0:
                 test_loss = self.test(self.dataset.test_loader)
-                writer.add_scalar("Test Loss", test_loss, epoch)
+                #writer.add_scalar("Test Loss", test_loss, epoch)
                 #writer.add_scalar(f"Test {self.name_of_metric}", metric_object.get_metric(self.name_of_metric), epoch)
             # VOGLIO AGGIORNARE I PESI COL TRAINING DOPO AVER CALCOLATO LA LOSS DI TEST,
             # ALTRIMENTI LA LOSS DI TEST SARÀ SEMPRE PIÙ AVVANTAGGIATA RISPETTO ALLA LOSS DI TRAINING
             # PERCHÈ ARRIVEREBBE DOPO L'AGGIORNAMENTO APPUNTO
             train_loss = self.train()
-            writer.add_scalar("Train Loss", train_loss, epoch)
+            #writer.add_scalar("Train Loss", train_loss, epoch)
 
 
             #for i, v in enumerate(test_f1score):
@@ -617,7 +618,7 @@ class Trainer():
         print(f'Epoch: {epoch}\tTest loss: {round(test_loss, 3)} \t\tTrain loss: {round(train_loss, 3)} FINE TRAINING')
 
 
-        writer.flush()
+        #writer.flush()
         if self.best_model is not None:
             torch.save(self.best_model.state_dict(), self.run_path / "model")
 
@@ -645,16 +646,13 @@ class Trainer():
     def produce_traning_snapshot(self, epoch, parallel, parallel_processes_save_images, **kwargs):
         if self.conf['training'].get('calculate_metrics'):
             #metric_object = self.calc_metric(self.dataset.all_data_loader)
-            metric_object_train = self.calc_metric(self.dataset.train_loader)
+            metric_object_train = self.calc_metric(self.dataset.train_loader_non_shuffled)
             metric_object_test = self.calc_metric(self.dataset.test_loader)
             self.metric_obj_list_train.append(metric_object_train)
             self.metric_obj_list_test.append(metric_object_test)
 
         emb_pergraph_test, emb_pergraph_train, all_embeddings_arrays = \
-            self.provide_all_embeddings_and_metrics(give_emb_train=True, give_emb_test=True,
-                                                    #metric_object=metric_object,
-                                                    metric_object_test=metric_object_test,
-                                                    metric_object_train=metric_object_train)
+            self.provide_all_embeddings_and_metrics(give_emb_train=False, give_emb_test=False)
 
         if self.conf['plot'].get('plot_model_weights'):
             model_weights = self.provide_model_weights()
@@ -688,7 +686,7 @@ class Trainer():
     def save_all_animations(self, animation_files, epochs_list):
         nomefile = self.run_path / str(self.unique_train_name)
 
-        self.save_gif_snapshots(animation_files, nomefile)
+        #self.save_gif_snapshots(animation_files, nomefile)
 
         # degree seq
         #self.save_degree_seq_animation(epochs_list)
@@ -756,42 +754,28 @@ class Trainer():
         model_weights = model_pars, param_labels
         return model_weights
 
-    def provide_all_embeddings_and_metrics(self, give_emb_train=False, give_emb_test=False, metric_object=None, metric_object_test=None, metric_object_train=None):
+    def provide_all_embeddings_and_metrics(self, give_emb_train=False, give_emb_test=False):
         """
 
         :param give_emb_train:
         :param give_emb_test:
-        :param metric_object:
-        :param metric_object_test:  serve solo per calcolare la soglia con cui ottenere la binary adjacency matrix
-        :param metric_object_train: serve solo per calcolare la soglia con cui ottenere la binary adjacency matrix
         :return:
         """
+        emb_pergraph_train = None
+        emb_pergraph_test = None
+        
         if self.config_class.autoencoding:
             all_embeddings_arrays = self.get_embedding_autoencoder(self.dataset.all_data_loader)
 
-            """NON devo piu calcolare i valori a soglia"""
-            # if metric_object is not None:
-            #     [e.calc_thresholded_values(threshold=metric_object.get_metric("soglia")) for e in all_embeddings_arrays]
-            # else:
-            #     [e.calc_thresholded_values(threshold=0.5) for e in all_embeddings_arrays]
-
             if give_emb_train:
-                emb_pergraph_train = self.get_embedding_autoencoder(self.dataset.train_loader)
+                emb_pergraph_train = self.get_embedding_autoencoder(self.dataset.train_loader)                
             if give_emb_test:
                 emb_pergraph_test = self.get_embedding_autoencoder(self.dataset.test_loader)
-
-            # if metric_object_train is not None:
-            #     [e.calc_thresholded_values(threshold=metric_object_train.get_metric("soglia")) for e in emb_pergraph_train]
-            # else:
-            #     [e.calc_thresholded_values(threshold=0.5) for e in emb_pergraph_train]
-            # if metric_object_test is not None:
-            #     [e.calc_thresholded_values(threshold=metric_object_test.get_metric("soglia")) for e in emb_pergraph_test]
-            # else:
-            #     [e.calc_thresholded_values(threshold=0.5) for e in emb_pergraph_test]
 
         else:
             graph_embeddings_array, node_embeddings_array, _, final_output = self.get_embedding(self.dataset.all_data_loader)
             all_embeddings_arrays = graph_embeddings_array, node_embeddings_array, final_output
+            
         return emb_pergraph_test, emb_pergraph_train, all_embeddings_arrays
 
     def save_image_at_epoch(self, embedding_arrays, model_weights_and_labels, epoch,
@@ -929,3 +913,8 @@ class Trainer():
         with open(f'{self.run_path / nomefile}.pkl', 'wb') as f:
             pickle.dump(list, f)
 
+
+class ZeroGradientException(Exception):
+    def __init__(self, messaggio, codice_errore=0):
+        super().__init__(messaggio)
+        self.codice_errore = codice_errore

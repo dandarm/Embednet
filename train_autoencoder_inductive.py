@@ -11,7 +11,7 @@ from torch_geometric.utils import to_dense_adj
 import torch.nn.functional as F
 from torch.nn import Linear, BatchNorm1d, LeakyReLU, Hardsigmoid, Tanh, ELU, Hardtanh, ReLU
 
-from train import Trainer
+from train import Trainer, ZeroGradientException
 from models import GCN, AutoencoderGCN, ConfModelDecoder, MLPDecoder, MLPCMDecoder
 from models import view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear, view_weights_gradients
 #from Dataset_autoencoder import DatasetAutoencoder
@@ -262,7 +262,7 @@ class Trainer_Autoencoder(Trainer):
             loss.backward()  # Derive gradients.
             # check che i gradienti siano non nulli
 
-            #self.check_zero_gradients(loss)
+            self.check_zero_gradients(loss)
 
             ##print(gradients)
             ##plt.hist([g.detach().cpu().numpy().ravel() for g in gradients])
@@ -286,11 +286,12 @@ class Trainer_Autoencoder(Trainer):
         gradients = view_weights_gradients(self.model)
         for g in gradients:
             if torch.count_nonzero(g).item() == 0:
+                raise ZeroGradientException("Zero gradient")
                 pars = get_parameters(self.model.convs)
                 for p in pars:
                     print(f"loss: {loss.item()}")
                     print(f" max: {max(p)}, min: {min(p)}")
-                raise Exception("Problema con i gradienti: sono tutti ZER000")
+                #raise Exception("Problema con i gradienti: sono tutti ZER000")
 
     def test(self, loader):
         self.model.eval()

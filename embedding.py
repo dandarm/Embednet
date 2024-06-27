@@ -420,10 +420,12 @@ class Embedding():
                 self.total_node_emb_dim_pca, self.total_node_emb_dim_pca_mia = 0, 0, 0, 0, 0, 0
             #if training_mode == TrainingMode.mode3:
             #    self.calc_regression_error()
-        else:
+        else:             
             #self.calc_distances(num_emb_neurons)  # calcola self.difference_of_means
-            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_node_emb_dim_pca, self.total_node_emb_dim_pca_mia = \
-                self.calc_instrinsic_dimension(num_emb_neurons)
+            from joblib import parallel_backend
+            with parallel_backend('threading', n_jobs=1):
+                res = self.calc_instrinsic_dimension(num_emb_neurons)
+            self.node_emb_dims, self.graph_emb_dims, self.total_node_emb_dim, self.total_node_emb_dim_pca, self.total_node_emb_dim_pca_mia = res
 
 
 class Embedding_per_graph():

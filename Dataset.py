@@ -75,6 +75,7 @@ class Dataset(GeneralDataset):
 
         self.train_loader = None
         self.test_loader = None
+        self.train_loader_non_shuffled = None
 
         self.last_neurons = self.config_class.lastneuron
         self.all_data_loader = None
@@ -297,6 +298,7 @@ class Dataset(GeneralDataset):
 
         self.train_loader = DataLoader(self.train_dataset, batch_size=self.bs, shuffle=shuffle, worker_init_fn=self.seed_worker, num_workers=0)
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.bs, shuffle=False, worker_init_fn=self.seed_worker, num_workers=0)
+        self.train_loader_non_shuffled = DataLoader(self.train_dataset, batch_size=self.bs, shuffle=False, worker_init_fn=self.seed_worker, num_workers=0)
         
         self.all_data_loader = self.get_all_data_loader()
 

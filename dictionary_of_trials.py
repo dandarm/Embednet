@@ -10,30 +10,30 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml", debug=False):
         print("primo config base da estendere con i trials validato.")
     #c.conf['graph_dataset']['list_exponents'] =
     diz_trials = {'model.autoencoder': [False],
-                  'model.autoencoder_confmodel': [True],
+                  'model.autoencoder_confmodel': [False],
                   'model.autoencoder_mlpdecoder': [False],
                   'model.autoencoder_fullMLP': [False],
-                  'model.autoencoder_degseq': [False],
+                  'model.autoencoder_degseq': [True],
                   'model.autoencoder_MLPCM': [False],
                   'model.autoencoder_fullMLP_CM': [False],
                   'model.last_layer_activation': ['RELU'],    #['Sigmoid'], RELU  # 'Identity'],   # una esclude l-altra con AE e AE_CM
                   'model.normalized_adj': [True],
                   'model.my_normalization_adj': [False],
-                  'graph_dataset.ERmodel': [True],
-                  'graph_dataset.confmodel': [False],
+                  'graph_dataset.ERmodel': [False],
+                  'graph_dataset.confmodel': [True],
                   'graph_dataset.sbm': [False],
                   'graph_dataset.const_degree_dist': [False],
                   'graph_dataset.real_dataset': [False],
                   'graph_dataset.list_p': [[0.1]], #   [0.2], [0.3], [0.4],[0.5],[0.6], [0.7], [0.8], [0.9]],  #[0.1,0.2,0.5,0.8,0.9]
                   'graph_dataset.list_exponents': [[-2.5]],#[-3.5],[-1.5]],
-                  'graph_dataset.Num_nodes': [[300], [200], [100], [400], [500]],  # [num_nodi]*5, [[num_nodi, int(num_nodi / 2)]] * 3],  # per lo SBM: num nodi * num classi * num comunità
-                  'graph_dataset.Num_grafi_per_tipo': [30, 20, 50],
+                  'graph_dataset.Num_nodes':  [[500]],  #[[300], [200], [100], [400], [500]],  # [num_nodi]*5, [[num_nodi, int(num_nodi / 2)]] * 3],  # per lo SBM: num nodi * num classi * num comunità
+                  'graph_dataset.Num_grafi_per_tipo': [20],
                   'model.GCNneurons_per_layer': [
                       # [1, 32, 16, len(c.conf['graph_dataset']['list_exponents'])],
                       # [1, 32, 16, len(c.conf['graph_dataset']['list_p'])],
                       # [1, 32, 16, len(c.conf['graph_dataset']['community_probs'])],
                       #[1, 16, 16, 16, 16, 16],
-                      [1, 128, 64, 64, 32],
+                      #[1, 128, 64, 64, 32],
                       #[1, 32, 32, 32]
                       #[1, 64, 16],
                       #[1, 64, 8],
@@ -48,6 +48,9 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml", debug=False):
                       #[1,8,8],
                       #[1,16,1],
                       #[1, 8, 8, 8],
+                      [1, 64, 32, 16, 16],
+                      #[1, 64, 32, 16, 1],
+                      #[1,1]
 
                       #[1, 16, 16, 16],
                       #[1, 64, 16]

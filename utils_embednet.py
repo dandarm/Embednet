@@ -6,7 +6,7 @@ from copy import copy
 import networkx as nx
 import torch
 
-from curved_edges import curved_edges
+#from curved_edges import curved_edges
 
 
 edge_color = '#6666bb'
@@ -26,11 +26,13 @@ def plot_degree_dist(G):
 #     edges_weights = [d['weight']/3 for (u, v, d) in G.edges(data=True)]
 #     pos = nx.spring_layout(G, k=1.8, iterations=200)
 #     nx.draw(G, nodelist=list(degrees.keys()), node_size=sizes, pos=pos)
-    
+
+
 def custom_draw_edges(ax, G, positions, edges_weights):    
     
     #disegno le edges curve
-    curves = curved_edges(G, positions)
+    #curves = curved_edges(G, positions)
+    curves=None
     lc = LineCollection(curves, color=edge_color, alpha=0.2, linewidths=edges_weights)
     new_lc=copy(lc) # faccio la copy perché se rieseguo la cella dà errore matplotlib
     ax.add_collection(new_lc)
@@ -151,7 +153,7 @@ def is_outlier(points, threshold=7.5):
 
     return modified_z_score > threshold
 
-def array_wo_outliers(x_array, threshold=7.5):
+def array_wo_outliers(x_array, threshold=3.5):
     x_array = np.array(x_array)
     filtered = x_array[~is_outlier(x_array, threshold)]
     return filtered

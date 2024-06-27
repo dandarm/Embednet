@@ -70,17 +70,19 @@ def barre_errore(diffs, norm_rank):
     # Crea un dizionario per raggruppare gli elementi di diffs basandoti su 'unique_ranks'
     grouped_differences = defaultdict(list)
     for idx, group in enumerate(integer_values):
-        float_key = unique_ranks[group]  # potevo scrivere anche == norm_rank[idx] ?
+        float_key = unique_ranks[group]  # potevo scrivere anche == norm_rank[idx] ?  si
         grouped_differences[float_key].append(diffs[idx])
         # ora ho tutte le differenze (errori) per ogni valore unico del rank norm
         # cioè un valore di errore per ogni nodo che ha quello stesso grado
 
     errori_mean = {k: np.mean(v) for k, v in grouped_differences.items()}
     errori_abs = {k: np.abs(v).mean() for k, v in grouped_differences.items()}
-    unique_mean_errors = [errori_mean[f] for f in unique_ranks]  # errori ordinati come unique_ranks
-    unique_abs_mean_errors = [errori_abs[f] for f in unique_ranks]  # errori ordinati come unique_ranks
+    dev_std = {k: np.std(np.abs(v)) for k, v in grouped_differences.items()}
+    ord_mean_errors = [errori_mean[f] for f in unique_ranks]  # errori ordinati come unique_ranks
+    ord_abs_mean_errors = [errori_abs[f] for f in unique_ranks]  # errori ordinati come unique_ranks
+    ord_dev_std = [dev_std[f] for f in unique_ranks]
 
-    return np.array(unique_mean_errors), unique_ranks, integer_values, unique_abs_mean_errors
+    return np.array(ord_mean_errors), unique_ranks, ord_dev_std, ord_abs_mean_errors
 
 
 def get_unique_ys_4_unique_errors(degrees, unique_floats, integer_values):

@@ -16,9 +16,10 @@ from config_valid import Inits
 
 from torch import Tensor
 from torch_geometric.typing import Adj, OptTensor
-from torch_sparse import SparseTensor
+#from torch_sparse import SparseTensor
 from torch_geometric.nn.conv.gcn_conv import gcn_norm
 # region myGCN
+"""
 class extended4test_GCN(GCNConv):
     def forward(self, x: Tensor, edge_index: Adj,
                 edge_weight: OptTensor = None) -> Tensor:
@@ -56,7 +57,7 @@ class extended4test_GCN(GCNConv):
             out += self.bias
 
         return edge_weight
-
+"""
 
 class GCN(torch.nn.Module):
     def __init__(self, config_class, **kwargs):

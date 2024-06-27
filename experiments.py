@@ -14,9 +14,9 @@ from multiprocessing import Pool, Process, Manager
 #import torch_geometric.transforms as T
 
 from models import GAEGCNEncoder, view_parameters, get_param_labels, new_parameters, modify_parameters, new_parameters_linears, modify_parameters_linear
-from train import Trainer
+from train import Trainer, ZeroGradientException
 from train_autoencoder_inductive import Trainer_Autoencoder
-from train_autoencoderMIAGAE import Trainer_AutoencoderMIAGAE
+#from train_autoencoderMIAGAE import Trainer_AutoencoderMIAGAE
 from train_autoencoderMLP import Trainer_AutoencoderMLP
 from train_degree_seq import Trainer_Degree_Sequence
 #from train_debug_MIAGAE import Trainer_AutoencoderMIAGAE_DEBUG
@@ -113,6 +113,7 @@ class Experiments():
         if config_class.autoencoding:
             if config_class.conf['model']['autoencoder_graph_ae']:
                 self.trainer = Trainer_AutoencoderMIAGAE(config_class, rootsave=self.rootsave, verbose=self.verbose)
+                self.trainer = None
             # DEBUG #self.trainer = Trainer_AutoencoderMIAGAE_DEBUG(self.config_class)
             elif config_class.conf['model']['autoencoder_fullMLP'] or config_class.conf['model']['autoencoder_fullMLP_CM']:
                 self.trainer = Trainer_AutoencoderMLP(config_class, rootsave=self.rootsave, verbose=self.verbose)
@@ -127,13 +128,20 @@ class Experiments():
 
         k = 0
         for c in self.gc.configs:
-            self.init_trainer(c)
-            print(f'Run {k + 1} \t\t exp name: {c.unique_train_name}')
-            # all_seeds()
-            self.save_config_to_path(c)
-            self.just_train(verbose=self.verbose)
-            k += 1
-            print("🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳\n")
+            successo = False
+            while not successo:
+                try:
+                    self.init_trainer(c)
+                    print(f'Run {k + 1} \t\t exp name: {c.unique_train_name}')
+                    # all_seeds()
+                    self.save_config_to_path(c)
+                    self.just_train(verbose=self.verbose)
+                    successo = True 
+                    k += 1
+                    print("🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳\n")
+                except ZeroGradientException as e:
+                    print(f"Gradienti nulli. Riprovo...")
+                
 
 
 # region tutti gli altri GS
