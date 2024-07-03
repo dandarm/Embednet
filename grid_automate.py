@@ -473,8 +473,8 @@ def get_diff_deg_seq_vs_loss(base_path, path):
     metrics_test, metrics_train, test_loss, train_loss, training_variables = load_metrics_loss(path)
 
     # prendo le reconstruction errors
-    diff_deg_seq_train = [m.attributi['diff_deg_seq'] for m in metrics_train]
-    diff_deg_seq_test = [m.attributi['diff_deg_seq'] for m in metrics_test]
+    diff_deg_seq_train = np.array([m.attributi['diff_deg_seq'] for m in metrics_train])
+    diff_deg_seq_test = np.array([m.attributi['diff_deg_seq'] for m in metrics_test])
 
     # prendo le liste di loss alle epoche corrispondenti al calcolo delle metriche
     epochs_list_points = config_class.conf["training"].get("epochs_list_points")

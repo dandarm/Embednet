@@ -118,7 +118,7 @@ def findMinDiff(arr):
     return diff
 
 
-def is_outlier(points, threshold=7.5):
+def is_outlier(points, threshold=5.5):
     """
     Returns a boolean array with True if points are outliers and False
     otherwise.

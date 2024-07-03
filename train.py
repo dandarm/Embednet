@@ -264,6 +264,11 @@ class Trainer():
                 self.dataset = Dataset.from_super_instance(self.config_class, dataset)
                 self.dataset.prepare(self.shuffle_dataset, parallel)
 
+        # raccolgo la loss di riferimento
+        if self.gg.graphtype == GraphType.ER:
+            self.total_dataset_reference_loss = self.calc_loss_input_dataset_ER(self.dataset.all_data_loader)
+        elif self.gg.graphtype == GraphType.CM:
+            self.total_dataset_reference_loss = self.calc_loss_input_dataset_CM(self.dataset.all_data_loader)
 
 
     def init_all(self, parallel=True, verbose=False, path_model_toload=None):
@@ -275,12 +280,6 @@ class Trainer():
         """
         self.init_dataset(parallel=parallel, verbose=verbose)
         self.load_dataset(self.gg.dataset, parallel=False)  # parallel false perché con load_from_networkx non c'è nulla da fare...
-
-        # raccolgo la loss di riferimento
-        if self.gg.graphtype == GraphType.ER:
-            self.total_dataset_reference_loss = self.calc_loss_input_dataset_ER(self.dataset.all_data_loader)
-        elif self.gg.graphtype == GraphType.CM:
-            self.total_dataset_reference_loss = self.calc_loss_input_dataset_CM(self.dataset.all_data_loader)
 
         # inizializzo il modello dopo il dataset per gestire il caso d'uso "my_normalization_adj"
         self.init_model(path_model_toload, verbose)
@@ -300,6 +299,7 @@ class Trainer():
         v = (not self.conf['model'].get('normalized_adj'))  # or self.conf['model'].get('my_normalization_adj')
         #v = not v  # se v falso dobbiamo modificare il gain perché stiamo nel caso UNnormalized: modified_gain deve essere True
         w = new_parameters(self.init_GCN(dataset_degree_prob_infos=degree_prob_infos), init_weigths_method, modified_gain_for_UNnormalized_adj=v)
+
 
         model = self.init_GCN(init_weights_gcn=w, verbose=verbose, dataset_degree_prob_infos=degree_prob_infos)
         if path_model_toload is None:
@@ -513,7 +513,8 @@ class Trainer():
         parallel_processes_save_images = []
         if self.conf['training'].get('every_epoch_embedding'):
             self.produce_traning_snapshot(0, parallel, parallel_processes_save_images,
-                                      plot_embeddings=self.conf['plot'].get('plot_embeddings'))
+                                      plot_embeddings=self.conf['plot'].get('plot_embeddings'),
+                                      calculate_metrics=self.conf['training'].get('calculate_metrics'))
             file_path = self.run_path / f"_epoch0.png"
             animation_files.append(file_path)
 
@@ -592,7 +593,8 @@ class Trainer():
             if self.conf['training'].get('every_epoch_embedding'):
                 if epoch in self.epochs_list:
                     self.produce_traning_snapshot(epoch, parallel, parallel_processes_save_images,
-                                                  plot_embeddings=self.conf['plot'].get('plot_embeddings'))
+                                                  plot_embeddings=self.conf['plot'].get('plot_embeddings'),
+                                                  calculate_metrics=self.conf['training'].get('calculate_metrics'))
                     file_path = self.run_path / f"_epoch{epoch}.png"
                     animation_files.append(file_path)
 
@@ -662,13 +664,16 @@ class Trainer():
             self.provide_all_embeddings_and_metrics(give_emb_train=True, give_emb_test=True)
 
         # Calcola e Raccoglie le metriche all'epoca data
-        if self.conf['training'].get('calculate_metrics'):
+        #if self.conf['training'].get('calculate_metrics'):
+        if kwargs.get('calculate_metrics'):
             #metric_object = self.calc_metric(self.dataset.all_data_loader)
             metric_object_train = self.calc_metric(self.dataset.actual_node_class_train, emb_pergraph_train)
             metric_object_test = self.calc_metric(self.dataset.actual_node_class_test, emb_pergraph_test)
             self.metric_obj_list_train.append(metric_object_train)
             self.metric_obj_list_test.append(metric_object_test)
 
+        # provo ora a pllttare le p_ij train e test insieme.
+        emb_pergraph_test, emb_pergraph_train = None, None
 
         if self.conf['plot'].get('plot_model_weights'):
             model_weights = self.provide_model_weights()
@@ -704,16 +709,13 @@ class Trainer():
         nomefile = self.run_path / str(self.unique_train_name)
 
         # verifico che tutti i file immagine siano disponibili
-        if self.check_files_ready(animation_files):
-            self.save_gif_snapshots(animation_files, nomefile)
-
-        # degree seq
-        #self.save_degree_seq_animation(epochs_list)
+        #if self.check_files_ready(animation_files):
+        self.save_gif_snapshots(animation_files, nomefile)
 
         new_files = self.save_mp4_snapshots(animation_files, epochs_list, nomefile)
 
-        # ora cancello le singole snapshots
-        self.delete_list_of_files(new_files)
+        # ora cancello le singole snapshots: NO le userò per le presentazioni al posto dei video
+        #self.delete_list_of_files(new_files)
 
     def save_degree_seq_animation(self, epochs_list):
         degims = []
@@ -882,7 +884,8 @@ class Trainer():
                     # salvo solo lultima immagine e la rinomino:
                     os.rename(f"{file_name}.png", path / f"{self.unique_train_name}.png")
 
-                Path(f"{file_name}.done").touch()
+                # non creo più il file done perché non cancello più le snapshot
+                #Path(f"{file_name}.done").touch()
             # salvo la sequneza di grado
             #if not kwargs.get("notsave"):
             #    data.plot_output_degree_sequence(ax=axes[0][1], path / f"Degree_seq.{self.unique_train_name}_{epoch}.png")
@@ -892,7 +895,7 @@ class Trainer():
             print(e)
             # traceback.print_stack()
             # print(traceback.format_exc())
-            print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            print(''.join(traceback.format_exception(type(e), value=e, tb=e.__traceback__)))
 
         return
 

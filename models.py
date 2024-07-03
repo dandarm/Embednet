@@ -241,12 +241,20 @@ class GCN_custom_norm(GCNConv):
 
 # endregion
 
+class CappedReLU(torch.nn.Module):
+    def __init__(self):
+        super(CappedReLU, self).__init__()
+    def forward(self, x):
+        return torch.clamp(x, 0, 1)
+
 def get_activ_func_from_config(activation_function_string):
     ''' non la metto nel Config per non dover importare le funzioni di pytorch nel modulo di Config'''
     if activation_function_string == 'ELU':
         activation_function = ELU()
     elif activation_function_string == "RELU":
         activation_function = ReLU()
+    elif activation_function_string == "CappedRELU":
+        activation_function = CappedReLU()
     elif activation_function_string == "Hardtanh":
         activation_function = Hardtanh(0, 1)
     elif activation_function_string == "Tanh":

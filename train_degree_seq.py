@@ -1,5 +1,6 @@
+import numpy as np
 import torch
-from torch.nn import MSELoss, BCELoss
+from torch.nn import MSELoss, BCELoss, Module
 from train_autoencoder_inductive import Trainer_Autoencoder
 from models import GCN, AutoencoderGCN, ConfModelDecoder, MLPDecoder
 from Metrics import Metrics
@@ -19,29 +20,75 @@ class Trainer_Degree_Sequence(Trainer_Autoencoder):
         return loss
 
     def init_decoder(self, encoder, model):
+        #if self.config_class.conf['model']['autoencoder']:
+        #    model.set_decoder(encoder)
+        #elif self.config_class.conf['model'].get('autoencoder_confmodel'):
         model.set_decoder(encoder, ConfModelDecoder())
 
-    def calc_metric(self, loader):
+    def calc_metric(self, actual_node_class, embeddings):
         """calcoliamo solo la BCE come nella funzione test del train_autoencoder_inductive"""
-        self.model.eval()
-        running_loss = 0
-        num_nodes_batch = [len(data.x) for data in loader.dataset]
 
-        i = 0
-        num_batches = 0
-        with torch.no_grad():
-            for data in loader:
-                total_batch_z, adjusted_pred_adj, input_adj = self.encode_decode_inputadj(
-                    data, i, loader.batch_size, num_nodes_batch)
+        input_adjs = np.array([g.input_adj_mat for g in embeddings]).ravel().squeeze()
+        adjusted_pred_adj = np.array([g.pred_adj_mat for g in embeddings]).ravel().squeeze()
 
-                adjusted_pred_adj_r = adjusted_pred_adj.ravel()
-                input_adj_r = input_adj.ravel()
-                loss = self.bce(adjusted_pred_adj_r, input_adj_r)
+        adjusted_pred_adj_r = adjusted_pred_adj.ravel()
+        input_adj_r = input_adjs.ravel()
+        if not torch.is_tensor(adjusted_pred_adj_r):
+            adjusted_pred_adj_r = torch.tensor(adjusted_pred_adj_r)
+        if not torch.is_tensor(input_adj_r):
+            input_adj_r = torch.tensor(input_adj_r)
+        total_bce_loss = self.bce(adjusted_pred_adj_r, input_adj_r)
 
-                running_loss += loss.item()
-                i += loader.batch_size
-                num_batches += 1
-
-        metriche = Metrics(BCE=running_loss / num_batches)
+        metriche = Metrics(BCE=total_bce_loss)
 
         return metriche
+
+
+class CustomLoss(torch.nn.Module):
+    def __init__(self):
+        super(CustomLoss, self).__init__()
+        self.bce = BCELoss()
+        self.mse = MSELoss()
+
+    def forward(self, outputs, targets, auxiliary_targets):
+        # Calcola BCE loss
+        bce = self.bce(outputs, targets)
+        # Calcola MSE loss
+        mse = self.mse(outputs, auxiliary_targets)
+        # Somma le due loss
+        loss = bce + mse
+        return loss
+
+
+
+class Trainer_BCEMSE(Trainer_Autoencoder):
+    def __init__(self, config_class, verbose=False, rootsave="."):
+        super().__init__(config_class, verbose, rootsave)
+
+        self.name_of_metric = ["BCE", "MSE"]
+        #self.criterion = CustomLoss()
+        self.bce = BCELoss()
+        self.mse = MSELoss()
+
+    def init_decoder(self, encoder, model):
+        if self.config_class.conf['model']['autoencoder']:
+            model.set_decoder(encoder)
+        elif self.config_class.conf['model'].get('autoencoder_confmodel'):
+            model.set_decoder(encoder, ConfModelDecoder())
+    def calc_loss(self, adjusted_pred_adj, input_adj):
+
+        N = input_adj.shape[0]
+        #MSEloss
+        degree_sequence_output = torch.sum(adjusted_pred_adj, dim=1)
+        degree_sequence_input = torch.sum(input_adj, dim=1)
+        loss_mse = self.mse(degree_sequence_output, degree_sequence_input)
+
+        #BCELoss
+        adjusted_pred_adj_r = adjusted_pred_adj.ravel()
+        input_adj_r = input_adj.ravel()
+        #self.debug_ATen(adjusted_pred_adj, input_adj)
+        loss_bce = self.bce(adjusted_pred_adj_r, input_adj_r)
+
+        # Somma le due loss
+        loss = loss_bce + loss_mse*N
+        return loss

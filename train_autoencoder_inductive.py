@@ -2,7 +2,7 @@ import traceback
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import roc_auc_score, average_precision_score, f1_score
+#from sklearn.metrics import roc_auc_score, average_precision_score, f1_score
 from sklearn.utils import class_weight, compute_class_weight
 
 import torch
@@ -25,13 +25,14 @@ class Trainer_Autoencoder(Trainer):
     def __init__(self, config_class, verbose=False, rootsave="."):
         super().__init__(config_class, verbose, rootsave)
         #self.name_of_metric = ["auc", "pr_auc", "f1_score", "euclid"]
-        self.name_of_metric = ["diff_deg_seq"]  # "auc",  "f1_score" pr_auc euclid
+        self.name_of_metric = ["diff_deg_seq", "MSE"]  # "auc",  "f1_score" pr_auc euclid
 
         #self.HD = HammingDistance(task="binary")
 
         self.HardTanh = Hardtanh(0,1)
 
         self.total_dataset_reference_loss = None
+        self.mse = torch.nn.MSELoss()
 
     def init_GCN(self, init_weights_gcn=None, init_weights_lin=None, verbose=False, dataset_degree_prob_infos=None):
         """
@@ -136,7 +137,7 @@ class Trainer_Autoencoder(Trainer):
             i += n
         return start_out[1:]  # perché la prima riga è vuota
 
-    def separate_per_graph_from_batch(self, batch_embedding, numnodes_list, input_adj=None):
+    def separate_per_graph_from_batch(self, batch_embedding, numnodes_list, input_adj=None, pred_adj_mat=None):
         """
         :param batch_embedding:  embedding complessivo di tutti i nodi del batch
         :param numnodes_list: lista che rappresenta i nodi per ciascun grafo
@@ -151,7 +152,11 @@ class Trainer_Autoencoder(Trainer):
                 ia = input_adj[j]
             else:
                 ia = None
-            emb_auto = Embedding_autoencoder_per_graph(z, input_adj_mat=ia)
+            if pred_adj_mat is not None:
+                pa = pred_adj_mat[j]
+            else:
+                pa = None
+            emb_auto = Embedding_autoencoder_per_graph(z, input_adj_mat=ia, pred_adj_mat=pa)
             embs.append(emb_auto)
             i += n
         return embs
@@ -262,9 +267,10 @@ class Trainer_Autoencoder(Trainer):
 
             ##view_weights_gradients(self.model)
             loss.backward()  # Derive gradients.
+
             # check che i gradienti siano non nulli
 
-            #self.check_zero_gradients(loss)
+            self.check_zero_gradients(loss)
 
             ##print(gradients)
             ##plt.hist([g.detach().cpu().numpy().ravel() for g in gradients])
@@ -288,11 +294,11 @@ class Trainer_Autoencoder(Trainer):
         gradients = view_weights_gradients(self.model)
         for g in gradients:
             if torch.count_nonzero(g).item() == 0:
-                pars = get_parameters(self.model.convs)
-                for p in pars:
-                    print(f"loss: {loss.item()}")
-                    print(f" max: {max(p)}, min: {min(p)}")
-                raise Exception("Problema con i gradienti: sono tutti ZER000")
+                #pars = get_parameters(self.model.convs)
+                #for p in pars:
+                    #print(f"loss: {loss.item()}")
+                    #print(f" max: {max(p)}, min: {min(p)}")
+                raise ZeroGradientsException("Problema con i gradienti: sono tutti 0")
 
     def test(self, loader):
         self.model.eval()
@@ -314,6 +320,10 @@ class Trainer_Autoencoder(Trainer):
 
         return running_loss / num_batches
 
+    def debug_ATen(self, adjusted_pred_adj, input_adj):
+        predmax = adjusted_pred_adj.ravel().max()
+        predmin = adjusted_pred_adj.ravel().min()
+        print(f"predmax: {predmax}\tpredmin: {predmin}")
     def calc_loss(self, adjusted_pred_adj, input_adj):
         """
         :param adjusted_pred_adj_r:  deve essere sempre un vettore 1D quello rispetto al quale si calcola la loss
@@ -357,7 +367,7 @@ class Trainer_Autoencoder(Trainer):
         cost_matrix = self.dataset.get_concatenated_constant_matrix(loader)
         #print(cost_matrix.shape, Adjs.shape)
 
-        final_loss = self.calc_loss(cost_matrix.ravel(), Adjs.ravel()).item()
+        final_loss = self.calc_loss(cost_matrix, Adjs).item()
         return final_loss
 
     def calc_loss_input_dataset_CM(self, loader):
@@ -424,6 +434,7 @@ class Trainer_Autoencoder(Trainer):
     def get_embedding_autoencoder(self, loader):
         """
         Funzione che si occupa di prendere l'embedding nel caso di autoencoding,
+        a partire da un dataloader
         è l'equivalente di get_embedding nel trainer base, ma istanzia anche la classe
         Embedding_autoencoder
         :param loader:
@@ -448,14 +459,14 @@ class Trainer_Autoencoder(Trainer):
                 # print(f"shape z  {total_batch_z.shape},  shape input_adj {input_adj.shape}")
                 epg = self.separate_per_graph_from_batch(
                     total_batch_z, num_nodes_batch[i:i + loader.batch_size],
-                    input_adj)
+                    input_adj, adjusted_pred_adj)
                 # print("verifico decoder output")
-                # print(all([np.allclose(e.decoder_output, adjusted_pred_adj[i].detach().cpu().numpy()) for i,e in enumerate(epg)]))
+                # print(all([np.allclose(e.pred_adj_mat, adjusted_pred_adj[i].detach().cpu().numpy()) for i,e in enumerate(epg)]))
                 embeddings_per_graph.extend(epg)
                 i += loader.batch_size
-                # verifico che siano lo stessa cosa...qunte volte lo faccio?
+                # verifico che siano lo stessa cosa...qunte volte lo faccio?  ora l'ho risolto in pred_adj_mat
                 # print(f"\n i: {i} ")
-                # print( all([torch.all(torch.eq(a, e.decoder_output)) for a,e in zip(adjusted_pred_adj, epg)]))
+                # print( all([torch.all(torch.eq(a, e.pred_adj_mat)) for a,e in zip(adjusted_pred_adj, epg)]))
 
         # devo calcolare subito l'output perché deve passare per le funzioni di torch e poi
         # posso fare detach
@@ -465,11 +476,13 @@ class Trainer_Autoencoder(Trainer):
 
 
         for e in embeddings_per_graph:
-            if self.conf['model']['autoencoder']:
-                e.calc_decoder_output(self.model.forward_all, sigmoid=False)  #, activation_func=self.loss_activation)
+            #if self.conf['model']['autoencoder']:
+                # TODO: ridurre se non serve
+                #  TODO2!!!! VERIFICARE CHE IL DECODER_OUTPUT NON SIA UGUALE A adjusted_pred_adj
+                #e.calc_decoder_output(self.model.forward_all, sigmoid=False)  #, activation_func=self.loss_activation)
                 #e.decoder_output = torch.nn.Hardtanh(0,1)(e.decoder_output)
-            else:
-                e.calc_decoder_output(self.model.forward_all, sigmoid=False)
+            #else:
+                #e.calc_decoder_output(self.model.forward_all, sigmoid=False)
             e.to_cpu()
             e.calc_degree_sequence()
             #e.calc_clustering_coeff()
@@ -485,6 +498,8 @@ class Trainer_Autoencoder(Trainer):
         input_seq = np.array(actual_node_class).ravel()
         pred_seq = np.array([g.out_degree_seq for g in embeddings]).ravel().squeeze()
 
+        msevalue = self.mse(torch.tensor(pred_seq), torch.tensor(input_seq)).item()
+
         l = len(pred_seq)
         assert len(input_seq) == l
 
@@ -498,12 +513,12 @@ class Trainer_Autoencoder(Trainer):
 
         #errore_medio_assoluto_per_grado = sum(y_vals) / l
         errore_totale_assoluto_per_nodo = np.abs(diff).sum() / l
-        metriche = Metrics(diff_deg_seq=errore_totale_assoluto_per_nodo)
+        metriche = Metrics(diff_deg_seq=errore_totale_assoluto_per_nodo, MSE=msevalue)
         #print(f"debug diff: sum(y_vals) = {sum(y_val_abs)} \t len sequence: {l} \t valore plot: {errore_medio_assoluto_per_grado} ")
         return metriche
 
     def calc_metric_prauc_euclid(self, loader):
-        """
+        """  AL MOMENTO NON LA USO, SE MI SERVE VERIFICARE SKLEARN NELL'AMBIENTE
         Calcola una AUC per la ricostruzione dell'intera matrice
         :param loader:
         :return: un oggetto Metric contenente embeddings_per_graph (Embedding_autoencoder class)
@@ -568,3 +583,10 @@ class Trainer_Autoencoder(Trainer):
             # f1_score=single_f1_score, soglia=best_threshold,¨
 
         return metriche
+
+
+
+class ZeroGradientsException(Exception):
+    def __init__(self, messaggio, codice_errore=None):
+        super().__init__(messaggio)
+        self.codice_errore = codice_errore

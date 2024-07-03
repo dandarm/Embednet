@@ -471,7 +471,7 @@ class Embedding_autoencoder_per_graph():
     :return:
     """
 
-    def __init__(self, node_embedding, input_adj_mat=None):
+    def __init__(self, node_embedding, input_adj_mat=None, pred_adj_mat=None):
         """
         :param node_embedding:  è considerato già appartenente a un solo grafo
         """
@@ -479,12 +479,13 @@ class Embedding_autoencoder_per_graph():
         self.graph_embedding = None
         #self.calc_graph_emb()
         self.input_adj_mat = input_adj_mat
-        self.decoder_output = None
+        self.pred_adj_mat = pred_adj_mat
+        #self.decoder_output = None
         self.thresholded = None
         self.hamming_distance = None
         self.threshold_for_binary_prediction = None
 
-        # valori binari estratti con sampling a partire dal decoder_output ( == p_ij)
+        # valori binari estratti con sampling a partire dal decoder_output ( == p_ij)  (==!! pred_adj_mat)
         self.sampled_adjs_from_output = None
 
         self.scalar_label = None
@@ -499,15 +500,15 @@ class Embedding_autoencoder_per_graph():
 
         self.HardTanh = Hardtanh(0, 1)
 
-
+    """
     def calc_decoder_output(self, model_decoder, **kwargs):
-        """
+        
         Viene usato per calcolare l-output quando vogliamo studiare l'embedding con i plot
         :param model_decoder: tipicamente z.zT
         :param kwargs:  "se usare sigmoide oppure no"
         :return:
-        """
-        self.decoder_output = model_decoder(self.node_embedding, **kwargs)
+        
+        #self.decoder_output = model_decoder(self.node_embedding, **kwargs)
         ##adj = torch.matmul(self.node_embedding, self.node_embedding.t())
         ##res = adj / (1 + adj)
         ##print("verifico decoder output", end=' ')
@@ -519,28 +520,32 @@ class Embedding_autoencoder_per_graph():
     #     # salvo questa soglia anche dentro la classe
     #     self.threshold_for_binary_prediction = threshold
     #     # calcolo subito anche la distanza di hamming
+    """
 
     def sample_without_threshold(self):
         self.sampled_adjs_from_output = []
-        p_ij = self.HardTanh(torch.Tensor(self.decoder_output))
+        #p_ij = self.HardTanh(torch.Tensor(self.decoder_output))
+        p_ij = self.HardTanh(torch.Tensor(self.pred_adj_mat))  # TODO: le predicted_adj dovrebbero già essere comprese tra 0 e 1...?!
         self.sampled_adjs_from_output = self.sample_from_pij(p_ij)
 
 
     def calc_degree_sequence(self):
-        self.out_degree_seq = self.decoder_output.sum(axis=1)
+        #self.out_degree_seq = self.decoder_output.sum(axis=1)
+        self.out_degree_seq = self.pred_adj_mat.sum(axis=1)
+
 
     def calc_clustering_coeff(self):
         #adj = self.sample_from_pij(self.decoder_output)
         #graph = nx.from_numpy_array(adj)
         #clust_coeffs = nx.clustering(graph)
 
-        clust_coeffs = cc_einsum(self.decoder_output)
+        clust_coeffs = cc_einsum(self.pred_adj_mat)
         #only_ccs = list(dict(clust_coeffs).values())  # for dw in clust_coeffs]  [
         self.out_clust_coeff = clust_coeffs  # np.zeros(self.decoder_output.shape[0])
         #print(f"cosa è il clust coeff?: {self.out_clust_coeff}")
 
     def calc_knn(self):
-        knn = knn_einsum(self.decoder_output)
+        knn = knn_einsum(self.pred_adj_mat)
         self.out_knn = knn
 
 
@@ -553,7 +558,7 @@ class Embedding_autoencoder_per_graph():
     def to_cpu(self):
         self.node_embedding = self.node_embedding.detach().cpu().numpy()
         self.input_adj_mat = self.input_adj_mat.detach().cpu().numpy()
-        self.decoder_output = self.decoder_output.detach().cpu().numpy()
+        self.pred_adj_mat = self.pred_adj_mat.detach().cpu().numpy()
 
     def sample_from_pij(self, p_ij):
         pij_shape = p_ij.shape

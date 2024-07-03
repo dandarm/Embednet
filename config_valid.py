@@ -78,6 +78,7 @@ class Config():
                 self.conf['model'].get('autoencoder_fullMLP_CM') or
                 self.conf['model'].get('autoencoder_graph_ae') or
                 self.conf['model'].get('autoencoder_degseq') or
+                self.conf['model'].get('autoencoder_mse_bce_combined') or
                 self.conf['model'].get('autoencoder_MLPCM')
         ):
             self.autoencoding = True
@@ -135,8 +136,12 @@ class Config():
 
         # verifico che in graph_dataset ci sia un solo True
         self.only1_graphtype()
+        # verifico un solo tipo di decoder
+        self.only1_decoder()
         # lo stesso per i tipi di modello
         self.only1_model()
+        # due come fuori dalla logica e sostituire un 'generic_autoenc'
+        self.only1_decoder()
 
         neurons_per_layer = self.conf['model']['GCNneurons_per_layer']
         if self.conf['model']['last_layer_dense']:
@@ -218,17 +223,31 @@ class Config():
         true_found = self.only1Bool(bool_array, tipi='graph_dataset')
         return true_found
 
+    def only1_decoder(self):
+        bool_array = [
+        self.conf['model']['autoencoder'],
+        self.conf['model']['autoencoder_confmodel']
+        ]
+        true_found = self.only1Bool(bool_array, tipi='decoder')
+        return true_found
+
     def only1_model(self):
         bool_array = [self.conf['model']['only_encoder'],
-                      self.conf['model']['autoencoder'],
-                      self.conf['model']['autoencoder_confmodel'],
                       self.conf['model']['autoencoder_graph_ae'],
                       self.conf['model']['autoencoder_mlpdecoder'],
                       self.conf['model']['autoencoder_fullMLP'],
                       self.conf['model']['autoencoder_fullMLP_CM'],
+                      self.conf['model']['autoencoder_default_bce'],
                       self.conf['model']['autoencoder_degseq'],
+                      self.conf['model']['autoencoder_mse_bce_combined'],
                       self.conf['model']['autoencoder_MLPCM']]
         true_found = self.only1Bool(bool_array, tipi='modello')
+        return true_found
+
+    def only1_decoder(self):
+        bool_array = [ self.conf['model']['autoencoder'],
+                       self.conf['model']['autoencoder_confmodel']]
+        true_found = self.only1Bool(bool_array, tipi='decoder')
         return true_found
 
     def only1Bool(self, bool_array, tipi):
@@ -316,6 +335,8 @@ class Config():
             modo = "AE_fullMLP_CM"
         elif self.conf['model']['autoencoder_degseq']:
             modo = "fit_DEG_SEQ"
+        elif self.conf['model']['autoencoder_mse_bce_combined']:
+            modo = "fit_MSEBCE_Combined"
         elif self.conf['model']['autoencoder_graph_ae']:
             modo = "MIAGAE"
 
@@ -359,6 +380,9 @@ class Config():
         loss_string = self.conf['training']['loss']
         if self.conf['model']['autoencoder_degseq']:
             loss_string = "MSELoss"
+        if self.conf['model']['autoencoder_mse_bce_combined']:
+            loss_string = "MSE+BCE"
+
         lr = self.conf['training']['learning_rate']
         optim = self.conf['training'].get('optimizer')
         shuffled = self.conf['training']['shuffle_dataset']
@@ -454,5 +478,7 @@ def get_model_trial_string(s):
         return 'autoencoder_fullMLP_CM'
     elif s == 'fit_DEG_SEQ':
         return 'autoencoder_degseq'
+    elif s == 'fit_MSEBCE_Combined':
+        return 'autoencoder_mse_bce_combined'
     elif s == "MIAGAE":
         return 'autoencoder_graph_ae'

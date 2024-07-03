@@ -84,16 +84,20 @@ def studioERp():
     xp = Experiments(config_file, diz_trials, rootsave)
     xp.GS_same_weight_inits_different_datasets()
 
-# def simple():
-#     config_file = "configurations/1layer_freezed.yml"
-#     xp = Experiments(config_file, diz_trials=None, rootsave=rootsave)
-#     xp.just_train(parallel=True)
-#     embedding_class = xp.embedding()
+def grid_same_init_W(argv):
+    c, diz_trials, path_to_save = load_trials(argv)
+
+    is_verbose = argv[2] == "True"
+    print(f"verbose: {is_verbose}")
+    xp = Experiments(diz_trials=diz_trials,
+                     rootsave=rootsave / path_to_save, config_class=c,
+                     reset_all_seeds=False, verbose=is_verbose)
+    xp.GS_same_init_W(verbose=is_verbose)
 
 def simple_grid_search(argv):
     c, diz_trials, path_to_save = load_trials(argv)
 
-    is_verbose = argv[2] == "True"
+    is_verbose = argv[2] == "verbose=True"
     print(f"verbose: {is_verbose}")
     xp = Experiments(diz_trials=diz_trials,
                      rootsave=rootsave / path_to_save, config_class=c,
@@ -200,7 +204,6 @@ if __name__ == "__main__":
     #print(array.shape)
     #parallel_coord1(array, "Graph embedding")
 
-
     #studio_embedding()
     #config_file = "configurations/classification_cm.yml"
     #experiment_node_embedding(config_file)
@@ -210,11 +213,15 @@ if __name__ == "__main__":
     #diversi_init_weights_diversi_dataset()
     #studioERp()
 
-    #simple_grid_search()
-
     #count_non_iso_motif_up_to_n(4)
 
-    simple_grid_search(sys.argv[1:])
+    print(sys.argv)
+    if 'init_w=True' in sys.argv:
+        grid_same_init_W(sys.argv[1:])
+
+    else:
+        simple_grid_search(sys.argv[1:])
+
     #run_many_same_training(sys.argv[1:])
 
     # from NEMtropy import UndirectedGraph, network_functions

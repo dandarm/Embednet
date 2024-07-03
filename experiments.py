@@ -16,10 +16,10 @@ from multiprocessing import Pool, Process, Manager
 
 from models import GAEGCNEncoder, view_parameters, get_param_labels, new_parameters, modify_parameters, new_parameters_linears, modify_parameters_linear
 from train import Trainer
-from train_autoencoder_inductive import Trainer_Autoencoder
+from train_autoencoder_inductive import Trainer_Autoencoder, ZeroGradientsException
 from train_autoencoderMIAGAE import Trainer_AutoencoderMIAGAE
 from train_autoencoderMLP import Trainer_AutoencoderMLP
-from train_degree_seq import Trainer_Degree_Sequence
+from train_degree_seq import Trainer_Degree_Sequence, Trainer_BCEMSE
 #from train_debug_MIAGAE import Trainer_AutoencoderMIAGAE_DEBUG
 from embedding import Embedding
 from plot_funcs import Data2Plot, DataAutoenc2Plot, plot_metrics
@@ -110,34 +110,76 @@ class Experiments():
         #self.graph_embedding_per_epoch = []
         #self.node_embedding_per_epoch = []
 
-    def init_trainer(self, config_class):
+    def print_run(self, k, name):
+        print(f'Run {k + 1} di {len(self.gc.configs)}\t Exp name: {name}')
+
+    def print_end_training(self):
+        print("🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳\n")
+
+    def init_trainer(self, config_class, create_folder=True):
+        if create_folder:
+            rootsave = self.rootsave
+        else:
+            rootsave = ''
         if config_class.autoencoding:
             if config_class.conf['model']['autoencoder_graph_ae']:
-                self.trainer = Trainer_AutoencoderMIAGAE(config_class, rootsave=self.rootsave, verbose=self.verbose)
+                self.trainer = Trainer_AutoencoderMIAGAE(config_class, rootsave=rootsave, verbose=self.verbose)
             # DEBUG #self.trainer = Trainer_AutoencoderMIAGAE_DEBUG(self.config_class)
             elif config_class.conf['model']['autoencoder_fullMLP'] or config_class.conf['model']['autoencoder_fullMLP_CM']:
-                self.trainer = Trainer_AutoencoderMLP(config_class, rootsave=self.rootsave, verbose=self.verbose)
+                self.trainer = Trainer_AutoencoderMLP(config_class, rootsave=rootsave, verbose=self.verbose)
             elif config_class.conf['model'].get('autoencoder_degseq'):
-                self.trainer = Trainer_Degree_Sequence(config_class, rootsave=self.rootsave, verbose=self.verbose)
+                self.trainer = Trainer_Degree_Sequence(config_class, rootsave=rootsave, verbose=self.verbose)
+            elif config_class.conf['model'].get('autoencoder_mse_bce_combined'):
+                self.trainer = Trainer_BCEMSE(config_class, rootsave=rootsave, verbose=self.verbose)
             else:
-                self.trainer = Trainer_Autoencoder(config_class, rootsave=self.rootsave, verbose=self.verbose)
+                self.trainer = Trainer_Autoencoder(config_class, rootsave=rootsave, verbose=self.verbose)
         else:
-            self.trainer = Trainer(config_class, rootsave=self.rootsave)
+            self.trainer = Trainer(config_class, rootsave=rootsave)
 
     def GS_simple_experiments(self, do_plot=True, **kwargs):
 
         k = 0
         for c in self.gc.configs:
+            nonzero_gradients = False  # voglio ripetere il trainng se trovo gradienti nulli
+            while not nonzero_gradients:
+                try:
+                    self.init_trainer(c)
+                    self.print_run(k, c.unique_train_name)
+                    # all_seeds()
+                    self.save_config_to_path(c)
+                    self.just_train(verbose=self.verbose)
+                    print(self.print_end_training())
+                    nonzero_gradients = True
+                    k += 1
+                except ZeroGradientsException as e:
+                    print(f"Errore di gradiente nullo  {e}. Riprovo...")
+
+
+    def GS_same_init_W(self, verbose):
+        # modello di base per avere l'architettura dei parametri da impostare
+        self.init_trainer(self.gc.configs[0], create_folder=False)  # inizializzo il train con il config base
+        modello_base = self.trainer.init_GCN()
+        saved_initial_weights_lin = new_parameters_linears(modello_base)
+        saved_initial_weights_gcn = new_parameters(modello_base, method=self.config_class.init_weights_mode)
+
+        for i, c in enumerate(self.gc.configs):
+            self.print_run(i, c.unique_train_name)
             self.init_trainer(c)
-            print(f'Run {k + 1} \t\t exp name: {c.unique_train_name}')
-            # all_seeds()
             self.save_config_to_path(c)
-            self.just_train(verbose=self.verbose)
-            k += 1
-            print("🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳\n")
+            all_seeds()
+
+            # TODO: verificare che vengono effettivamente diversi i dataset perché ho resettatto i seed subito prima
+            self.trainer.init_dataset()
+            self.trainer.load_dataset(self.trainer.gg.dataset)
+
+            model = self.trainer.init_GCN(saved_initial_weights_gcn, saved_initial_weights_lin)
+            self.trainer.load_model(model)
+
+            self.trainer.launch_training()
 
 
-# region tutti gli altri GS
+
+    # region tutti gli altri GS
 
     def many_same_training(self, ktot):
         for c in self.gc.configs:
@@ -148,29 +190,6 @@ class Experiments():
                 self.trainer.change_kth_runpath(orig_run_path, k)
                 self.just_train(verbose=self.verbose)
 
-
-    def GS_same_weight_inits_different_datasets(self):
-        # modello di base per avere l'architettura dei parametri da impostare
-        modello_base = self.trainer.init_GCN()
-        saved_initial_weights_lin = new_parameters_linears(modello_base)
-        saved_initial_weights_gcn = new_parameters(modello_base, method=self.config_class.init_weights_mode)
-
-        for i, c in enumerate(self.gc.configs):
-            print(f'Run {i + 1}/{len(self.gc.configs)}')
-            all_seeds()
-            self.trainer.init_conf(c)
-
-            model = self.trainer.init_GCN(saved_initial_weights_gcn, saved_initial_weights_lin)
-            self.trainer.load_model(model)
-
-            # TODO: verificare che vengono effettivamente diversi i dataset perché ho resettatto i seed subito prima
-            self.trainer.init_dataset()
-            self.trainer.load_dataset(self.trainer.gg.dataset)
-
-            self.trainer.launch_training()
-
-            embedding_class = self.embedding()
-            fill_df_with_results(self.gc.config_dataframe, i, None, None, self.trainer.test_loss_list, self.trainer.metric_list, embedding_class)
 
     def diversi_init_weights_stesso_dataset(self, parallel=True):  #, metodi, ripetizioni):
         self.GS_different_weight_inits( train_with_same_dataset=True, test_same_training=False, parallel_take_result=parallel)
