@@ -715,9 +715,9 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
     # train loss
     if is_x_axis_log:
         #plt.xscale('log', base=2)
-        ax.semilogx(epochs_list, train_loss_list, marker=marker,color='darkgray', label='Train Loss')
+        ax.semilogx(epochs_list, train_loss_list, marker=marker,color='black', alpha=0.5, label='Train Loss')
     else:
-        ax.plot(epochs_list, train_loss_list, marker=marker,color='darkgray', label='Train Loss')
+        ax.plot(epochs_list, train_loss_list, marker=marker,color='black', alpha=0.5, label='Train Loss')
 
     # plot reference loss
     ax.axhline(y=ref_loss, color='darkgrey', linestyle='--') #, label=f'Retta orizzontale a y={y_value}')
@@ -736,6 +736,7 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
     marker = '.'
     m_size = 5.0
     if kwargs.get('calculate_metrics'):
+        max_y_range = 0
         for i, metric_name in enumerate(metric_names):
             asse = axt
             #if i == 1:
@@ -757,14 +758,16 @@ def plot_test_loss_and_metric(ax, test_loss_list, epochs_list, **kwargs):
             # axt.yaxis.label.set_color(pmetric.get_color())
             asse.tick_params(axis='y', colors=color)  #pmetric.get_color())
 
-        # limiti per l'ase y
-        test_metric_list_min, test_metric_list_max = min(array_wo_outliers(metricatest, 4)), max(array_wo_outliers(metricatest, 2))
-        train_metric_list_min, train_metric_list_max = min(array_wo_outliers(metricatrain, 4)), max(array_wo_outliers(metricatrain, 2))
+            # limiti per l'ase y
+            test_metric_list_min, test_metric_list_max = min(array_wo_outliers(metricatest)), max(array_wo_outliers(metricatest))
+            train_metric_list_min, train_metric_list_max = min(array_wo_outliers(metricatrain)), max(array_wo_outliers(metricatrain))
+            max_tmp = max(test_metric_list_max, train_metric_list_max)
+            max_y_range = max(max_y_range, max_tmp)
+
         minimo = 0.0  #  min(test_metric_list_min, test_metric_list_max)
-        massimo = max(train_metric_list_min, train_metric_list_max)
-        tol = (massimo - minimo) * 0.1
+        tol = (max_y_range - minimo) * 0.1
         try:
-            axt.set_ylim(minimo - 0.05, massimo + tol)
+            axt.set_ylim(minimo - 0.05, max_y_range + tol)
         except ValueError as e:
             print(e)
         #ax2.set_ylim(0, max(metricatest))

@@ -25,9 +25,9 @@ training:
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
-    learning_rate: 0.00050000005
-    epochs: 500000
-    epochs_list_points: 60
+    learning_rate: 0.0003
+    epochs: 1000000
+    epochs_list_points: 70
     test_loss_every_epochs: 200
     batch_size: 1000
     percentage_train: 0.7

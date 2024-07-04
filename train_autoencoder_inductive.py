@@ -143,6 +143,7 @@ class Trainer_Autoencoder(Trainer):
         :param numnodes_list: lista che rappresenta i nodi per ciascun grafo
         :return: una lista di Embedding_autoencoder (per graph)
         """
+
         embs = []
         i = 0
         for j, n in enumerate(numnodes_list):
@@ -150,10 +151,12 @@ class Trainer_Autoencoder(Trainer):
             z = batch_embedding[i:i + n]
             if input_adj is not None:
                 ia = input_adj[j]
+                assert ia.dim() == 2
             else:
                 ia = None
             if pred_adj_mat is not None:
                 pa = pred_adj_mat[j]
+                assert pa.dim() == 2
             else:
                 pa = None
             emb_auto = Embedding_autoencoder_per_graph(z, input_adj_mat=ia, pred_adj_mat=pa)

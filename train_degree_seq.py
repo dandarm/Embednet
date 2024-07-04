@@ -28,8 +28,8 @@ class Trainer_Degree_Sequence(Trainer_Autoencoder):
     def calc_metric(self, actual_node_class, embeddings):
         """calcoliamo solo la BCE come nella funzione test del train_autoencoder_inductive"""
 
-        input_adjs = np.array([g.input_adj_mat for g in embeddings]).ravel().squeeze()
-        adjusted_pred_adj = np.array([g.pred_adj_mat for g in embeddings]).ravel().squeeze()
+        input_adjs = np.array([g.input_adj_mat for g in embeddings])#.ravel().squeeze()
+        adjusted_pred_adj = np.array([g.pred_adj_mat for g in embeddings])#.ravel().squeeze()
 
         adjusted_pred_adj_r = adjusted_pred_adj.ravel()
         input_adj_r = input_adjs.ravel()
@@ -90,5 +90,30 @@ class Trainer_BCEMSE(Trainer_Autoencoder):
         loss_bce = self.bce(adjusted_pred_adj_r, input_adj_r)
 
         # Somma le due loss
-        loss = loss_bce + loss_mse*N
+        loss = loss_bce + loss_mse*0.001
         return loss
+
+    def calc_metric(self, actual_node_class, embeddings):
+        """calcolo la BCE e la MSE che sono le due stesse componenti della loss"""
+
+        input_adj = np.array([g.input_adj_mat for g in embeddings])#.ravel().squeeze()
+        adjusted_pred_adj = np.array([g.pred_adj_mat for g in embeddings])#.ravel().squeeze()
+
+        if not torch.is_tensor(adjusted_pred_adj):
+            adjusted_pred_adj = torch.tensor(adjusted_pred_adj)
+        if not torch.is_tensor(input_adj):
+            input_adj = torch.tensor(input_adj)
+        adjusted_pred_adj_r = adjusted_pred_adj.ravel()
+        input_adj_r = input_adj.ravel()
+
+        total_bce_loss = self.bce(adjusted_pred_adj_r, input_adj_r)
+
+        #input_seq = np.array(actual_node_class).ravel()
+        #pred_seq = np.array([g.out_degree_seq for g in embeddings]).ravel().squeeze()
+        degree_sequence_output = torch.sum(adjusted_pred_adj, dim=1)
+        degree_sequence_input = torch.sum(input_adj, dim=1)
+        msevalue = self.mse(degree_sequence_output, degree_sequence_input)
+
+        metriche = Metrics(BCE=total_bce_loss, MSE=msevalue)
+
+        return metriche
