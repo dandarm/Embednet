@@ -28,18 +28,18 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml", debug=False):
                   'graph_dataset.sbm': [False],
                   'graph_dataset.const_degree_dist': [False],
                   'graph_dataset.real_dataset': [False],
-                  'graph_dataset.list_p': [[0.05], [0.1]],  #[[0.05, 0.061, 0.072, 0.083, 0.094,0.106, 0.117, 0.128, 0.139, 0.15]], #   [0.2], [0.3], [0.4],[0.5],[0.6], [0.7], [0.8], [0.9]],  #[0.1,0.2,0.5,0.8,0.9]
+                  'graph_dataset.list_p': [[0.2]],  #[0.025],  #[[0.05, 0.061, 0.072, 0.083, 0.094,0.106, 0.117, 0.128, 0.139, 0.15]], #   [0.2], [0.3], [0.4],[0.5],[0.6], [0.7], [0.8], [0.9]],  #[0.1,0.2,0.5,0.8,0.9]
                   'graph_dataset.list_exponents': [[-2.5]],#[-3.5],[-1.5]],
-                  'graph_dataset.Num_nodes': [[100]],  # [num_nodi]*5, [[num_nodi, int(num_nodi / 2)]] * 3],  # per lo SBM: num nodi * num classi * num comunità
-                  'graph_dataset.Num_grafi_per_tipo': [10, 30],
+                  'graph_dataset.Num_nodes': [[20]],  # [num_nodi]*5, [[num_nodi, int(num_nodi / 2)]] * 3],  # per lo SBM: num nodi * num classi * num comunità
+                  'graph_dataset.Num_grafi_per_tipo': [10],
                   'model.GCNneurons_per_layer': [
                       # [1, 32, 16, len(c.conf['graph_dataset']['list_exponents'])],
                       # [1, 32, 16, len(c.conf['graph_dataset']['list_p'])],
                       # [1, 32, 16, len(c.conf['graph_dataset']['community_probs'])],
                       #[1, 16, 16, 16, 16, 16],
                       #[1, 128, 64, 64, 32],
-                      [1,256,128,4],
-                      [1, 128, 64, 4],
+                      #[1,256,128,4],
+                      #[1, 128, 64, 4],
                       #[1, 64, 32, 16, 1],
                       #[1, 64, 32, 16, 16],
                       #[1, 64, 16],
@@ -48,11 +48,14 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml", debug=False):
                       #[1, 16, 8],
                       #[1, 64, 16],
                       #[1, 16, 16, 4]
-                      [1, 64, 32, 4]
+                      [1, 32, 32, 4]
+                      #[1, 32, 16, 4]
+                      #[1, 32, 16, 1]
                       #[1, 64, 8],
                       #[1, 16, 16, 8],
                       #[1, 32, 8],
                       #[1, 16, 8],
+                      #[1, 16, 4]
                       #[1, 8, 4],
                       #[1,256,128,64,32,16]
                       #[1,16,8],[1,16,4],
@@ -104,7 +107,7 @@ def get_diz_trials(nome_file_config="configurations/Final1.yml", debug=False):
                   # cambio il learning rate di poco per gestire
                   # sostanzialmente la ripetizione dello stesso training
                   #'training.learning_rate': list(np.linspace(0.000100027, 0.0010027, 5))
-                  #'training.learning_rate': [0.0010001, 0.00010001]  #, 0.0005001, 0.0010001]
+                  #'training.learning_rate': [0.0003, 0.000003]  #, 0.0005001, 0.0010001]
                   }
     return c, diz_trials
 

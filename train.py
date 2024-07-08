@@ -85,6 +85,8 @@ class Trainer():
         self.train_loss_list = []
         self.last_epoch = None
 
+        self.is_all_zero_gradient = False
+
         self.init_conf(config_class)
 
 
@@ -563,7 +565,9 @@ class Trainer():
         #with tf.compat.v1.Graph().as_default():
         #summary_writer = tf.compat.v1.summary.FileWriter(log_dir_variance) TODO: CALCOLO DELLA pca TEMPORANEAMENTE SOSPESO
 
-
+        # per la logica di controllo del gradiente nell' early stop
+        zero_grad_delta_epochs = 0
+        first_epoch_zero_grad = 1
 
 
         for epoch in tqdm(range(1, self.epochs+1), total=self.epochs):
@@ -618,12 +622,26 @@ class Trainer():
             #profiler.step()  # Registra i dati di profiling raccolti finora
             #print(f"Profiling step completed for epoch {epoch}")
 
-            # TODO: rimettere l'early stopping!  check per performance
-            # early_stopping(test_loss)
-            # if early_stopping.early_stop:
-            #     #if verbose > 0:
-            #     print("Early stopping!!!")
-            #     break
+            # TODO: check per performance
+            #prima controllo i gradienti
+            if self.is_all_zero_gradient:
+                print(f"zero_grad_delta_epochs: {zero_grad_delta_epochs}", end='\t')
+                if zero_grad_delta_epochs > 100:
+                    if first_epoch_zero_grad == 1:
+                        raise ZeroGradientsException("I gradienti sono tutti 0 dalla prima epoca!")
+                    else:
+                        print("Early stopping per gradienti nulli!!!")
+                        break
+                zero_grad_delta_epochs += 1
+            else:
+                first_epoch_zero_grad = epoch
+                zero_grad_delta_epochs = 0
+
+            early_stopping(test_loss)
+            if early_stopping.early_stop:
+                #if verbose > 0:
+                print("Early stopping!!!")
+                break
 
         print(f"best loss: {round(best_loss, 3)} at epoch {best_epoch}")
         #if verbose > 0:
@@ -965,3 +983,10 @@ class Trainer():
         with open(f'{self.run_path / nomefile}.pkl', 'wb') as f:
             pickle.dump(list, f)
 
+
+
+
+class ZeroGradientsException(Exception):
+    def __init__(self, messaggio, codice_errore=None):
+        super().__init__(messaggio)
+        self.codice_errore = codice_errore

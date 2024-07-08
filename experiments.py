@@ -15,8 +15,8 @@ from multiprocessing import Pool, Process, Manager
 #import torch_geometric.transforms as T
 
 from models import GAEGCNEncoder, view_parameters, get_param_labels, new_parameters, modify_parameters, new_parameters_linears, modify_parameters_linear
-from train import Trainer
-from train_autoencoder_inductive import Trainer_Autoencoder, ZeroGradientsException
+from train import Trainer, ZeroGradientsException
+from train_autoencoder_inductive import Trainer_Autoencoder
 from train_autoencoderMIAGAE import Trainer_AutoencoderMIAGAE
 from train_autoencoderMLP import Trainer_AutoencoderMLP
 from train_degree_seq import Trainer_Degree_Sequence, Trainer_BCEMSE
@@ -140,8 +140,11 @@ class Experiments():
 
         k = 0
         for c in self.gc.configs:
-            nonzero_gradients = False  # voglio ripetere il trainng se trovo gradienti nulli
-            while not nonzero_gradients:
+            nonzero_gradients = False
+            # voglio ripetere il training se trovo gradienti nulli alla prima epoca
+            t = 0  # ma se per più di 10 volte trova gradienti nulli....ciao!
+            while (not nonzero_gradients) and t <= 5:
+                t += 1
                 try:
                     self.init_trainer(c)
                     self.print_run(k, c.unique_train_name)
@@ -150,9 +153,9 @@ class Experiments():
                     self.just_train(verbose=self.verbose)
                     print(self.print_end_training())
                     nonzero_gradients = True
-                    k += 1
                 except ZeroGradientsException as e:
-                    print(f"Errore di gradiente nullo  {e}. Riprovo...")
+                    print(f"Errore di gradiente nullo  {e}. Riprovo per la {t} volta...")
+            k += 1
 
 
     def GS_same_init_W(self, verbose):

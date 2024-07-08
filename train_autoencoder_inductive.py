@@ -272,8 +272,9 @@ class Trainer_Autoencoder(Trainer):
             loss.backward()  # Derive gradients.
 
             # check che i gradienti siano non nulli
-
-            self.check_zero_gradients(loss)
+            self.is_all_zero_gradient = self.check_zero_gradients(loss)
+            #if self.is_all_zero_gradient:
+            #    raise ZeroGradientsException("I gradienti sono tutti 0!")
 
             ##print(gradients)
             ##plt.hist([g.detach().cpu().numpy().ravel() for g in gradients])
@@ -285,7 +286,7 @@ class Trainer_Autoencoder(Trainer):
 
             
             self.optimizer.step()  # Update parameters based on gradients.
-            self.optimizer.zero_grad()  # Clear gradients.
+            self.optimizer.zero_grad(set_to_none=True)  # Clear gradients.
             # self.scheduler.step()
             running_loss += loss.item()
             i += self.dataset.train_loader.batch_size
@@ -295,13 +296,14 @@ class Trainer_Autoencoder(Trainer):
 
     def check_zero_gradients(self, loss):
         gradients = view_weights_gradients(self.model)
-        for g in gradients:
-            if torch.count_nonzero(g).item() == 0:
+        #print(f"quanti sono i gradienti: {len(gradients)}")
+        all_zeros = all(torch.count_nonzero(g).item() == 0 for g in gradients)
+        return all_zeros
                 #pars = get_parameters(self.model.convs)
                 #for p in pars:
                     #print(f"loss: {loss.item()}")
                     #print(f" max: {max(p)}, min: {min(p)}")
-                raise ZeroGradientsException("Problema con i gradienti: sono tutti 0")
+
 
     def test(self, loader):
         self.model.eval()
@@ -587,9 +589,3 @@ class Trainer_Autoencoder(Trainer):
 
         return metriche
 
-
-
-class ZeroGradientsException(Exception):
-    def __init__(self, messaggio, codice_errore=None):
-        super().__init__(messaggio)
-        self.codice_errore = codice_errore

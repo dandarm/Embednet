@@ -90,7 +90,7 @@ class Trainer_BCEMSE(Trainer_Autoencoder):
         loss_bce = self.bce(adjusted_pred_adj_r, input_adj_r)
 
         # Somma le due loss
-        loss = loss_bce + loss_mse*0.001
+        loss = loss_bce + loss_mse
         return loss
 
     def calc_metric(self, actual_node_class, embeddings):
