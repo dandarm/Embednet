@@ -14,7 +14,6 @@ from torch.nn import Linear, BatchNorm1d, LeakyReLU, Hardsigmoid, Tanh, ELU, Har
 from train import Trainer
 from models import GCN, AutoencoderGCN, ConfModelDecoder, MLPDecoder, MLPCMDecoder
 from models import view_parameters, get_parameters, new_parameters, modify_parameters, Inits, modify_parameters_linear, view_weights_gradients
-#from Dataset_autoencoder import DatasetAutoencoder
 from embedding import Embedding_autoencoder_per_graph, Embedding_autoencoder
 from Metrics import Metrics
 
@@ -112,17 +111,12 @@ class Trainer_Autoencoder(Trainer):
         for n in num_nodes:
             #print(f"i: {i}, n di num_nodes: {n}")   otengo ora l'mebedding di tutti i nodi del singolo grafo
             z = total_z[i:i+n]
+            out = self.model.forward_all(z, sigmoid=False)
             if self.conf['model']['autoencoder']:  # solo nel caso di autoencoder più semplice
-                out = self.model.forward_all(z, sigmoid=False)
-                #out = torch.nn.ReLU()(out)
-                #print("siamo proprio quììììììììììììììììì")
-                #print(np.histogram(out.clone().detach().cpu().numpy().ravel(), bins=20))
                 out = self.HardTanh(out)
                 #print(np.histogram(out.clone().detach().cpu().numpy().ravel(), bins=20))
 
-            else:
-                out = self.model.forward_all(z, sigmoid=False)
-            #print(f"out shape!!! {out.shape}")
+
             #self.check_nans(out, z)
             #print(f"z shape {z.shape} -  out shape {out.shape}")
             if need_padding:
@@ -202,6 +196,27 @@ class Trainer_Autoencoder(Trainer):
         # visto che sono 1 e 0, moltiplico tutto l'array per positive_w-1, e poi sommo 1.
         return (y_true * (positive_weight - 1)) + 1
 
+
+    def calc_decoder_for_batches_v2(self, total_z, batch, batch_size, num_nodes_per_graph):
+        # Create the mask for each graph in the batch
+        mask = batch.unsqueeze(0) == batch.unsqueeze(1)
+
+        # Compute the full inner product matrix for the entire batch
+        recon_adj_full = self.model.forward_all(total_z)
+        if self.conf['model']['autoencoder']:  # solo nel caso di autoencoder più semplice
+            recon_adj_full = self.HardTanh(recon_adj_full)
+
+        # Apply the mask to zero out the connections between nodes from different graphs
+        recon_adj = recon_adj_full * mask.float()
+
+        # Reshape recon_adj into a batch of N x N matrices
+        recon_adj = recon_adj.view(batch_size, num_nodes_per_graph, batch_size, num_nodes_per_graph)
+        recon_adj = recon_adj.permute(0, 2, 1, 3).contiguous()
+        recon_adj = recon_adj.view(batch_size * batch_size, num_nodes_per_graph, num_nodes_per_graph)
+        recon_adj = recon_adj[::batch_size+1]
+
+        return recon_adj
+
     def encode_decode_inputadj(self, data, i, batch_size, num_nodes_batch):
         # encoding su tutti i grafi del batch, tutte le edges di ciascun grafo:
         if self.conf['model'].get('my_normalization_adj'):
@@ -217,8 +232,14 @@ class Trainer_Autoencoder(Trainer):
         # il decoder Innerproduct calcola anche la matrice di adiacenza con il forward_all
         # out = self.model.forward_all(z, sigmoid=False)  effettua un prod scalare per z = total_z[i:i+n]
         # quindi è già separato per grafi
-        adjusted_pred_adj = self.calc_decoder_for_batches(total_batch_z, num_nodes_batch[i:i + batch_size])
+        #adjusted_pred_adj = self.calc_decoder_for_batches(total_batch_z, num_nodes_batch[i:i + batch_size])
 
+        # funzione di decoder del batch senza ciclo for
+        # devo usare per ora l'assunzione che tutti i grafi abbiano lo stesso numero di nodi
+        num_nodes_const = num_nodes_batch[0]
+        batch_size_v2 = data.batch.max().item() + 1
+        adjusted_pred_adj_v2 = self.calc_decoder_for_batches_v2(total_batch_z, data.batch, batch_size_v2, num_nodes_const)
+        #assert torch.allclose(adjusted_pred_adj, adjusted_pred_adj_v2, rtol=1e-04, atol=1e-06)
         # (tolto perché prendeva troppa memoria anche la sigmoid)
         # out = self.model.forward_all(z)
         # adjusted_pred_adj = self.gestisci_batch(out, data.batch, self.num_nodes_per_graph)
@@ -227,7 +248,7 @@ class Trainer_Autoencoder(Trainer):
         input_adj = to_dense_adj(data.edge_index, data.batch)
         # print(f"adjusted_pred_adj shape {adjusted_pred_adj.shape}, input adj shape: {input_adj.shape}")
 
-        return total_batch_z, adjusted_pred_adj, input_adj
+        return total_batch_z, adjusted_pred_adj_v2, input_adj
 
     def check_nans(self, input_array, embedding_z):
         nans = torch.isnan(input_array).any()

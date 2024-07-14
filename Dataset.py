@@ -82,10 +82,10 @@ class Dataset(GeneralDataset):
         self.num_grafi = int(self.conf['graph_dataset']['Num_grafi_per_tipo'])
         self.num_nodi = int(self.conf['graph_dataset']['Num_nodes'][0])
 
-        if self.config_class.conf['model'].get('my_normalization_adj'):
-            # calcolo le statistiche per la normalizzazione della matrice di adiacenza
-            # che sarà contenuta dentro ogni elemento Data
-            self.calc_degree_probabilities()
+        #if self.config_class.conf['model'].get('my_normalization_adj'):
+        # calcolo le statistiche per la normalizzazione della matrice di adiacenza
+        # che sarà contenuta dentro ogni elemento Data
+        self.calc_degree_probabilities()
 
 
     def calc_degree_probabilities(self):
@@ -132,6 +132,23 @@ class Dataset(GeneralDataset):
         pyg_graph.y = torch.tensor(np.array([type_graph]), dtype=tipo)
         #print(pyg_graph.y)
 
+        return pyg_graph
+
+    def convert_G_one_hot(self, g_i):
+        g, i = g_i
+        nodi = list(g.nodes)
+        num_nodes = g.number_of_nodes()
+
+        for n in nodi:
+            one_hot_vector = [0] * num_nodes
+            one_hot_vector[n] = 1.0
+            g.nodes[n]["x"] = one_hot_vector
+            g.nodes[n]["id"] = [n]
+
+        pyg_graph = from_networkx(g)
+        type_graph = self.labels[i]
+        tipo = torch.float
+        pyg_graph.y = torch.tensor(np.array([type_graph]), dtype=tipo)
         return pyg_graph
 
     def convert_G_random_feature(self, g_i):
@@ -188,6 +205,8 @@ class Dataset(GeneralDataset):
                 #    pyg_graph = self.convert_G_autoencoder((g, i))
                 if self.conf['graph_dataset']['random_node_feat']:
                     pyg_graph = self.convert_G_random_feature((g, i))
+                elif self.conf['graph_dataset'].get('use_1hot'):
+                    pyg_graph = self.convert_G_one_hot((g, i))
                 else:
                     pyg_graph = self.convert_G((g, i))
                 if self.config_class.conf['model'].get('my_normalization_adj'):

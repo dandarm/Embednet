@@ -292,16 +292,15 @@ class Trainer():
             return plot
 
     def init_model(self, path_model_toload, verbose):
-        # gestisco il caso della normalizzazione custom che dipende dal dataset
-        degree_prob_infos = None
-        if self.config_class.conf['model'].get('my_normalization_adj'):
-            degree_prob_infos = self.dataset.degree_prob, self.dataset.tot_links_per_graph, self.dataset.average_links_per_graph
+        # gestisco il caso della normalizzazione custom che dipende dal dataset direttamente in models.GCN
+        # intanto queste info sonmo utili per il gain del weight init
+        degree_prob_infos = self.dataset.degree_prob, self.dataset.tot_links_per_graph, self.dataset.average_links_per_graph
 
         init_weigths_method = self.config_class.init_weights_mode
         v = (not self.conf['model'].get('normalized_adj'))  # or self.conf['model'].get('my_normalization_adj')
         #v = not v  # se v falso dobbiamo modificare il gain perché stiamo nel caso UNnormalized: modified_gain deve essere True
-        w = new_parameters(self.init_GCN(dataset_degree_prob_infos=degree_prob_infos), init_weigths_method, modified_gain_for_UNnormalized_adj=v)
-
+        dummy_model = self.init_GCN(dataset_degree_prob_infos=degree_prob_infos)
+        w = new_parameters(dummy_model, init_weigths_method, modified_gain_for_UNnormalized_adj=v, avg_degree=self.dataset.average_links_per_graph)
 
         model = self.init_GCN(init_weights_gcn=w, verbose=verbose, dataset_degree_prob_infos=degree_prob_infos)
         if path_model_toload is None:
@@ -626,9 +625,9 @@ class Trainer():
             #prima controllo i gradienti
             if self.is_all_zero_gradient:
                 print(f"zero_grad_delta_epochs: {zero_grad_delta_epochs}", end='\t')
-                if zero_grad_delta_epochs > 100:
-                    if first_epoch_zero_grad == 1:
-                        raise ZeroGradientsException("I gradienti sono tutti 0 dalla prima epoca!")
+                if zero_grad_delta_epochs > 1000:
+                    if first_epoch_zero_grad <= 1000:
+                        raise ZeroGradientsException("I gradienti sono tutti entro le prime 1000 epoche!")
                     else:
                         print("Early stopping per gradienti nulli!!!")
                         break

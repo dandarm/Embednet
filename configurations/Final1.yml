@@ -16,6 +16,7 @@ graph_dataset:
     Num_grafi_totali: 1000
     list_degree: [7]
     list_exponents: [-2.5]  #, -2.5, -2.8, -3.0, -3.2]  #, -3.5, -3.7]
+    use_1hot: False
     #max_degree_const_dist: 50
     
     
@@ -25,9 +26,9 @@ training:
     #mode2 = 'classification', BCELoss, '{0,1}', 1
     #mode3 = 'regression', MSELoss, 'p', 1}
     mode: 'mode1'
-    learning_rate: 0.000003
-    epochs: 1000000
-    epochs_list_points: 70
+    learning_rate: 0.00005
+    epochs: 500000
+    epochs_list_points: 130
     test_loss_every_epochs: 200
     batch_size: 1000
     percentage_train: 0.7
@@ -66,7 +67,7 @@ model:
     autoencoder_MLPCM: False
     autoencoder_fullMLP_CM: False
     put_batchnorm: False
-    put_graphnorm: False
+    put_graphnorm: True
     final_pool_aggregator: True
     put_dropout: False
     node_features_dim: 1

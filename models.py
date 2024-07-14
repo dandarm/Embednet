@@ -366,10 +366,25 @@ def new_parameters(model, method=Inits.xavier_uniform, const_value=1.0, **kwargs
     return new_par
 
 
+def calculate_custom_gain(custom_weight,  **kwargs):
+    # consideriamo la quantità di parametri, la grandezza delle matrici dei pesi
+    n_params = torch.tensor(custom_weight.numel()).float()
+    param_gain = 1.0 / torch.sqrt(n_params)
+
+    # Considerare il grado medio dei nodi per l'adattamento del guadagno
+    avg_degree = kwargs.get('avg_degree')
+    if avg_degree is not None:
+        avg_degree_tensor = torch.tensor(custom_weight.shape[0], dtype=torch.float) * avg_degree
+        graph_gain = 1.0 / torch.sqrt(avg_degree_tensor)
+    else:
+        graph_gain = 1.0
+
+    custom_gain = param_gain * graph_gain
+    return custom_gain
+
 def get_weights_from_init_method(custom_weight, method, const_value=1.0, **kwargs):
     if kwargs.get('modified_gain_for_UNnormalized_adj'):
-        n_params = torch.tensor(custom_weight.numel())
-        gain = 1 / torch.sqrt(n_params.float())
+        gain = calculate_custom_gain(custom_weight,  **kwargs)
     else:
         gain = 1.0
     print(f"Gain for init_weights: {gain}")
